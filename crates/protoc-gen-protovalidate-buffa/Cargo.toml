@@ -1,0 +1,32 @@
+[package]
+name = "protoc-gen-protovalidate-buffa"
+description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages."
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "protoc-gen-protovalidate-buffa"
+path = "src/main.rs"
+
+[dependencies]
+buffa = "0.3"
+buffa-codegen = "0.3"
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.0.0" }
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+prettyplease = "0.2"
+anyhow = "1"
