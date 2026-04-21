@@ -1,0 +1,25 @@
+[package]
+name = "protovalidate-buffa-macros"
+description = "Proc-macro companion to protovalidate-buffa — #[connect_impl] on Connect service impls."
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+connectrpc = "0.3"

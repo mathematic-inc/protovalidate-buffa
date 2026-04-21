@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/protoc-gen-protovalidate-buffa",
+  "crates/protovalidate-buffa",
+  "crates/protovalidate-buffa-conformance",
+  "crates/protovalidate-buffa-macros",
+  "crates/protovalidate-buffa-protos",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.83"
+license = "Apache-2.0 OR MIT"
+authors = ["Mathematic Inc"]
+repository = "https://github.com/mathematic-inc/protovalidate-buffa"
+homepage = "https://github.com/mathematic-inc/protovalidate-buffa"
+categories = ["development-tools", "network-programming"]
+keywords = ["protobuf", "protovalidate", "buffa", "validation", "codegen"]
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
