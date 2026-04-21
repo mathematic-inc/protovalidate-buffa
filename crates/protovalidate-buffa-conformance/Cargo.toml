@@ -1,0 +1,37 @@
+[package]
+name = "protovalidate-buffa-conformance"
+description = "Conformance executor for the upstream protovalidate-conformance harness."
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "protovalidate-buffa-conformance"
+path = "src/main.rs"
+
+[dependencies]
+buffa = "0.3"
+buffa-types = "0.3"
+protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.0.0", default-features = false }
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.0.0" }
+anyhow = "1"
+regex = "1"
+
+[build-dependencies]
+buffa-build = "0.3"
+protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.0.0" }
+buffa = "0.3"
+buffa-codegen = "0.3"
+anyhow = "1"
+prettyplease = "0.2"
+syn = { version = "2", features = ["full"] }
