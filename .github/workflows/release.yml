@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"      # unscoped tags cut from the main package (protovalidate-buffa)
+      - "*-v*"    # scoped tags for supporting workspace crates
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    name: Resolve Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      crate_name: ${{ steps.meta.outputs.crate_name }}
+      crate_path: ${{ steps.meta.outputs.crate_path }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Parse tag and validate
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          # release-please emits unscoped `v<version>` tags for the main
+          # package (`protovalidate-buffa`) and scoped `<crate>-v<version>`
+          # tags for every other workspace crate.
+          if [[ "$TAG" =~ ^v[0-9] ]]; then
+            CRATE_NAME="protovalidate-buffa"
+            VERSION="${TAG#v}"
+          else
+            CRATE_NAME="${TAG%-v*}"
+            VERSION="${TAG#*-v}"
+          fi
+          CRATE_PATH="crates/$CRATE_NAME"
+
+          if [[ ! -f "$CRATE_PATH/Cargo.toml" ]]; then
+            echo "crate path $CRATE_PATH does not exist for tag $TAG" >&2
+            exit 1
+          fi
+
+          CARGO_VERSION="$(awk -F'"' '/^\[package\]/{p=1} p && /^version = /{print $2; exit}' "$CRATE_PATH/Cargo.toml")"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "tag $TAG does not match supported format <crate>-vX.Y.Z or <crate>-vX.Y.Z-rc.N" >&2
+            exit 1
+          fi
+
+          if [[ "$VERSION" != "$CARGO_VERSION" ]]; then
+            echo "tag version $VERSION must match Cargo.toml version $CARGO_VERSION" >&2
+            exit 1
+          fi
+
+          IS_PRERELEASE=false
+          if [[ "$VERSION" == *-* ]]; then
+            IS_PRERELEASE=true
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "crate_name=$CRATE_NAME" >> "$GITHUB_OUTPUT"
+          echo "crate_path=$CRATE_PATH" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+  build-and-test:
+    name: Build and test
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+        with:
+          version: "34.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Build and test
+        run: cargo test --locked -p "${{ needs.meta.outputs.crate_name }}"
+
+  create-release:
+    name: Publish GitHub Release
+    needs:
+      - meta
+      - build-and-test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: ${{ needs.meta.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ needs.meta.outputs.crate_name == 'protovalidate-buffa' && needs.meta.outputs.is_prerelease == 'false' }}
+
+      - name: Trigger release notes workflow
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          gh workflow run release-notes.yml \
+            --field tag="${{ needs.meta.outputs.tag }}"
+
+  publish-crate:
+    name: Publish to crates.io
+    needs:
+      - meta
+      - create-release
+    if: always() && needs.meta.result == 'success' && needs.create-release.result == 'success'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+        with:
+          version: "34.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Authenticate with crates.io
+        uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+        id: crates-io-auth
+
+      - name: Publish crate
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          output=$(cargo publish --locked -p "${{ needs.meta.outputs.crate_name }}" 2>&1) && echo "$output" || {
+            if echo "$output" | grep -q "already exists on crates.io index"; then
+              echo "${{ needs.meta.outputs.crate_name }} already published, skipping."
+            else
+              echo "$output" >&2
+              exit 1
+            fi
+          }

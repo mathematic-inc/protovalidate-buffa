@@ -1,0 +1,33 @@
+[package]
+name = "protovalidate-buffa"
+description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, CEL integration, rule helpers."
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["connect"]
+connect = ["dep:connectrpc"]
+
+[dependencies]
+buffa = "0.3"
+protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.0.0" }
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+cel-interpreter = "0.10"
+uuid = "1"
+ulid = "1"
+ipnet = "2"
+fluent-uri = "0.4"
+connectrpc = { version = "0.3", optional = true }
+percent-encoding = "2"
+http = "1"

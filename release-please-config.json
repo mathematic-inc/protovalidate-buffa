@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "initial-version": "0.1.0",
+  "packages": {
+    "crates/protovalidate-buffa": {
+      "release-type": "rust",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false
+    },
+    "crates/protovalidate-buffa-protos": {
+      "release-type": "rust"
+    },
+    "crates/protovalidate-buffa-macros": {
+      "release-type": "rust"
+    },
+    "crates/protoc-gen-protovalidate-buffa": {
+      "release-type": "rust"
+    }
+  },
+  "plugins": ["sentence-case", "cargo-workspace"]
+}

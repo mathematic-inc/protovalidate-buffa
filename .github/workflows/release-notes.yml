@@ -1,0 +1,61 @@
+name: Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.2.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-notes-${{ github.event.inputs.tag }}
+  cancel-in-progress: true
+
+jobs:
+  enhance:
+    name: Enhance release notes with Claude
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Write release notes with Claude
+        uses: anthropics/claude-code-action@5d5c10a4f389689f992ea10bb14dcb6fcc83146d # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "Bash(git log:*),Bash(git describe:*),Read,Write"
+          prompt: |
+            Write an exciting, polished GitHub release body for protovalidate-buffa ${{ inputs.tag }} and save it to `release-notes.md`.
+
+            protovalidate-buffa is a static-codegen implementation of Buf's `protovalidate` for the [buffa](https://github.com/anthropics/buffa) Rust protobuf runtime. It passes **2872 / 2872 (100%)** of the upstream `protovalidate-conformance` suite across proto2, proto3, and editions 2023.
+
+            It ships four published crates (plus a private in-repo conformance harness that isn't part of the release surface):
+            - `protovalidate-buffa` — runtime: `Validate` trait, structured `ValidationError` (with typed `violations` / `compile_error` / `runtime_error` slots), `Violation` / `FieldPath`, CEL integration via `cel-interpreter`, Connect error adapter.
+            - `protovalidate-buffa-macros` — `#[connect_impl]` proc macro that inserts `req.validate()?` across every handler in a Connect service `impl`.
+            - `protoc-gen-protovalidate-buffa` — the codegen plugin (`buf generate`). Walks `(buf.validate.*)` extensions end-to-end including predefined rules on `buf.validate.*Rules`.
+            - `protovalidate-buffa-protos` — compiled Rust types for `buf/validate/validate.proto`.
+
+            Steps:
+            1. Run `git describe --tags --abbrev=0 HEAD^` to get the previous tag, then `git log <previous-tag>..HEAD --oneline` for commits in this release.
+            2. Read `README.md`, `crates/protovalidate-buffa/src/lib.rs`, and skim the plugin's `crates/protoc-gen-protovalidate-buffa/src/` tree to ground changes in the actual API surface.
+            3. Write the release body to `release-notes.md`. It should:
+               - Open with an enthusiastic one-paragraph summary of what's new or why this release is exciting.
+               - Have clearly labelled sections (e.g. **✨ New Features**, **🐛 Bug Fixes**, **⚡ Improvements**) — only include sections that actually have content.
+               - For any significant new feature, include a short Rust or proto snippet showing it in action.
+               - Call out the current conformance status (2872 / 2872) when relevant to the release.
+               - Match on the typed `ValidationError.compile_error` / `runtime_error` fields in any error-handling examples — never on `rule_id` prefixes.
+               - End with an installation snippet: for library consumers, `protovalidate-buffa = "${{ inputs.tag }}"` in `Cargo.toml` (stripping the leading `v`); for the plugin, `cargo install --git https://github.com/mathematic-inc/protovalidate-buffa --tag ${{ inputs.tag }} protoc-gen-protovalidate-buffa`.
+               - Be written in an upbeat, developer-friendly tone — celebrate the work!
+            Do NOT publish it yourself — a subsequent step will do that.
+
+      - name: Publish release notes
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          tag_name: ${{ inputs.tag }}
+          body_path: release-notes.md
