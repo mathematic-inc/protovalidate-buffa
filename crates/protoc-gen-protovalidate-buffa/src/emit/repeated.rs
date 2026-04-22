@@ -1606,7 +1606,7 @@ pub fn emit_repeated(
                 let ext_name = &rule.ext_name;
                 let ext_ty_ident = format_ident!("{}", rule.ext_field_type);
                 let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr).unwrap_or_else(
-                    |_| quote! { ::protovalidate_buffa::cel_interpreter::Value::Null },
+                    |_| quote! { ::protovalidate_buffa::cel_core::Value::Null },
                 );
                 let Some(fam) = family else { continue };
                 let fam_name = fam.name;
