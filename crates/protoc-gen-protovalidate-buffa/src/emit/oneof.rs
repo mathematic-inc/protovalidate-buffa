@@ -145,7 +145,7 @@ fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> 
         }
         let module_name_str = to_snake_case(&v.parent_msg_name);
         let module_ident: syn::Ident = parse_str(&module_name_str)?;
-        let oneof_enum_str = to_pascal_case(&v.name);
+        let oneof_enum_str = format!("{}Oneof", to_pascal_case(&v.name));
         let oneof_enum_ident: syn::Ident = parse_str(&oneof_enum_str)?;
         let variant_name_str = to_pascal_case(&f.field_name);
         let variant_ident: syn::Ident = parse_str(&variant_name_str)?;
@@ -230,7 +230,7 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
     }
     let module_name_str = to_snake_case(&v.parent_msg_name);
     let module_ident = parse_str::<syn::Ident>(&module_name_str)?;
-    let oneof_enum_str = to_pascal_case(&v.name);
+    let oneof_enum_str = format!("{}Oneof", to_pascal_case(&v.name));
     let oneof_enum_ident = parse_str::<syn::Ident>(&oneof_enum_str)?;
 
     // Buffa's variant name: PascalCase of the field name.

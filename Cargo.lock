@@ -109,8 +109,7 @@ checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
 [[package]]
 name = "buffa"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3fea50199859017c80584fef221c61abb882c69ed5b6e30a0bf75864e3c505"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
 dependencies = [
  "base64",
  "bytes",
@@ -124,8 +123,7 @@ dependencies = [
 [[package]]
 name = "buffa-build"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "159fbe6ab4e2b37dbe7d720970e96b9a68b4d89aae0c16cd4b0c97edfc5ccf55"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
 dependencies = [
  "buffa",
  "buffa-codegen",
@@ -135,8 +133,7 @@ dependencies = [
 [[package]]
 name = "buffa-codegen"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f9ddcb25f0dde4d82e0a1128b0c459feba775e24dfa7cb0c3f4a9d61abfa245"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
 dependencies = [
  "buffa",
  "buffa-descriptor",
@@ -150,8 +147,7 @@ dependencies = [
 [[package]]
 name = "buffa-descriptor"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a0794ed1f8a0c6ab168c70258e21cf74ca7b87a7dd888a0a69745b075f2d351"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
 dependencies = [
  "buffa",
 ]
@@ -159,10 +155,10 @@ dependencies = [
 [[package]]
 name = "buffa-types"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4d80c9929af9fcc673653b99f81c1d13aa32c2bb329bb1ef02ec533994389c6"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
 dependencies = [
  "buffa",
+ "bytes",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

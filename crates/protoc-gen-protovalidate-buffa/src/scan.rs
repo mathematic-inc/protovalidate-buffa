@@ -722,32 +722,32 @@ fn populate_predefined(out: &mut StandardRules, fr: &FieldRules, predef: &Predef
     use protovalidate_buffa_protos::buf::validate::field_rules;
     let Some(ty) = fr.r#type.as_ref() else { return };
     let (extendee, unknown): (&str, &buffa::UnknownFields) = match ty {
-        field_rules::Type::Float(r) => ("buf.validate.FloatRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Double(r) => ("buf.validate.DoubleRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Int32(r) => ("buf.validate.Int32Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Int64(r) => ("buf.validate.Int64Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Uint32(r) => ("buf.validate.UInt32Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Uint64(r) => ("buf.validate.UInt64Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Sint32(r) => ("buf.validate.SInt32Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Sint64(r) => ("buf.validate.SInt64Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Fixed32(r) => ("buf.validate.Fixed32Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Fixed64(r) => ("buf.validate.Fixed64Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Sfixed32(r) => ("buf.validate.SFixed32Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Sfixed64(r) => ("buf.validate.SFixed64Rules", &r.__buffa_unknown_fields),
-        field_rules::Type::Bool(r) => ("buf.validate.BoolRules", &r.__buffa_unknown_fields),
-        field_rules::Type::String(r) => ("buf.validate.StringRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Bytes(r) => ("buf.validate.BytesRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Enum(r) => ("buf.validate.EnumRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Duration(r) => ("buf.validate.DurationRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Timestamp(r) => {
+        field_rules::TypeOneof::Float(r) => ("buf.validate.FloatRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Double(r) => ("buf.validate.DoubleRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Int32(r) => ("buf.validate.Int32Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Int64(r) => ("buf.validate.Int64Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Uint32(r) => ("buf.validate.UInt32Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Uint64(r) => ("buf.validate.UInt64Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Sint32(r) => ("buf.validate.SInt32Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Sint64(r) => ("buf.validate.SInt64Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Fixed32(r) => ("buf.validate.Fixed32Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Fixed64(r) => ("buf.validate.Fixed64Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Sfixed32(r) => ("buf.validate.SFixed32Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Sfixed64(r) => ("buf.validate.SFixed64Rules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Bool(r) => ("buf.validate.BoolRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::String(r) => ("buf.validate.StringRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Bytes(r) => ("buf.validate.BytesRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Enum(r) => ("buf.validate.EnumRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Duration(r) => ("buf.validate.DurationRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Timestamp(r) => {
             ("buf.validate.TimestampRules", &r.__buffa_unknown_fields)
         }
-        field_rules::Type::Any(r) => ("buf.validate.AnyRules", &r.__buffa_unknown_fields),
-        field_rules::Type::FieldMask(r) => {
+        field_rules::TypeOneof::Any(r) => ("buf.validate.AnyRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::FieldMask(r) => {
             ("buf.validate.FieldMaskRules", &r.__buffa_unknown_fields)
         }
-        field_rules::Type::Repeated(r) => ("buf.validate.RepeatedRules", &r.__buffa_unknown_fields),
-        field_rules::Type::Map(r) => ("buf.validate.MapRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Repeated(r) => ("buf.validate.RepeatedRules", &r.__buffa_unknown_fields),
+        field_rules::TypeOneof::Map(r) => ("buf.validate.MapRules", &r.__buffa_unknown_fields),
     };
     let rules = scan_predefined_on(extendee, unknown, predef);
     if rules.is_empty() {
@@ -1804,67 +1804,67 @@ fn parse_standard(
     };
 
     match type_rules {
-        field_rules::Type::String(r) => {
+        field_rules::TypeOneof::String(r) => {
             out.string = Some(parse_string_rules(r));
         }
-        field_rules::Type::Bytes(r) => {
+        field_rules::TypeOneof::Bytes(r) => {
             out.bytes = Some(parse_bytes_rules(r));
         }
-        field_rules::Type::Int32(r) => {
+        field_rules::TypeOneof::Int32(r) => {
             out.int32 = Some(parse_int32_rules(r));
         }
-        field_rules::Type::Int64(r) => {
+        field_rules::TypeOneof::Int64(r) => {
             out.int64 = Some(parse_int64_rules(r));
         }
-        field_rules::Type::Uint32(r) => {
+        field_rules::TypeOneof::Uint32(r) => {
             out.uint32 = Some(parse_uint32_rules(r));
         }
-        field_rules::Type::Uint64(r) => {
+        field_rules::TypeOneof::Uint64(r) => {
             out.uint64 = Some(parse_uint64_rules(r));
         }
-        field_rules::Type::Sint32(r) => {
+        field_rules::TypeOneof::Sint32(r) => {
             out.int32 = Some(parse_sint32_as_int32(r));
         }
-        field_rules::Type::Sint64(r) => {
+        field_rules::TypeOneof::Sint64(r) => {
             out.int64 = Some(parse_sint64_as_int64(r));
         }
-        field_rules::Type::Fixed32(r) => {
+        field_rules::TypeOneof::Fixed32(r) => {
             out.uint32 = Some(parse_fixed32_as_uint32(r));
         }
-        field_rules::Type::Fixed64(r) => {
+        field_rules::TypeOneof::Fixed64(r) => {
             out.uint64 = Some(parse_fixed64_as_uint64(r));
         }
-        field_rules::Type::Sfixed32(r) => {
+        field_rules::TypeOneof::Sfixed32(r) => {
             out.int32 = Some(parse_sfixed32_as_int32(r));
         }
-        field_rules::Type::Sfixed64(r) => {
+        field_rules::TypeOneof::Sfixed64(r) => {
             out.int64 = Some(parse_sfixed64_as_int64(r));
         }
-        field_rules::Type::Bool(r) => {
+        field_rules::TypeOneof::Bool(r) => {
             out.bool_rules = Some(parse_bool_rules(r));
         }
-        field_rules::Type::Float(r) => {
+        field_rules::TypeOneof::Float(r) => {
             out.float = Some(parse_float_rules(r));
         }
-        field_rules::Type::Double(r) => {
+        field_rules::TypeOneof::Double(r) => {
             out.double = Some(parse_double_rules(r));
         }
-        field_rules::Type::Enum(r) => {
+        field_rules::TypeOneof::Enum(r) => {
             out.enum_rules = Some(parse_enum_rules(r));
         }
-        field_rules::Type::Repeated(r) => {
+        field_rules::TypeOneof::Repeated(r) => {
             out.repeated = Some(parse_repeated_rules(r, predef)?);
         }
-        field_rules::Type::Map(r) => {
+        field_rules::TypeOneof::Map(r) => {
             out.map = Some(parse_map_rules(r, predef)?);
         }
-        field_rules::Type::Any(r) => {
+        field_rules::TypeOneof::Any(r) => {
             out.any_rules = Some(AnyStandard {
                 in_set: r.r#in.clone(),
                 not_in: r.not_in.clone(),
             });
         }
-        field_rules::Type::Duration(r) => {
+        field_rules::TypeOneof::Duration(r) => {
             use protovalidate_buffa_protos::{
                 buf::validate::duration_rules, google::protobuf::Duration,
             };
@@ -1875,21 +1875,21 @@ fn parse_standard(
             }
             if let Some(lt) = r.less_than.as_ref() {
                 match lt {
-                    duration_rules::LessThan::Lt(d) => ds.lt = Some(dur_pair(d)),
-                    duration_rules::LessThan::Lte(d) => ds.lte = Some(dur_pair(d)),
+                    duration_rules::LessThanOneof::Lt(d) => ds.lt = Some(dur_pair(d)),
+                    duration_rules::LessThanOneof::Lte(d) => ds.lte = Some(dur_pair(d)),
                 }
             }
             if let Some(gt) = r.greater_than.as_ref() {
                 match gt {
-                    duration_rules::GreaterThan::Gt(d) => ds.gt = Some(dur_pair(d)),
-                    duration_rules::GreaterThan::Gte(d) => ds.gte = Some(dur_pair(d)),
+                    duration_rules::GreaterThanOneof::Gt(d) => ds.gt = Some(dur_pair(d)),
+                    duration_rules::GreaterThanOneof::Gte(d) => ds.gte = Some(dur_pair(d)),
                 }
             }
             ds.in_set = r.r#in.iter().map(dur_pair).collect();
             ds.not_in = r.not_in.iter().map(dur_pair).collect();
             out.duration = Some(ds);
         }
-        field_rules::Type::Timestamp(r) => {
+        field_rules::TypeOneof::Timestamp(r) => {
             use protovalidate_buffa_protos::{
                 buf::validate::timestamp_rules,
                 google::protobuf::{Duration, Timestamp},
@@ -1902,16 +1902,16 @@ fn parse_standard(
             }
             if let Some(lt) = r.less_than.as_ref() {
                 match lt {
-                    timestamp_rules::LessThan::Lt(t) => ts.lt = Some(ts_pair(t)),
-                    timestamp_rules::LessThan::Lte(t) => ts.lte = Some(ts_pair(t)),
-                    timestamp_rules::LessThan::LtNow(b) => ts.lt_now = *b,
+                    timestamp_rules::LessThanOneof::Lt(t) => ts.lt = Some(ts_pair(t)),
+                    timestamp_rules::LessThanOneof::Lte(t) => ts.lte = Some(ts_pair(t)),
+                    timestamp_rules::LessThanOneof::LtNow(b) => ts.lt_now = *b,
                 }
             }
             if let Some(gt) = r.greater_than.as_ref() {
                 match gt {
-                    timestamp_rules::GreaterThan::Gt(t) => ts.gt = Some(ts_pair(t)),
-                    timestamp_rules::GreaterThan::Gte(t) => ts.gte = Some(ts_pair(t)),
-                    timestamp_rules::GreaterThan::GtNow(b) => ts.gt_now = *b,
+                    timestamp_rules::GreaterThanOneof::Gt(t) => ts.gt = Some(ts_pair(t)),
+                    timestamp_rules::GreaterThanOneof::Gte(t) => ts.gte = Some(ts_pair(t)),
+                    timestamp_rules::GreaterThanOneof::GtNow(b) => ts.gt_now = *b,
                 }
             }
             if let Some(w) = r.within.as_option() {
@@ -1919,7 +1919,7 @@ fn parse_standard(
             }
             out.timestamp = Some(ts);
         }
-        field_rules::Type::FieldMask(r) => {
+        field_rules::TypeOneof::FieldMask(r) => {
             let mut fm = FieldMaskStandard::default();
             if let Some(c) = r.r#const.as_option() {
                 fm.r#const = Some(c.paths.clone());
@@ -1966,23 +1966,23 @@ fn parse_string_rules(r: &StringRules) -> StringStandard {
     );
     if let Some(w) = wk {
         match w {
-            string_rules::WellKnown::Uuid(b) => out_well_known.0 = Some(*b),
-            string_rules::WellKnown::Tuuid(b) => out_well_known.1 = Some(*b),
-            string_rules::WellKnown::Ulid(b) => out_well_known.2 = Some(*b),
-            string_rules::WellKnown::Ip(b) => out_well_known.3 = Some(*b),
-            string_rules::WellKnown::Ipv4(b) => out_well_known.4 = Some(*b),
-            string_rules::WellKnown::Ipv6(b) => out_well_known.5 = Some(*b),
-            string_rules::WellKnown::IpWithPrefixlen(b) => out_well_known.6 = Some(*b),
-            string_rules::WellKnown::Ipv4WithPrefixlen(b) => out_well_known.7 = Some(*b),
-            string_rules::WellKnown::Ipv6WithPrefixlen(b) => out_well_known.8 = Some(*b),
-            string_rules::WellKnown::IpPrefix(b) => out_well_known.9 = Some(*b),
-            string_rules::WellKnown::Ipv4Prefix(b) => out_well_known.10 = Some(*b),
-            string_rules::WellKnown::Ipv6Prefix(b) => out_well_known.11 = Some(*b),
-            string_rules::WellKnown::Hostname(b) => out_well_known.12 = Some(*b),
-            string_rules::WellKnown::HostAndPort(b) => out_well_known.13 = Some(*b),
-            string_rules::WellKnown::Email(b) => out_well_known.14 = Some(*b),
-            string_rules::WellKnown::Uri(b) => out_well_known.15 = Some(*b),
-            string_rules::WellKnown::UriRef(b) => out_well_known.16 = Some(*b),
+            string_rules::WellKnownOneof::Uuid(b) => out_well_known.0 = Some(*b),
+            string_rules::WellKnownOneof::Tuuid(b) => out_well_known.1 = Some(*b),
+            string_rules::WellKnownOneof::Ulid(b) => out_well_known.2 = Some(*b),
+            string_rules::WellKnownOneof::Ip(b) => out_well_known.3 = Some(*b),
+            string_rules::WellKnownOneof::Ipv4(b) => out_well_known.4 = Some(*b),
+            string_rules::WellKnownOneof::Ipv6(b) => out_well_known.5 = Some(*b),
+            string_rules::WellKnownOneof::IpWithPrefixlen(b) => out_well_known.6 = Some(*b),
+            string_rules::WellKnownOneof::Ipv4WithPrefixlen(b) => out_well_known.7 = Some(*b),
+            string_rules::WellKnownOneof::Ipv6WithPrefixlen(b) => out_well_known.8 = Some(*b),
+            string_rules::WellKnownOneof::IpPrefix(b) => out_well_known.9 = Some(*b),
+            string_rules::WellKnownOneof::Ipv4Prefix(b) => out_well_known.10 = Some(*b),
+            string_rules::WellKnownOneof::Ipv6Prefix(b) => out_well_known.11 = Some(*b),
+            string_rules::WellKnownOneof::Hostname(b) => out_well_known.12 = Some(*b),
+            string_rules::WellKnownOneof::HostAndPort(b) => out_well_known.13 = Some(*b),
+            string_rules::WellKnownOneof::Email(b) => out_well_known.14 = Some(*b),
+            string_rules::WellKnownOneof::Uri(b) => out_well_known.15 = Some(*b),
+            string_rules::WellKnownOneof::UriRef(b) => out_well_known.16 = Some(*b),
             _ => {}
         }
     }
@@ -1994,10 +1994,10 @@ fn parse_string_rules(r: &StringRules) -> StringStandard {
     ) = (None, None, None, None);
     if let Some(w) = r.well_known.as_ref() {
         match w {
-            string_rules::WellKnown::Address(b) => address = Some(*b),
-            string_rules::WellKnown::ProtobufFqn(b) => protobuf_fqn = Some(*b),
-            string_rules::WellKnown::ProtobufDotFqn(b) => protobuf_dot_fqn = Some(*b),
-            string_rules::WellKnown::WellKnownRegex(i) => well_known_regex = Some(*i as i32),
+            string_rules::WellKnownOneof::Address(b) => address = Some(*b),
+            string_rules::WellKnownOneof::ProtobufFqn(b) => protobuf_fqn = Some(*b),
+            string_rules::WellKnownOneof::ProtobufDotFqn(b) => protobuf_dot_fqn = Some(*b),
+            string_rules::WellKnownOneof::WellKnownRegex(i) => well_known_regex = Some(*i as i32),
             _ => {}
         }
     }
@@ -2052,10 +2052,10 @@ fn parse_bytes_rules(r: &BytesRules) -> BytesStandard {
     ) = (None, None, None, None);
     if let Some(w) = r.well_known.as_ref() {
         match w {
-            bytes_rules::WellKnown::Ip(b) => ip = Some(*b),
-            bytes_rules::WellKnown::Ipv4(b) => ipv4 = Some(*b),
-            bytes_rules::WellKnown::Ipv6(b) => ipv6 = Some(*b),
-            bytes_rules::WellKnown::Uuid(b) => uuid = Some(*b),
+            bytes_rules::WellKnownOneof::Ip(b) => ip = Some(*b),
+            bytes_rules::WellKnownOneof::Ipv4(b) => ipv4 = Some(*b),
+            bytes_rules::WellKnownOneof::Ipv6(b) => ipv6 = Some(*b),
+            bytes_rules::WellKnownOneof::Uuid(b) => uuid = Some(*b),
         }
     }
     BytesStandard {
@@ -2080,28 +2080,28 @@ fn parse_int32_rules(r: &Int32Rules) -> Int32Standard {
     Int32Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let int32rules::LessThan::Lt(x) = v {
+            if let int32rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let int32rules::LessThan::Lte(x) = v {
+            if let int32rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let int32rules::GreaterThan::Gt(x) = v {
+            if let int32rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let int32rules::GreaterThan::Gte(x) = v {
+            if let int32rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2116,28 +2116,28 @@ fn parse_int64_rules(r: &Int64Rules) -> Int64Standard {
     Int64Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let int64rules::LessThan::Lt(x) = v {
+            if let int64rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let int64rules::LessThan::Lte(x) = v {
+            if let int64rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let int64rules::GreaterThan::Gt(x) = v {
+            if let int64rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let int64rules::GreaterThan::Gte(x) = v {
+            if let int64rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2152,28 +2152,28 @@ fn parse_uint32_rules(r: &UInt32Rules) -> Uint32Standard {
     Uint32Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let u_int32rules::LessThan::Lt(x) = v {
+            if let u_int32rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let u_int32rules::LessThan::Lte(x) = v {
+            if let u_int32rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let u_int32rules::GreaterThan::Gt(x) = v {
+            if let u_int32rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let u_int32rules::GreaterThan::Gte(x) = v {
+            if let u_int32rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2188,28 +2188,28 @@ fn parse_uint64_rules(r: &UInt64Rules) -> Uint64Standard {
     Uint64Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let u_int64rules::LessThan::Lt(x) = v {
+            if let u_int64rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let u_int64rules::LessThan::Lte(x) = v {
+            if let u_int64rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let u_int64rules::GreaterThan::Gt(x) = v {
+            if let u_int64rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let u_int64rules::GreaterThan::Gte(x) = v {
+            if let u_int64rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2231,28 +2231,28 @@ fn parse_float_rules(r: &FloatRules) -> FloatStandard {
     FloatStandard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let float_rules::LessThan::Lt(x) = v {
+            if let float_rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let float_rules::LessThan::Lte(x) = v {
+            if let float_rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let float_rules::GreaterThan::Gt(x) = v {
+            if let float_rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let float_rules::GreaterThan::Gte(x) = v {
+            if let float_rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2269,28 +2269,28 @@ fn parse_double_rules(r: &DoubleRules) -> DoubleStandard {
     DoubleStandard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let double_rules::LessThan::Lt(x) = v {
+            if let double_rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let double_rules::LessThan::Lte(x) = v {
+            if let double_rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let double_rules::GreaterThan::Gt(x) = v {
+            if let double_rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let double_rules::GreaterThan::Gte(x) = v {
+            if let double_rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2383,28 +2383,28 @@ fn parse_sint32_as_int32(r: &SInt32Rules) -> Int32Standard {
     Int32Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let s_int32rules::LessThan::Lt(x) = v {
+            if let s_int32rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let s_int32rules::LessThan::Lte(x) = v {
+            if let s_int32rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let s_int32rules::GreaterThan::Gt(x) = v {
+            if let s_int32rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let s_int32rules::GreaterThan::Gte(x) = v {
+            if let s_int32rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2419,28 +2419,28 @@ fn parse_sint64_as_int64(r: &SInt64Rules) -> Int64Standard {
     Int64Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let s_int64rules::LessThan::Lt(x) = v {
+            if let s_int64rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let s_int64rules::LessThan::Lte(x) = v {
+            if let s_int64rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let s_int64rules::GreaterThan::Gt(x) = v {
+            if let s_int64rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let s_int64rules::GreaterThan::Gte(x) = v {
+            if let s_int64rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2455,28 +2455,28 @@ fn parse_fixed32_as_uint32(r: &Fixed32Rules) -> Uint32Standard {
     Uint32Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let fixed32rules::LessThan::Lt(x) = v {
+            if let fixed32rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let fixed32rules::LessThan::Lte(x) = v {
+            if let fixed32rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let fixed32rules::GreaterThan::Gt(x) = v {
+            if let fixed32rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let fixed32rules::GreaterThan::Gte(x) = v {
+            if let fixed32rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2491,28 +2491,28 @@ fn parse_fixed64_as_uint64(r: &Fixed64Rules) -> Uint64Standard {
     Uint64Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let fixed64rules::LessThan::Lt(x) = v {
+            if let fixed64rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let fixed64rules::LessThan::Lte(x) = v {
+            if let fixed64rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let fixed64rules::GreaterThan::Gt(x) = v {
+            if let fixed64rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let fixed64rules::GreaterThan::Gte(x) = v {
+            if let fixed64rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2527,28 +2527,28 @@ fn parse_sfixed32_as_int32(r: &SFixed32Rules) -> Int32Standard {
     Int32Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let s_fixed32rules::LessThan::Lt(x) = v {
+            if let s_fixed32rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let s_fixed32rules::LessThan::Lte(x) = v {
+            if let s_fixed32rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let s_fixed32rules::GreaterThan::Gt(x) = v {
+            if let s_fixed32rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let s_fixed32rules::GreaterThan::Gte(x) = v {
+            if let s_fixed32rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
@@ -2563,28 +2563,28 @@ fn parse_sfixed64_as_int64(r: &SFixed64Rules) -> Int64Standard {
     Int64Standard {
         r#const: r.r#const,
         lt: r.less_than.as_ref().and_then(|v| {
-            if let s_fixed64rules::LessThan::Lt(x) = v {
+            if let s_fixed64rules::LessThanOneof::Lt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         lte: r.less_than.as_ref().and_then(|v| {
-            if let s_fixed64rules::LessThan::Lte(x) = v {
+            if let s_fixed64rules::LessThanOneof::Lte(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gt: r.greater_than.as_ref().and_then(|v| {
-            if let s_fixed64rules::GreaterThan::Gt(x) = v {
+            if let s_fixed64rules::GreaterThanOneof::Gt(x) = v {
                 Some(*x)
             } else {
                 None
             }
         }),
         gte: r.greater_than.as_ref().and_then(|v| {
-            if let s_fixed64rules::GreaterThan::Gte(x) = v {
+            if let s_fixed64rules::GreaterThanOneof::Gte(x) = v {
                 Some(*x)
             } else {
                 None
