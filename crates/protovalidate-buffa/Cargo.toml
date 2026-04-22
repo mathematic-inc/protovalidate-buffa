@@ -23,7 +23,7 @@ buffa = "0.3"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.1.0" }
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-cel-interpreter = "0.10"
+cel = "0.13"
 uuid = "1"
 ulid = "1"
 ipnet = "2"

@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use cel_interpreter::{
+use crate::cel_core::{
     extractors::{Arguments, This},
     Context, Program, Value,
 };
@@ -124,11 +124,11 @@ macro_rules! impl_to_cel_for_hashmap_key {
             S: std::hash::BuildHasher,
         {
             fn to_cel_value(&self) -> Value {
-                let map: cel_interpreter::objects::Map = self
+                let map: crate::cel_core::objects::Map = self
                     .iter()
                     .map(|(k, v)| {
                         (
-                            cel_interpreter::objects::Key::from(k.clone() as $ktarget),
+                            crate::cel_core::objects::Key::from(k.clone() as $ktarget),
                             v.to_cel_value(),
                         )
                     })
@@ -145,11 +145,11 @@ macro_rules! impl_to_cel_for_hashmap_key {
             S: std::hash::BuildHasher,
         {
             fn to_cel_value(&self) -> Value {
-                let map: cel_interpreter::objects::Map = self
+                let map: crate::cel_core::objects::Map = self
                     .iter()
                     .map(|(k, v)| {
                         (
-                            cel_interpreter::objects::Key::from(k.clone()),
+                            crate::cel_core::objects::Key::from(k.clone()),
                             v.to_cel_value(),
                         )
                     })
@@ -172,9 +172,9 @@ where
     S: std::hash::BuildHasher,
 {
     fn to_cel_value(&self) -> Value {
-        let map: cel_interpreter::objects::Map = self
+        let map: crate::cel_core::objects::Map = self
             .iter()
-            .map(|(k, v)| (cel_interpreter::objects::Key::from(*k), v.to_cel_value()))
+            .map(|(k, v)| (crate::cel_core::objects::Key::from(*k), v.to_cel_value()))
             .collect::<std::collections::HashMap<_, _>>()
             .into();
         Value::Map(map)
@@ -237,7 +237,7 @@ impl CelConstraint {
     /// Panics at first call if the CEL expression fails to compile (it is
     /// baked in at codegen time, so a parse failure indicates a plugin bug).
     /// Evaluate this CEL expression with `this` bound to the supplied raw
-    /// `cel_interpreter::Value` (used for scalar-field-level CEL rules where
+    /// `crate::cel_core::Value` (used for scalar-field-level CEL rules where
     /// the "this" target is a primitive, not a message). The violation's
     /// `field` path is set from `field_path` and `rule` path is set to
     /// `[cel[index]]` reflecting position in the repeated `FieldRules.cel`.
@@ -550,7 +550,7 @@ impl CelConstraint {
     ///
     /// Panics if the CEL expression fails to compile (baked in at codegen time).
     pub fn eval<T: AsCelValue>(&self, this: &T) -> Result<(), Violation> {
-        use cel_interpreter::ExecutionError;
+        use crate::cel_core::ExecutionError;
         let program = self.program.get_or_init(|| {
             Program::compile(self.expression)
                 .unwrap_or_else(|e| panic!("CEL compile failed for {}: {e}", self.id))
