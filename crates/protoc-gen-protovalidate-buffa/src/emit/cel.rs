@@ -194,7 +194,7 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
             let ext_num = rule.ext_number;
             // Rule value as a CEL Value expression.
             let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
-                .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_interpreter::Value::Null });
+                .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
             // For Optional<T> (proto2 / editions explicit) or Repeated<T>,
             // the field path uses inner scalar type. Wrapper/Map keep
             // TYPE_MESSAGE.
@@ -244,7 +244,7 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
                     quote! {
                         match self.#field_ident.as_option() {
                             Some(w) => #inner_access,
-                            None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                            None => ::protovalidate_buffa::cel_core::Value::Null,
                         }
                     }
                 }
@@ -253,10 +253,10 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
                 {
                     quote! {
                         match self.#field_ident.as_option() {
-                            Some(d) => ::protovalidate_buffa::cel_interpreter::Value::Duration(
+                            Some(d) => ::protovalidate_buffa::cel_core::Value::Duration(
                                 ::protovalidate_buffa::cel::duration_from_secs_nanos(d.seconds, d.nanos)
                             ),
-                            None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                            None => ::protovalidate_buffa::cel_core::Value::Null,
                         }
                     }
                 }
@@ -265,42 +265,42 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
                 {
                     quote! {
                         match self.#field_ident.as_option() {
-                            Some(t) => ::protovalidate_buffa::cel_interpreter::Value::Timestamp(
+                            Some(t) => ::protovalidate_buffa::cel_core::Value::Timestamp(
                                 ::protovalidate_buffa::cel::timestamp_from_secs_nanos(t.seconds, t.nanos)
                             ),
-                            None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                            None => ::protovalidate_buffa::cel_core::Value::Null,
                         }
                     }
                 }
                 crate::scan::FieldKind::Message { .. } => quote! {
                     match self.#field_ident.as_option() {
                         Some(inner) => ::protovalidate_buffa::cel::AsCelValue::as_cel_value(inner),
-                        None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                        None => ::protovalidate_buffa::cel_core::Value::Null,
                     }
                 },
                 crate::scan::FieldKind::Optional(inner) => {
                     if matches!(inner.as_ref(), crate::scan::FieldKind::Enum { .. }) {
                         quote! {
                             match self.#field_ident.as_ref() {
-                                Some(v) => ::protovalidate_buffa::cel_interpreter::Value::Int({
+                                Some(v) => ::protovalidate_buffa::cel_core::Value::Int({
                                     use ::buffa::Enumeration as _;
                                     let vv = *v;
                                     vv.to_i32() as i64
                                 }),
-                                None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                                None => ::protovalidate_buffa::cel_core::Value::Null,
                             }
                         }
                     } else {
                         quote! {
                             match self.#field_ident.as_ref() {
                                 Some(v) => ::protovalidate_buffa::cel::to_cel_value(v),
-                                None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                                None => ::protovalidate_buffa::cel_core::Value::Null,
                             }
                         }
                     }
                 }
                 crate::scan::FieldKind::Enum { .. } => quote! {
-                    ::protovalidate_buffa::cel_interpreter::Value::Int({
+                    ::protovalidate_buffa::cel_core::Value::Int({
                         use ::buffa::Enumeration as _;
                         let v = self.#field_ident;
                         v.to_i32() as i64
@@ -525,18 +525,18 @@ pub fn emit_as_cel_value(msg: &MessageValidators, rust_path: &Path) -> Result<To
     Ok(quote! {
         #allows
         impl ::protovalidate_buffa::cel::AsCelValue for #rust_path {
-            fn as_cel_value(&self) -> ::protovalidate_buffa::cel_interpreter::Value {
+            fn as_cel_value(&self) -> ::protovalidate_buffa::cel_core::Value {
                 let mut map: ::std::collections::HashMap<
                     ::std::string::String,
-                    ::protovalidate_buffa::cel_interpreter::Value,
+                    ::protovalidate_buffa::cel_core::Value,
                 > = ::std::collections::HashMap::new();
                 #( #inserts )*
-                ::protovalidate_buffa::cel_interpreter::Value::Map(map.into())
+                ::protovalidate_buffa::cel_core::Value::Map(map.into())
             }
         }
         #allows
         impl ::protovalidate_buffa::cel::ToCelValue for #rust_path {
-            fn to_cel_value(&self) -> ::protovalidate_buffa::cel_interpreter::Value {
+            fn to_cel_value(&self) -> ::protovalidate_buffa::cel_core::Value {
                 ::protovalidate_buffa::cel::AsCelValue::as_cel_value(self)
             }
         }
@@ -566,7 +566,7 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
             // MessageField<T> — call as_cel_value on the inner value if set.
             quote! {
                 self.#field_ident.as_option().map_or(
-                    ::protovalidate_buffa::cel_interpreter::Value::Null,
+                    ::protovalidate_buffa::cel_core::Value::Null,
                     ::protovalidate_buffa::cel::AsCelValue::as_cel_value,
                 )
             }
@@ -576,7 +576,7 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
             quote! {
                 match self.#field_ident {
                     Some(ref v) => ::protovalidate_buffa::cel::to_cel_value(v),
-                    None => ::protovalidate_buffa::cel_interpreter::Value::Null,
+                    None => ::protovalidate_buffa::cel_core::Value::Null,
                 }
             }
         }
@@ -585,7 +585,7 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
                 FieldKind::Message { .. } => {
                     // Vec<MessageType> — iterate and call as_cel_value on each elem.
                     quote! {
-                        ::protovalidate_buffa::cel_interpreter::Value::List(
+                        ::protovalidate_buffa::cel_core::Value::List(
                             self.#field_ident
                                 .iter()
                                 .map(::protovalidate_buffa::cel::AsCelValue::as_cel_value)
