@@ -32,8 +32,8 @@ mod connect;
 // Re-export external crates referenced by plugin-generated code so that
 // downstream crates only need to depend on `protovalidate-buffa` and not on
 // `regex` / `cel` / `buffa` directly.
-pub use buffa;
 pub use ::cel as cel_core;
+pub use buffa;
 pub use error::{FieldPath, FieldPathElement, FieldType, Subscript, ValidationError, Violation};
 /// `#[connect_impl]` — attribute macro applied to a Connect service `impl`
 /// block that inserts `req.validate()?` at the top of every handler method.

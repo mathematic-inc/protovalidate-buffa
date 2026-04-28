@@ -13,6 +13,9 @@ use buffa_codegen::generated::{
     },
 };
 use protovalidate_buffa_protos::buf::validate::{
+    BytesRules, DoubleRules, EnumRules, FieldRules, Fixed32Rules, Fixed64Rules, FloatRules,
+    Int32Rules, Int64Rules, MapRules, MessageRules, OneofRules, RepeatedRules, SFixed32Rules,
+    SFixed64Rules, SInt32Rules, SInt64Rules, StringRules, UInt32Rules, UInt64Rules,
     __buffa::{
         ext::{FIELD, MESSAGE, ONEOF},
         oneof::{
@@ -21,9 +24,6 @@ use protovalidate_buffa_protos::buf::validate::{
             s_int64rules, string_rules, timestamp_rules, u_int32rules, u_int64rules,
         },
     },
-    BytesRules, DoubleRules, EnumRules, FieldRules, Fixed32Rules, Fixed64Rules, FloatRules,
-    Int32Rules, Int64Rules, MapRules, MessageRules, OneofRules, RepeatedRules, SFixed32Rules,
-    SFixed64Rules, SInt32Rules, SInt64Rules, StringRules, UInt32Rules, UInt64Rules,
 };
 
 // ─── Public output types ──────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ pub struct PredefinedExt {
 pub type PredefinedExtRegistry = std::collections::HashMap<(String, u32), PredefinedExt>;
 
 fn collect_predefined_extensions(req: &CodeGeneratorRequest) -> PredefinedExtRegistry {
-    use protovalidate_buffa_protos::buf::validate::{__buffa::ext::PREDEFINED, PredefinedRules};
+    use protovalidate_buffa_protos::buf::validate::{PredefinedRules, __buffa::ext::PREDEFINED};
     fn walk_messages<F: FnMut(&FieldDescriptorProto)>(msgs: &[DescriptorProto], f: &mut F) {
         for m in msgs {
             for e in &m.extension {
@@ -609,10 +609,7 @@ fn scan_predefined_on(
         // Decode the value based on label + proto type.
         let rule_value_expr = match (meta.label, meta.proto_type, &uf.data) {
             (_, field_descriptor_proto::Type::TYPE_BOOL, UnknownFieldData::Varint(v)) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::Bool({})",
-                    *v != 0
-                )
+                format!("::protovalidate_buffa::cel_core::Value::Bool({})", *v != 0)
             }
             (
                 field_descriptor_proto::Label::LABEL_OPTIONAL,
@@ -652,17 +649,17 @@ fn scan_predefined_on(
                 | field_descriptor_proto::Type::TYPE_FIXED64,
                 UnknownFieldData::Varint(v),
             ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::UInt({}u64)",
-                    *v
-                )
+                format!("::protovalidate_buffa::cel_core::Value::UInt({}u64)", *v)
             }
             (
                 field_descriptor_proto::Label::LABEL_OPTIONAL,
                 field_descriptor_proto::Type::TYPE_FLOAT,
                 UnknownFieldData::Fixed32(v),
             ) => {
-                format!("::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({}u32) as f64)", *v)
+                format!(
+                    "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({}u32) as f64)",
+                    *v
+                )
             }
             (
                 field_descriptor_proto::Label::LABEL_OPTIONAL,
@@ -842,7 +839,9 @@ fn decode_repeated_element(
         }
         (Type::TYPE_FLOAT, UnknownFieldData::Fixed32(v)) => {
             let v = *v;
-            out.push(format!("::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"));
+            out.push(format!(
+                "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"
+            ));
         }
         (Type::TYPE_DOUBLE, UnknownFieldData::Fixed64(v)) => {
             let v = *v;
@@ -856,7 +855,9 @@ fn decode_repeated_element(
         }
         (Type::TYPE_BYTES, UnknownFieldData::LengthDelimited(data)) => {
             let b: Vec<u8> = data.clone();
-            out.push(format!("::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{b:?}))"));
+            out.push(format!(
+                "::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{b:?}))"
+            ));
         }
         // Wrapper types (e.g. google.protobuf.Int64Value) — decode the inner
         // .value field (field 1). The wire format for an Int64Value{value:3}
@@ -948,7 +949,9 @@ fn decode_repeated_element(
                         let v = u64::from_le_bytes([
                             buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
                         ]);
-                        out.push(format!("::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({v}u64))"));
+                        out.push(format!(
+                            "::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({v}u64))"
+                        ));
                         buf = &buf[8..];
                     }
                     _ => break,
@@ -1077,7 +1080,9 @@ fn decode_wrapper_value(ty: field_descriptor_proto::Type, bytes: &[u8]) -> Optio
                     return None;
                 }
                 let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                Some(format!("::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"))
+                Some(format!(
+                    "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"
+                ))
             }
             Type::TYPE_DOUBLE => {
                 if buf.len() < 8 {
