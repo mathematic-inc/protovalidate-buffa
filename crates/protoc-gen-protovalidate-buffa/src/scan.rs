@@ -13,9 +13,6 @@ use buffa_codegen::generated::{
     },
 };
 use protovalidate_buffa_protos::buf::validate::{
-    BytesRules, DoubleRules, EnumRules, FieldRules, Fixed32Rules, Fixed64Rules, FloatRules,
-    Int32Rules, Int64Rules, MapRules, MessageRules, OneofRules, RepeatedRules, SFixed32Rules,
-    SFixed64Rules, SInt32Rules, SInt64Rules, StringRules, UInt32Rules, UInt64Rules,
     __buffa::{
         ext::{FIELD, MESSAGE, ONEOF},
         oneof::{
@@ -24,6 +21,9 @@ use protovalidate_buffa_protos::buf::validate::{
             s_int64rules, string_rules, timestamp_rules, u_int32rules, u_int64rules,
         },
     },
+    BytesRules, DoubleRules, EnumRules, FieldRules, Fixed32Rules, Fixed64Rules, FloatRules,
+    Int32Rules, Int64Rules, MapRules, MessageRules, OneofRules, RepeatedRules, SFixed32Rules,
+    SFixed64Rules, SInt32Rules, SInt64Rules, StringRules, UInt32Rules, UInt64Rules,
 };
 
 // ─── Public output types ──────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ pub struct PredefinedExt {
 pub type PredefinedExtRegistry = std::collections::HashMap<(String, u32), PredefinedExt>;
 
 fn collect_predefined_extensions(req: &CodeGeneratorRequest) -> PredefinedExtRegistry {
-    use protovalidate_buffa_protos::buf::validate::{PredefinedRules, __buffa::ext::PREDEFINED};
+    use protovalidate_buffa_protos::buf::validate::{__buffa::ext::PREDEFINED, PredefinedRules};
     fn walk_messages<F: FnMut(&FieldDescriptorProto)>(msgs: &[DescriptorProto], f: &mut F) {
         for m in msgs {
             for e in &m.extension {
