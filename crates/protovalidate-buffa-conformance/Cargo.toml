@@ -1,7 +1,7 @@
 [package]
 name = "protovalidate-buffa-conformance"
 description = "Conformance executor for the upstream protovalidate-conformance harness."
-version = "0.0.2"
+version = "0.0.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -23,13 +23,13 @@ path = "src/main.rs"
 buffa = "0.4"
 buffa-types = "0.4"
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.1.0", default-features = false }
-protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.1.0" }
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.1.2" }
 anyhow = "1"
 regex = "1"
 
 [build-dependencies]
 buffa-build = "0.4"
-protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.1.1" }
+protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.1.2" }
 buffa = "0.4"
 buffa-codegen = "0.4"
 anyhow = "1"

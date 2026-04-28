@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.1...protoc-gen-protovalidate-buffa-v0.1.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* Publish protovalidate-buffa-protos v0.1.1 with buffa 0.4 ([a31aff0](https://github.com/mathematic-inc/protovalidate-buffa/commit/a31aff0a91d65acb4c61fb9631ec0874df65e68f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-protos bumped from 0.1.1 to 0.1.2
+
 ## [0.1.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.0...protoc-gen-protovalidate-buffa-v0.1.1) (2026-04-28)
 
 
