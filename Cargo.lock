@@ -51,9 +51,9 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "async-compression"
-version = "0.4.41"
+version = "0.4.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0f9ee0f6e02ffd7ad5816e9464499fba7b3effd01123b515c41d1697c43dad1"
+checksum = "e79b3f8a79cccc2898f31920fc69f304859b3bd567490f75ebf51ae1c792a9ac"
 dependencies = [
  "compression-codecs",
  "compression-core",
@@ -121,21 +121,37 @@ dependencies = [
 ]
 
 [[package]]
-name = "buffa-build"
-version = "0.3.0"
-source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+name = "buffa"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe57265ac5858082bf9a450654fa56e97fceda045d3e573eed4c2d3cf0b8dc0f"
 dependencies = [
- "buffa",
+ "bytes",
+ "hashbrown 0.15.5",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "buffa-build"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c5dfbfc51f615a6d67db6143811fa72bb4f1c71402b776948eaea1940200cc"
+dependencies = [
+ "buffa 0.4.0",
  "buffa-codegen",
  "tempfile",
 ]
 
 [[package]]
 name = "buffa-codegen"
-version = "0.3.0"
-source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13e4d72f8cdc202c1939f8f74db0baf9c1035c7354214f2d8051ad99a9dfef53"
 dependencies = [
- "buffa",
+ "buffa 0.4.0",
  "buffa-descriptor",
  "prettyplease",
  "proc-macro2",
@@ -146,18 +162,20 @@ dependencies = [
 
 [[package]]
 name = "buffa-descriptor"
-version = "0.3.0"
-source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8473359a7a8cbad218bd2f0aa635d59a51b9a5dc2de3e50b125679dd411371a2"
 dependencies = [
- "buffa",
+ "buffa 0.4.0",
 ]
 
 [[package]]
 name = "buffa-types"
-version = "0.3.0"
-source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d4e05bf231bdefa79fdb7326be05e3b5be3809ec70bb2cb5dbd8b7f6944ed53"
 dependencies = [
- "buffa",
+ "buffa 0.4.0",
  "bytes",
  "serde",
  "serde_json",
@@ -187,9 +205,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.60"
+version = "1.2.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43c5703da9466b66a946814e1adf53ea2c90f10063b86290cc9eb67ce3478a20"
+checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -233,9 +251,9 @@ dependencies = [
 
 [[package]]
 name = "compression-codecs"
-version = "0.4.37"
+version = "0.4.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb7b51a7d9c967fc26773061ba86150f19c50c0d65c887cb1fbe295fd16619b7"
+checksum = "ce2548391e9c1929c21bf6aa2680af86fe4c1b33e6cea9ac1cfeec0bd11218cf"
 dependencies = [
  "compression-core",
  "flate2",
@@ -246,19 +264,19 @@ dependencies = [
 
 [[package]]
 name = "compression-core"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75984efb6ed102a0d42db99afb6c1948f0380d1d91808d5529916e6c08b49d8d"
+checksum = "cc14f565cf027a105f7a44ccf9e5b424348421a1d8952a8fc9d499d313107789"
 
 [[package]]
 name = "connectrpc"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20d510caddfd82db44276604ce400d9fe13fa85fcc738eb457d82089f8e68b74"
+checksum = "7e9191b8c90cfc0d27f3df209ea83fa1cb1f9b7e81480bc9d89661be41350778"
 dependencies = [
  "async-compression",
  "base64",
- "buffa",
+ "buffa 0.3.0",
  "bytes",
  "flate2",
  "futures",
@@ -603,9 +621,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.185"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "linux-raw-sys"
@@ -784,7 +802,7 @@ name = "protoc-gen-protovalidate-buffa"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "buffa",
+ "buffa 0.4.0",
  "buffa-codegen",
  "prettyplease",
  "proc-macro2",
@@ -797,7 +815,7 @@ dependencies = [
 name = "protovalidate-buffa"
 version = "0.1.0"
 dependencies = [
- "buffa",
+ "buffa 0.4.0",
  "cel",
  "chrono",
  "connectrpc",
@@ -816,7 +834,7 @@ name = "protovalidate-buffa-conformance"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "buffa",
+ "buffa 0.4.0",
  "buffa-build",
  "buffa-codegen",
  "buffa-types",
@@ -842,7 +860,7 @@ dependencies = [
 name = "protovalidate-buffa-protos"
 version = "0.1.0"
 dependencies = [
- "buffa",
+ "buffa 0.4.0",
  "buffa-build",
  "buffa-types",
 ]
@@ -1566,3 +1584,23 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "buffa-build"
+version = "0.3.0"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+
+[[patch.unused]]
+name = "buffa-codegen"
+version = "0.3.0"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+
+[[patch.unused]]
+name = "buffa-descriptor"
+version = "0.3.0"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
+
+[[patch.unused]]
+name = "buffa-types"
+version = "0.3.0"
+source = "git+https://github.com/anthropics/buffa?rev=b065d14dbd545a25ba30974384e505b4bc072771#b065d14dbd545a25ba30974384e505b4bc072771"
