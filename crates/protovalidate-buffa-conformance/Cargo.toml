@@ -20,18 +20,18 @@ name = "protovalidate-buffa-conformance"
 path = "src/main.rs"
 
 [dependencies]
-buffa = "0.3"
-buffa-types = "0.3"
+buffa = "0.4"
+buffa-types = "0.4"
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.1.0", default-features = false }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.1.0" }
 anyhow = "1"
 regex = "1"
 
 [build-dependencies]
-buffa-build = "0.3"
+buffa-build = "0.4"
 protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.1.0" }
-buffa = "0.3"
-buffa-codegen = "0.3"
+buffa = "0.4"
+buffa-codegen = "0.4"
 anyhow = "1"
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }

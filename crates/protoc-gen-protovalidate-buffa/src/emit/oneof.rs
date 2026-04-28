@@ -145,7 +145,7 @@ fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> 
         }
         let module_name_str = to_snake_case(&v.parent_msg_name);
         let module_ident: syn::Ident = parse_str(&module_name_str)?;
-        let oneof_enum_str = format!("{}Oneof", to_pascal_case(&v.name));
+        let oneof_enum_str = to_pascal_case(&v.name);
         let oneof_enum_ident: syn::Ident = parse_str(&oneof_enum_str)?;
         let variant_name_str = to_pascal_case(&f.field_name);
         let variant_ident: syn::Ident = parse_str(&variant_name_str)?;
@@ -172,7 +172,7 @@ fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> 
             _ => quote!(Message),
         };
         out.push(quote! {
-            if !matches!(&self.#accessor, Some(#module_ident::#oneof_enum_ident::#variant_ident(_))) {
+            if !matches!(&self.#accessor, Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(_))) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath {
                         elements: ::std::vec![
@@ -230,7 +230,7 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
     }
     let module_name_str = to_snake_case(&v.parent_msg_name);
     let module_ident = parse_str::<syn::Ident>(&module_name_str)?;
-    let oneof_enum_str = format!("{}Oneof", to_pascal_case(&v.name));
+    let oneof_enum_str = to_pascal_case(&v.name);
     let oneof_enum_ident = parse_str::<syn::Ident>(&oneof_enum_str)?;
 
     // Buffa's variant name: PascalCase of the field name.
@@ -321,14 +321,14 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
     );
     if needs_copy_deref {
         Ok(quote! {
-            Some(#module_ident::#oneof_enum_ident::#variant_ident(ref __oneof_val)) => {
+            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(ref __oneof_val)) => {
                 let #val_ident = *__oneof_val;
                 #( #checks )*
             }
         })
     } else {
         Ok(quote! {
-            Some(#module_ident::#oneof_enum_ident::#variant_ident(ref #val_ident)) => {
+            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(ref #val_ident)) => {
                 #( #checks )*
             }
         })
