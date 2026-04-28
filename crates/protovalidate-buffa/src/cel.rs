@@ -3,12 +3,13 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use crate::cel_core::{
-    extractors::{Arguments, This},
-    Context, Program, Value,
+use crate::{
+    cel_core::{
+        extractors::{Arguments, This},
+        Context, Program, Value,
+    },
+    FieldPath, Violation,
 };
-
-use crate::{FieldPath, Violation};
 
 pub struct CelConstraint {
     pub id: &'static str,

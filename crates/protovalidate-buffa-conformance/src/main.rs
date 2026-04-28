@@ -24,7 +24,7 @@ pub mod generated {
 pub mod registry;
 
 use generated::buf::validate::conformance::harness::{
-    __buffa::oneof::test_result, TestConformanceRequest, TestConformanceResponse, TestResult,
+    TestConformanceRequest, TestConformanceResponse, TestResult, __buffa::oneof::test_result,
 };
 pub use generated::{buf::validate as pb_validate, google::protobuf as pb_google};
 
@@ -131,12 +131,22 @@ fn convert_path_element(
         key_type: e.key_type.map(field_type_to_proto),
         value_type: e.value_type.map(field_type_to_proto),
         subscript: e.subscript.as_ref().map(|s| match s {
-            Subscript::Index(i) => pb_validate::__buffa::oneof::field_path_element::Subscript::Index(*i),
-            Subscript::BoolKey(b) => pb_validate::__buffa::oneof::field_path_element::Subscript::BoolKey(*b),
-            Subscript::IntKey(i) => pb_validate::__buffa::oneof::field_path_element::Subscript::IntKey(*i),
-            Subscript::UintKey(u) => pb_validate::__buffa::oneof::field_path_element::Subscript::UintKey(*u),
+            Subscript::Index(i) => {
+                pb_validate::__buffa::oneof::field_path_element::Subscript::Index(*i)
+            }
+            Subscript::BoolKey(b) => {
+                pb_validate::__buffa::oneof::field_path_element::Subscript::BoolKey(*b)
+            }
+            Subscript::IntKey(i) => {
+                pb_validate::__buffa::oneof::field_path_element::Subscript::IntKey(*i)
+            }
+            Subscript::UintKey(u) => {
+                pb_validate::__buffa::oneof::field_path_element::Subscript::UintKey(*u)
+            }
             Subscript::StringKey(s) => {
-                pb_validate::__buffa::oneof::field_path_element::Subscript::StringKey(s.clone().into_owned())
+                pb_validate::__buffa::oneof::field_path_element::Subscript::StringKey(
+                    s.clone().into_owned(),
+                )
             }
         }),
         ..Default::default()
