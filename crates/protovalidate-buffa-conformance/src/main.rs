@@ -24,7 +24,7 @@ pub mod generated {
 pub mod registry;
 
 use generated::buf::validate::conformance::harness::{
-    TestConformanceRequest, TestConformanceResponse, TestResult, __buffa::oneof::test_result,
+    __buffa::oneof::test_result, TestConformanceRequest, TestConformanceResponse, TestResult,
 };
 pub use generated::{buf::validate as pb_validate, google::protobuf as pb_google};
 
