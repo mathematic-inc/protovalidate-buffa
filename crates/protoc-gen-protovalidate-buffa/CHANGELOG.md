@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.0...protoc-gen-protovalidate-buffa-v0.1.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* Match buffa's `*Oneof` enum naming ([59b307f](https://github.com/mathematic-inc/protovalidate-buffa/commit/59b307f88b68f10dae6ab7157cc7b28cbda2808d))
+
 ## 0.1.0 (2026-04-21)
 
 
