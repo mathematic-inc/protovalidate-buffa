@@ -24,7 +24,7 @@ pub mod generated {
 pub mod registry;
 
 use generated::buf::validate::conformance::harness::{
-    test_result, TestConformanceRequest, TestConformanceResponse, TestResult,
+    __buffa::oneof::test_result, TestConformanceRequest, TestConformanceResponse, TestResult,
 };
 pub use generated::{buf::validate as pb_validate, google::protobuf as pb_google};
 
@@ -55,17 +55,17 @@ fn run_case(any: &pb_google::Any) -> TestResult {
     // Bare google.protobuf.* inputs have no user validator — treat as valid.
     if fqn.starts_with("google.protobuf.") {
         return TestResult {
-            result: Some(test_result::ResultOneof::Success(true)),
+            result: Some(test_result::Result::Success(true)),
             ..Default::default()
         };
     }
     let result = match registry::dispatch(fqn, &any.value) {
-        registry::CaseOutcome::Valid => test_result::ResultOneof::Success(true),
-        registry::CaseOutcome::Invalid(v) => test_result::ResultOneof::ValidationError(Box::new(v)),
-        registry::CaseOutcome::RuntimeError(msg) => test_result::ResultOneof::RuntimeError(msg),
-        registry::CaseOutcome::CompilationError(msg) => test_result::ResultOneof::CompilationError(msg),
+        registry::CaseOutcome::Valid => test_result::Result::Success(true),
+        registry::CaseOutcome::Invalid(v) => test_result::Result::ValidationError(Box::new(v)),
+        registry::CaseOutcome::RuntimeError(msg) => test_result::Result::RuntimeError(msg),
+        registry::CaseOutcome::CompilationError(msg) => test_result::Result::CompilationError(msg),
         registry::CaseOutcome::Unsupported => {
-            test_result::ResultOneof::UnexpectedError(format!("unsupported message type: {fqn}"))
+            test_result::Result::UnexpectedError(format!("unsupported message type: {fqn}"))
         }
     };
     TestResult {
@@ -131,12 +131,12 @@ fn convert_path_element(
         key_type: e.key_type.map(field_type_to_proto),
         value_type: e.value_type.map(field_type_to_proto),
         subscript: e.subscript.as_ref().map(|s| match s {
-            Subscript::Index(i) => pb_validate::field_path_element::SubscriptOneof::Index(*i),
-            Subscript::BoolKey(b) => pb_validate::field_path_element::SubscriptOneof::BoolKey(*b),
-            Subscript::IntKey(i) => pb_validate::field_path_element::SubscriptOneof::IntKey(*i),
-            Subscript::UintKey(u) => pb_validate::field_path_element::SubscriptOneof::UintKey(*u),
+            Subscript::Index(i) => pb_validate::__buffa::oneof::field_path_element::Subscript::Index(*i),
+            Subscript::BoolKey(b) => pb_validate::__buffa::oneof::field_path_element::Subscript::BoolKey(*b),
+            Subscript::IntKey(i) => pb_validate::__buffa::oneof::field_path_element::Subscript::IntKey(*i),
+            Subscript::UintKey(u) => pb_validate::__buffa::oneof::field_path_element::Subscript::UintKey(*u),
             Subscript::StringKey(s) => {
-                pb_validate::field_path_element::SubscriptOneof::StringKey(s.clone().into_owned())
+                pb_validate::__buffa::oneof::field_path_element::Subscript::StringKey(s.clone().into_owned())
             }
         }),
         ..Default::default()
