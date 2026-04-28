@@ -24,7 +24,7 @@ path = "src/main.rs"
 [dependencies]
 buffa = "0.4"
 buffa-codegen = "0.4"
-protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.1.0" }
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.1.1" }
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
