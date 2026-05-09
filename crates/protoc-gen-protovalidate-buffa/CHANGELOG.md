@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.2...protoc-gen-protovalidate-buffa-v0.2.0) (2026-05-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* requires Rust 1.95+ and edition 2024; depends on buffa 0.5 (was 0.4) and connectrpc 0.4 (was 0.3).
+
+### Bug Fixes
+
+* Bump buffa to 0.5.2, update edition to 2024, all deps to latest ([#4](https://github.com/mathematic-inc/protovalidate-buffa/issues/4)) ([743de86](https://github.com/mathematic-inc/protovalidate-buffa/commit/743de8677046d84deb2383bf453f1e62fbc195db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-protos bumped from 0.1.2 to 0.2.0
+
 ## [0.1.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.1...protoc-gen-protovalidate-buffa-v0.1.2) (2026-04-28)
 
 
