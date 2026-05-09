@@ -223,7 +223,7 @@ fn has_field_rules(f: &FieldValidator) -> bool {
         || matches!(f.field_type, FieldKind::Message { ref full_name } if !full_name.starts_with("google.protobuf."))
 }
 
-/// Emit a `Some(Variant(ref v)) => { ... }` match arm for a single oneof field.
+/// Emit a `Some(Variant(v)) => { ... }` match arm for a single oneof field.
 fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStream> {
     if matches!(f.ignore, crate::scan::Ignore::Always) {
         return Ok(quote! {});
@@ -321,14 +321,14 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
     );
     if needs_copy_deref {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(ref __oneof_val)) => {
+            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
                 let #val_ident = *__oneof_val;
                 #( #checks )*
             }
         })
     } else {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(ref #val_ident)) => {
+            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(#val_ident)) => {
                 #( #checks )*
             }
         })

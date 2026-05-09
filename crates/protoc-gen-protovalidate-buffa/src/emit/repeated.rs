@@ -923,19 +923,19 @@ fn emit_repeated_items_checks(
             }
         }
         FieldKind::Bool => {
-            if let Some(b) = &rules.bool_rules {
-                if let Some(c) = b.r#const {
-                    push(
-                        &mut out,
-                        "bool",
-                        13,
-                        "const",
-                        1,
-                        "Bool",
-                        "bool.const".to_string(),
-                        quote! { *#elem_ident != #c },
-                    );
-                }
+            if let Some(b) = &rules.bool_rules
+                && let Some(c) = b.r#const
+            {
+                push(
+                    &mut out,
+                    "bool",
+                    13,
+                    "const",
+                    1,
+                    "Bool",
+                    "bool.const".to_string(),
+                    quote! { *#elem_ident != #c },
+                );
             }
         }
         FieldKind::String => {
@@ -1358,279 +1358,278 @@ pub fn emit_repeated(
     }
 
     // Per-element WKT (Any, Duration) rules.
-    if let Some(items) = &spec.items {
-        if !matches!(items.ignore, crate::scan::Ignore::Always) {
-            if let FieldKind::Message { full_name } = element_kind {
-                if full_name == "google.protobuf.Duration" {
-                    if let Some(d) = &items.standard.duration {
-                        let fnum = field_number;
-                        let nl = name_lit;
-                        let emit_dur = |out: &mut Vec<TokenStream>,
-                                        inner_name: &str,
-                                        inner_num: i32,
-                                        bound: &(i64, i32),
-                                        op: &str,
-                                        rule_id: &str,
-                                        msg: &str| {
-                            let (secs, nano) = *bound;
-                            let cond: TokenStream = match op {
-                                "gte" => {
-                                    quote! { elem_ns < #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "gt" => {
-                                    quote! { elem_ns <= #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "lte" => {
-                                    quote! { elem_ns > #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "lt" => {
-                                    quote! { elem_ns >= #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                _ => return,
-                            };
-                            let inner_name_s = inner_name.to_string();
-                            let rid = rule_id.to_string();
-                            let ms = msg.to_string();
-                            out.push(quote! {
-                                for (idx, elem) in self.#accessor.iter().enumerate() {
-                                    let elem_ns: i128 = elem.seconds as i128 * 1_000_000_000 + elem.nanos as i128;
-                                    if #cond {
-                                        violations.push(::protovalidate_buffa::Violation {
-                                            field: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                                    field_number: Some(#fnum),
-                                                    field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
-                                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                                    key_type: None, value_type: None,
-                                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                                }],
-                                            },
-                                            rule: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(21i32), field_name: Some(::std::borrow::Cow::Borrowed("duration")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(#inner_num), field_name: Some(::std::borrow::Cow::Borrowed(#inner_name_s)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                ],
-                                            },
-                                            rule_id: ::std::borrow::Cow::Borrowed(#rid),
-                                            message: ::std::borrow::Cow::Borrowed(#ms),
-                                            for_key: false,
-                                        });
-                                    }
-                                }
-                            });
-                        };
-                        if let Some(b) = &d.gte {
-                            emit_dur(
-                                &mut out,
-                                "gte",
-                                6,
-                                b,
-                                "gte",
-                                "duration.gte",
-                                "must be greater than or equal to 0.001s",
-                            );
-                        }
-                        if let Some(b) = &d.gt {
-                            emit_dur(&mut out, "gt", 5, b, "gt", "duration.gt", "");
-                        }
-                        if let Some(b) = &d.lte {
-                            emit_dur(&mut out, "lte", 4, b, "lte", "duration.lte", "");
-                        }
-                        if let Some(b) = &d.lt {
-                            emit_dur(&mut out, "lt", 3, b, "lt", "duration.lt", "");
-                        }
+    if let Some(items) = &spec.items
+        && !matches!(items.ignore, crate::scan::Ignore::Always)
+        && let FieldKind::Message { full_name } = element_kind
+    {
+        if full_name == "google.protobuf.Duration"
+            && let Some(d) = &items.standard.duration
+        {
+            let fnum = field_number;
+            let nl = name_lit;
+            let emit_dur = |out: &mut Vec<TokenStream>,
+                            inner_name: &str,
+                            inner_num: i32,
+                            bound: &(i64, i32),
+                            op: &str,
+                            rule_id: &str,
+                            msg: &str| {
+                let (secs, nano) = *bound;
+                let cond: TokenStream = match op {
+                    "gte" => {
+                        quote! { elem_ns < #secs as i128 * 1_000_000_000 + #nano as i128 }
                     }
-                }
-                if full_name == "google.protobuf.Timestamp" {
-                    if let Some(t) = &items.standard.timestamp {
-                        let fnum = field_number;
-                        let nl = name_lit;
-                        let emit_ts = |out: &mut Vec<TokenStream>,
-                                       inner_name: &str,
-                                       inner_num: i32,
-                                       bound: &(i64, i32),
-                                       op: &str,
-                                       rule_id: &str| {
-                            let (secs, nano) = *bound;
-                            let cond: TokenStream = match op {
-                                "gte" => {
-                                    quote! { elem_ns < #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "gt" => {
-                                    quote! { elem_ns <= #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "lte" => {
-                                    quote! { elem_ns > #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                "lt" => {
-                                    quote! { elem_ns >= #secs as i128 * 1_000_000_000 + #nano as i128 }
-                                }
-                                _ => return,
-                            };
-                            let inner_name_s = inner_name.to_string();
-                            let rid = rule_id.to_string();
-                            out.push(quote! {
-                                for (idx, elem) in self.#accessor.iter().enumerate() {
-                                    let elem_ns: i128 = elem.seconds as i128 * 1_000_000_000 + elem.nanos as i128;
-                                    if #cond {
-                                        violations.push(::protovalidate_buffa::Violation {
-                                            field: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                                    field_number: Some(#fnum),
-                                                    field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
-                                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                                    key_type: None, value_type: None,
-                                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                                }],
-                                            },
-                                            rule: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(22i32), field_name: Some(::std::borrow::Cow::Borrowed("timestamp")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(#inner_num), field_name: Some(::std::borrow::Cow::Borrowed(#inner_name_s)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                ],
-                                            },
-                                            rule_id: ::std::borrow::Cow::Borrowed(#rid),
-                                            message: ::std::borrow::Cow::Borrowed(""),
-                                            for_key: false,
-                                        });
-                                    }
-                                }
-                            });
-                        };
-                        if let Some(b) = &t.gte {
-                            emit_ts(&mut out, "gte", 6, b, "gte", "timestamp.gte");
-                        }
-                        if let Some(b) = &t.gt {
-                            emit_ts(&mut out, "gt", 5, b, "gt", "timestamp.gt");
-                        }
-                        if let Some(b) = &t.lte {
-                            emit_ts(&mut out, "lte", 4, b, "lte", "timestamp.lte");
-                        }
-                        if let Some(b) = &t.lt {
-                            emit_ts(&mut out, "lt", 3, b, "lt", "timestamp.lt");
-                        }
+                    "gt" => {
+                        quote! { elem_ns <= #secs as i128 * 1_000_000_000 + #nano as i128 }
                     }
-                }
-                if full_name == "google.protobuf.Any" {
-                    if let Some(a) = &items.standard.any_rules {
-                        if !a.in_set.is_empty() {
-                            let set = &a.in_set;
-                            let fnum = field_number;
-                            let nl = name_lit;
-                            out.push(quote! {
-                                for (idx, elem) in self.#accessor.iter().enumerate() {
-                                    const ALLOWED: &[&str] = &[ #( #set ),* ];
-                                    if !ALLOWED.iter().any(|s| *s == elem.type_url.as_str()) {
-                                        violations.push(::protovalidate_buffa::Violation {
-                                            field: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                                    field_number: Some(#fnum),
-                                                    field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
-                                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                                    key_type: None, value_type: None,
-                                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                                }],
-                                            },
-                                            rule: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(20i32), field_name: Some(::std::borrow::Cow::Borrowed("any")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(2i32), field_name: Some(::std::borrow::Cow::Borrowed("in")), field_type: Some(::protovalidate_buffa::FieldType::String), key_type: None, value_type: None, subscript: None },
-                                                ],
-                                            },
-                                            rule_id: ::std::borrow::Cow::Borrowed("any.in"),
-                                            message: ::std::borrow::Cow::Borrowed("type URL must be in the allow list"),
-                                            for_key: false,
-                                        });
-                                    }
-                                }
-                            });
-                        }
-                        if !a.not_in.is_empty() {
-                            let set = &a.not_in;
-                            let fnum = field_number;
-                            let nl = name_lit;
-                            out.push(quote! {
-                                for (idx, elem) in self.#accessor.iter().enumerate() {
-                                    const DENIED: &[&str] = &[ #( #set ),* ];
-                                    if DENIED.iter().any(|s| *s == elem.type_url.as_str()) {
-                                        violations.push(::protovalidate_buffa::Violation {
-                                            field: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                                    field_number: Some(#fnum),
-                                                    field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
-                                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                                    key_type: None, value_type: None,
-                                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                                }],
-                                            },
-                                            rule: ::protovalidate_buffa::FieldPath {
-                                                elements: ::std::vec![
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(20i32), field_name: Some(::std::borrow::Cow::Borrowed("any")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(3i32), field_name: Some(::std::borrow::Cow::Borrowed("not_in")), field_type: Some(::protovalidate_buffa::FieldType::String), key_type: None, value_type: None, subscript: None },
-                                                ],
-                                            },
-                                            rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
-                                            message: ::std::borrow::Cow::Borrowed("type URL must not be in the block list"),
-                                            for_key: false,
-                                        });
-                                    }
-                                }
+                    "lte" => {
+                        quote! { elem_ns > #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    "lt" => {
+                        quote! { elem_ns >= #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    _ => return,
+                };
+                let inner_name_s = inner_name.to_string();
+                let rid = rule_id.to_string();
+                let ms = msg.to_string();
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        let elem_ns: i128 = elem.seconds as i128 * 1_000_000_000 + elem.nanos as i128;
+                        if #cond {
+                            violations.push(::protovalidate_buffa::Violation {
+                                field: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                                        field_number: Some(#fnum),
+                                        field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
+                                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                                        key_type: None, value_type: None,
+                                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                                    }],
+                                },
+                                rule: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(21i32), field_name: Some(::std::borrow::Cow::Borrowed("duration")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(#inner_num), field_name: Some(::std::borrow::Cow::Borrowed(#inner_name_s)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                    ],
+                                },
+                                rule_id: ::std::borrow::Cow::Borrowed(#rid),
+                                message: ::std::borrow::Cow::Borrowed(#ms),
+                                for_key: false,
                             });
                         }
                     }
-                }
+                });
+            };
+            if let Some(b) = &d.gte {
+                emit_dur(
+                    &mut out,
+                    "gte",
+                    6,
+                    b,
+                    "gte",
+                    "duration.gte",
+                    "must be greater than or equal to 0.001s",
+                );
+            }
+            if let Some(b) = &d.gt {
+                emit_dur(&mut out, "gt", 5, b, "gt", "duration.gt", "");
+            }
+            if let Some(b) = &d.lte {
+                emit_dur(&mut out, "lte", 4, b, "lte", "duration.lte", "");
+            }
+            if let Some(b) = &d.lt {
+                emit_dur(&mut out, "lt", 3, b, "lt", "duration.lt", "");
+            }
+        }
+        if full_name == "google.protobuf.Timestamp"
+            && let Some(t) = &items.standard.timestamp
+        {
+            let fnum = field_number;
+            let nl = name_lit;
+            let emit_ts = |out: &mut Vec<TokenStream>,
+                           inner_name: &str,
+                           inner_num: i32,
+                           bound: &(i64, i32),
+                           op: &str,
+                           rule_id: &str| {
+                let (secs, nano) = *bound;
+                let cond: TokenStream = match op {
+                    "gte" => {
+                        quote! { elem_ns < #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    "gt" => {
+                        quote! { elem_ns <= #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    "lte" => {
+                        quote! { elem_ns > #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    "lt" => {
+                        quote! { elem_ns >= #secs as i128 * 1_000_000_000 + #nano as i128 }
+                    }
+                    _ => return,
+                };
+                let inner_name_s = inner_name.to_string();
+                let rid = rule_id.to_string();
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        let elem_ns: i128 = elem.seconds as i128 * 1_000_000_000 + elem.nanos as i128;
+                        if #cond {
+                            violations.push(::protovalidate_buffa::Violation {
+                                field: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                                        field_number: Some(#fnum),
+                                        field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
+                                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                                        key_type: None, value_type: None,
+                                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                                    }],
+                                },
+                                rule: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(22i32), field_name: Some(::std::borrow::Cow::Borrowed("timestamp")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(#inner_num), field_name: Some(::std::borrow::Cow::Borrowed(#inner_name_s)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                    ],
+                                },
+                                rule_id: ::std::borrow::Cow::Borrowed(#rid),
+                                message: ::std::borrow::Cow::Borrowed(""),
+                                for_key: false,
+                            });
+                        }
+                    }
+                });
+            };
+            if let Some(b) = &t.gte {
+                emit_ts(&mut out, "gte", 6, b, "gte", "timestamp.gte");
+            }
+            if let Some(b) = &t.gt {
+                emit_ts(&mut out, "gt", 5, b, "gt", "timestamp.gt");
+            }
+            if let Some(b) = &t.lte {
+                emit_ts(&mut out, "lte", 4, b, "lte", "timestamp.lte");
+            }
+            if let Some(b) = &t.lt {
+                emit_ts(&mut out, "lt", 3, b, "lt", "timestamp.lt");
+            }
+        }
+        if full_name == "google.protobuf.Any"
+            && let Some(a) = &items.standard.any_rules
+        {
+            if !a.in_set.is_empty() {
+                let set = &a.in_set;
+                let fnum = field_number;
+                let nl = name_lit;
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        const ALLOWED: &[&str] = &[ #( #set ),* ];
+                        if !ALLOWED.iter().any(|s| *s == elem.type_url.as_str()) {
+                            violations.push(::protovalidate_buffa::Violation {
+                                field: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                                        field_number: Some(#fnum),
+                                        field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
+                                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                                        key_type: None, value_type: None,
+                                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                                    }],
+                                },
+                                rule: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(20i32), field_name: Some(::std::borrow::Cow::Borrowed("any")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(2i32), field_name: Some(::std::borrow::Cow::Borrowed("in")), field_type: Some(::protovalidate_buffa::FieldType::String), key_type: None, value_type: None, subscript: None },
+                                    ],
+                                },
+                                rule_id: ::std::borrow::Cow::Borrowed("any.in"),
+                                message: ::std::borrow::Cow::Borrowed("type URL must be in the allow list"),
+                                for_key: false,
+                            });
+                        }
+                    }
+                });
+            }
+            if !a.not_in.is_empty() {
+                let set = &a.not_in;
+                let fnum = field_number;
+                let nl = name_lit;
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        const DENIED: &[&str] = &[ #( #set ),* ];
+                        if DENIED.iter().any(|s| *s == elem.type_url.as_str()) {
+                            violations.push(::protovalidate_buffa::Violation {
+                                field: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                                        field_number: Some(#fnum),
+                                        field_name: Some(::std::borrow::Cow::Borrowed(#nl)),
+                                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                                        key_type: None, value_type: None,
+                                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                                    }],
+                                },
+                                rule: ::protovalidate_buffa::FieldPath {
+                                    elements: ::std::vec![
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(20i32), field_name: Some(::std::borrow::Cow::Borrowed("any")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                                        ::protovalidate_buffa::FieldPathElement { field_number: Some(3i32), field_name: Some(::std::borrow::Cow::Borrowed("not_in")), field_type: Some(::protovalidate_buffa::FieldType::String), key_type: None, value_type: None, subscript: None },
+                                    ],
+                                },
+                                rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
+                                message: ::std::borrow::Cow::Borrowed("type URL must not be in the block list"),
+                                for_key: false,
+                            });
+                        }
+                    }
+                });
             }
         }
     }
 
     // Per-element predefined (extension-based) rules (`repeated.items.<family>.<ext>`).
-    if let Some(items) = &spec.items {
-        if !matches!(items.ignore, crate::scan::Ignore::Always)
-            && !items.standard.predefined.is_empty()
-        {
-            let element_ty_ident = format_ident!("{}", element_type_variant);
-            let family = crate::emit::cel::predef_family_for(element_kind, &items.standard);
-            for (pi, rule) in items.standard.predefined.iter().enumerate() {
-                let id = rule.id.as_str();
-                let msg = rule.message.as_str();
-                let expr = rule.expression.as_str();
-                let ext_num = rule.ext_number;
-                let ext_name = &rule.ext_name;
-                let ext_ty_ident = format_ident!("{}", rule.ext_field_type);
-                let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
-                    .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
-                let Some(fam) = family else { continue };
-                let fam_name = fam.name;
-                let fam_num = fam.number;
-                let ext_bracketed = format!("[buf.validate.conformance.cases.{ext_name}]");
-                let static_ident = format_ident!(
-                    "__ITEMS_PRED_{}_{}",
-                    pi,
-                    id.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
-                        .to_uppercase()
-                );
-                let as_value: TokenStream = match element_kind {
-                    FieldKind::Message { full_name }
-                        if full_name.starts_with("google.protobuf.")
-                            && full_name.ends_with("Value") =>
-                    {
-                        // Wrapper (FloatValue, Int32Value, etc.) — use inner .value.
-                        quote! { ::protovalidate_buffa::cel::to_cel_value(&elem.value) }
-                    }
-                    FieldKind::Message { .. } => {
-                        quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
-                    }
-                    _ => quote! { ::protovalidate_buffa::cel::to_cel_value(elem) },
-                };
-                out.push(quote! {
+    if let Some(items) = &spec.items
+        && !matches!(items.ignore, crate::scan::Ignore::Always)
+        && !items.standard.predefined.is_empty()
+    {
+        let element_ty_ident = format_ident!("{}", element_type_variant);
+        let family = crate::emit::cel::predef_family_for(element_kind, &items.standard);
+        for (pi, rule) in items.standard.predefined.iter().enumerate() {
+            let id = rule.id.as_str();
+            let msg = rule.message.as_str();
+            let expr = rule.expression.as_str();
+            let ext_num = rule.ext_number;
+            let ext_name = &rule.ext_name;
+            let ext_ty_ident = format_ident!("{}", rule.ext_field_type);
+            let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
+                .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
+            let Some(fam) = family else { continue };
+            let fam_name = fam.name;
+            let fam_num = fam.number;
+            let ext_bracketed = format!("[buf.validate.conformance.cases.{ext_name}]");
+            let static_ident = format_ident!(
+                "__ITEMS_PRED_{}_{}",
+                pi,
+                id.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                    .to_uppercase()
+            );
+            let as_value: TokenStream = match element_kind {
+                FieldKind::Message { full_name }
+                    if full_name.starts_with("google.protobuf.")
+                        && full_name.ends_with("Value") =>
+                {
+                    // Wrapper (FloatValue, Int32Value, etc.) — use inner .value.
+                    quote! { ::protovalidate_buffa::cel::to_cel_value(&elem.value) }
+                }
+                FieldKind::Message { .. } => {
+                    quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
+                }
+                _ => quote! { ::protovalidate_buffa::cel::to_cel_value(elem) },
+            };
+            out.push(quote! {
                     {
                         static #static_ident: ::protovalidate_buffa::cel::CelConstraint =
                             ::protovalidate_buffa::cel::CelConstraint::new(#id, #msg, #expr);
@@ -1658,25 +1657,26 @@ pub fn emit_repeated(
                         }
                     }
                 });
-            }
         }
     }
 
     // Per-element CEL rules (`repeated.items.cel`).
-    if let Some(items) = &spec.items {
-        if !matches!(items.ignore, crate::scan::Ignore::Always) && !items.cel.is_empty() {
-            let element_ty_ident = format_ident!("{}", element_type_variant);
-            for (idx, rule) in items.cel.iter().enumerate() {
-                let id = rule.id.as_str();
-                let msg = rule.message.as_str();
-                let expr = rule.expression.as_str();
-                let idx_lit = idx as u64;
-                let as_value: TokenStream = if matches!(element_kind, FieldKind::Message { .. }) {
-                    quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
-                } else {
-                    quote! { ::protovalidate_buffa::cel::to_cel_value(elem) }
-                };
-                out.push(quote! {
+    if let Some(items) = &spec.items
+        && !matches!(items.ignore, crate::scan::Ignore::Always)
+        && !items.cel.is_empty()
+    {
+        let element_ty_ident = format_ident!("{}", element_type_variant);
+        for (idx, rule) in items.cel.iter().enumerate() {
+            let id = rule.id.as_str();
+            let msg = rule.message.as_str();
+            let expr = rule.expression.as_str();
+            let idx_lit = idx as u64;
+            let as_value: TokenStream = if matches!(element_kind, FieldKind::Message { .. }) {
+                quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
+            } else {
+                quote! { ::protovalidate_buffa::cel::to_cel_value(elem) }
+            };
+            out.push(quote! {
                     {
                         static __ITEMS_CEL: ::protovalidate_buffa::cel::CelConstraint =
                             ::protovalidate_buffa::cel::CelConstraint::new(#id, #msg, #expr);
@@ -1697,34 +1697,33 @@ pub fn emit_repeated(
                         }
                     }
                 });
-            }
         }
     }
 
     // Per-element message recursion. Skip google.protobuf.* (WKTs we don't
     // validate) and any cross-package messages where we can't guarantee an
     // impl Validate exists.
-    if let FieldKind::Message { full_name } = element_kind {
-        if !full_name.starts_with("google.protobuf.") {
-            let fnum = field_number;
-            out.push(quote! {
-                for (idx, elem) in self.#accessor.iter().enumerate() {
-                    if let Err(sub) = elem.validate() {
-                        violations.extend(sub.violations.into_iter().map(|mut v| {
-                            v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
-                                field_number: Some(#fnum),
-                                field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
-                                field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                key_type: None,
-                                value_type: None,
-                                subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                            });
-                            v
-                        }));
-                    }
+    if let FieldKind::Message { full_name } = element_kind
+        && !full_name.starts_with("google.protobuf.")
+    {
+        let fnum = field_number;
+        out.push(quote! {
+            for (idx, elem) in self.#accessor.iter().enumerate() {
+                if let Err(sub) = elem.validate() {
+                    violations.extend(sub.violations.into_iter().map(|mut v| {
+                        v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
+                            field_number: Some(#fnum),
+                            field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
+                            field_type: Some(::protovalidate_buffa::FieldType::Message),
+                            key_type: None,
+                            value_type: None,
+                            subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                        });
+                        v
+                    }));
                 }
-            });
-        }
+            }
+        });
     }
 
     Ok(quote! { #( #out )* })
@@ -1966,43 +1965,45 @@ pub fn emit_map(
                 });
             }
         };
-    if let Some(k) = spec.keys.as_deref() {
-        if !matches!(k.ignore, crate::scan::Ignore::Always) && !k.cel.is_empty() {
-            emit_map_cel(&mut out, &k.cel, true);
-        }
+    if let Some(k) = spec.keys.as_deref()
+        && !matches!(k.ignore, crate::scan::Ignore::Always)
+        && !k.cel.is_empty()
+    {
+        emit_map_cel(&mut out, &k.cel, true);
     }
-    if let Some(v) = spec.values.as_deref() {
-        if !matches!(v.ignore, crate::scan::Ignore::Always) && !v.cel.is_empty() {
-            emit_map_cel(&mut out, &v.cel, false);
-        }
+    if let Some(v) = spec.values.as_deref()
+        && !matches!(v.ignore, crate::scan::Ignore::Always)
+        && !v.cel.is_empty()
+    {
+        emit_map_cel(&mut out, &v.cel, false);
     }
 
     // Recurse into message-typed map values so nested validators fire.
-    if let FieldKind::Message { full_name } = value_kind {
-        if !full_name.starts_with("google.protobuf.") {
-            let key_subscript_opt =
-                kind_variant_to_subscript(crate::emit::field::kind_to_field_type(key_kind));
-            if let Some(key_subscript) = key_subscript_opt {
-                let kt = format_ident!("{}", crate::emit::field::kind_to_field_type(key_kind));
-                let vt = format_ident!("{}", crate::emit::field::kind_to_field_type(value_kind));
-                out.push(quote! {
-                    for (key, value) in self.#accessor.iter() {
-                        if let Err(sub) = value.validate() {
-                            violations.extend(sub.violations.into_iter().map(|mut v| {
-                                v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
-                                    field_number: Some(#field_number),
-                                    field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
-                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                    key_type: Some(::protovalidate_buffa::FieldType::#kt),
-                                    value_type: Some(::protovalidate_buffa::FieldType::#vt),
-                                    subscript: Some(#key_subscript),
-                                });
-                                v
-                            }));
-                        }
+    if let FieldKind::Message { full_name } = value_kind
+        && !full_name.starts_with("google.protobuf.")
+    {
+        let key_subscript_opt =
+            kind_variant_to_subscript(crate::emit::field::kind_to_field_type(key_kind));
+        if let Some(key_subscript) = key_subscript_opt {
+            let kt = format_ident!("{}", crate::emit::field::kind_to_field_type(key_kind));
+            let vt = format_ident!("{}", crate::emit::field::kind_to_field_type(value_kind));
+            out.push(quote! {
+                for (key, value) in self.#accessor.iter() {
+                    if let Err(sub) = value.validate() {
+                        violations.extend(sub.violations.into_iter().map(|mut v| {
+                            v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
+                                field_number: Some(#field_number),
+                                field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
+                                field_type: Some(::protovalidate_buffa::FieldType::Message),
+                                key_type: Some(::protovalidate_buffa::FieldType::#kt),
+                                value_type: Some(::protovalidate_buffa::FieldType::#vt),
+                                subscript: Some(#key_subscript),
+                            });
+                            v
+                        }));
                     }
-                });
-            }
+                }
+            });
         }
     }
 

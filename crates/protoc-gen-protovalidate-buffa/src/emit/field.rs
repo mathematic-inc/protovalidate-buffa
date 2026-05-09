@@ -337,37 +337,38 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                 });
             }
             // google.protobuf.Duration rules.
-            if full_name == "google.protobuf.Duration" {
-                if let Some(d) = &field.standard.duration {
-                    blocks.extend(emit_duration_rules(
-                        &accessor,
-                        name_lit,
-                        field.field_number,
-                        d,
-                    ));
-                }
+            if full_name == "google.protobuf.Duration"
+                && let Some(d) = &field.standard.duration
+            {
+                blocks.extend(emit_duration_rules(
+                    &accessor,
+                    name_lit,
+                    field.field_number,
+                    d,
+                ));
             }
             // google.protobuf.Timestamp rules.
-            if full_name == "google.protobuf.Timestamp" {
-                if let Some(t) = &field.standard.timestamp {
-                    blocks.extend(emit_timestamp_rules(
-                        &accessor,
-                        name_lit,
-                        field.field_number,
-                        t,
-                    ));
-                }
+            if full_name == "google.protobuf.Timestamp"
+                && let Some(t) = &field.standard.timestamp
+            {
+                blocks.extend(emit_timestamp_rules(
+                    &accessor,
+                    name_lit,
+                    field.field_number,
+                    t,
+                ));
             }
             // google.protobuf.FieldMask rules.
-            if full_name == "google.protobuf.FieldMask" {
-                if let Some(fm) = &field.standard.field_mask {
-                    let fp_msg = field_path_scalar(name_lit, field.field_number, "Message");
-                    if let Some(expected) = &fm.r#const {
-                        let fp_c = &fp_msg;
-                        let rule = rule_path_scalar("field_mask", 28, "const", 1, "Message");
-                        let expected_lits = expected.iter().map(String::as_str);
-                        let msg_str = format!("must equal paths [{}]", expected.join(", "));
-                        blocks.push(quote! {
+            if full_name == "google.protobuf.FieldMask"
+                && let Some(fm) = &field.standard.field_mask
+            {
+                let fp_msg = field_path_scalar(name_lit, field.field_number, "Message");
+                if let Some(expected) = &fm.r#const {
+                    let fp_c = &fp_msg;
+                    let rule = rule_path_scalar("field_mask", 28, "const", 1, "Message");
+                    let expected_lits = expected.iter().map(String::as_str);
+                    let msg_str = format!("must equal paths [{}]", expected.join(", "));
+                    blocks.push(quote! {
                             if let Some(inner) = self.#accessor.as_option() {
                                 const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
                                 let actual: ::std::vec::Vec<&str> = inner.paths.iter().map(|s| s.as_str()).collect();
@@ -383,12 +384,12 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                                 }
                             }
                         });
-                    }
-                    if !fm.in_set.is_empty() {
-                        let fp_i = &fp_msg;
-                        let rule = rule_path_scalar("field_mask", 28, "in", 2, "String");
-                        let allowed = fm.in_set.iter().map(String::as_str);
-                        blocks.push(quote! {
+                }
+                if !fm.in_set.is_empty() {
+                    let fp_i = &fp_msg;
+                    let rule = rule_path_scalar("field_mask", 28, "in", 2, "String");
+                    let allowed = fm.in_set.iter().map(String::as_str);
+                    blocks.push(quote! {
                             if let Some(inner) = self.#accessor.as_option() {
                                 const ALLOWED: &[&str] = &[ #( #allowed ),* ];
                                 let ok = inner.paths.iter().all(|p| {
@@ -404,12 +405,12 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                                 }
                             }
                         });
-                    }
-                    if !fm.not_in.is_empty() {
-                        let fp_n = &fp_msg;
-                        let rule = rule_path_scalar("field_mask", 28, "not_in", 3, "String");
-                        let denied = fm.not_in.iter().map(String::as_str);
-                        blocks.push(quote! {
+                }
+                if !fm.not_in.is_empty() {
+                    let fp_n = &fp_msg;
+                    let rule = rule_path_scalar("field_mask", 28, "not_in", 3, "String");
+                    let denied = fm.not_in.iter().map(String::as_str);
+                    blocks.push(quote! {
                             if let Some(inner) = self.#accessor.as_option() {
                                 const DENIED: &[&str] = &[ #( #denied ),* ];
                                 let bad = inner.paths.iter().any(|p| {
@@ -426,49 +427,47 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                                 }
                             }
                         });
-                    }
                 }
             }
             // google.protobuf.Any `type_url` checks.
-            if full_name == "google.protobuf.Any" {
-                if let Some(a) = &field.standard.any_rules {
-                    let field_path = field_path_scalar(name_lit, field.field_number, "Message");
-                    if !a.in_set.is_empty() {
-                        let set = &a.in_set;
-                        let rule = rule_path_scalar("any", 20, "in", 2, "String");
-                        blocks.push(quote! {
-                            if let Some(inner) = self.#accessor.as_option() {
-                                const ALLOWED: &[&str] = &[ #( #set ),* ];
-                                if !ALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
-                                    violations.push(::protovalidate_buffa::Violation {
-                                        field: #field_path, rule: #rule,
-                                        rule_id: ::std::borrow::Cow::Borrowed("any.in"),
-                                        message: ::std::borrow::Cow::Borrowed(""),
-                                        for_key: false,
-                                    });
-                                }
+            if full_name == "google.protobuf.Any"
+                && let Some(a) = &field.standard.any_rules
+            {
+                let field_path = field_path_scalar(name_lit, field.field_number, "Message");
+                if !a.in_set.is_empty() {
+                    let set = &a.in_set;
+                    let rule = rule_path_scalar("any", 20, "in", 2, "String");
+                    blocks.push(quote! {
+                        if let Some(inner) = self.#accessor.as_option() {
+                            const ALLOWED: &[&str] = &[ #( #set ),* ];
+                            if !ALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field_path, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed("any.in"),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
                             }
-                        });
-                    }
-                    if !a.not_in.is_empty() {
-                        let set = &a.not_in;
-                        let field_path2 =
-                            field_path_scalar(name_lit, field.field_number, "Message");
-                        let rule = rule_path_scalar("any", 20, "not_in", 3, "String");
-                        blocks.push(quote! {
-                            if let Some(inner) = self.#accessor.as_option() {
-                                const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                                if DISALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
-                                    violations.push(::protovalidate_buffa::Violation {
-                                        field: #field_path2, rule: #rule,
-                                        rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
-                                        message: ::std::borrow::Cow::Borrowed(""),
-                                        for_key: false,
-                                    });
-                                }
+                        }
+                    });
+                }
+                if !a.not_in.is_empty() {
+                    let set = &a.not_in;
+                    let field_path2 = field_path_scalar(name_lit, field.field_number, "Message");
+                    let rule = rule_path_scalar("any", 20, "not_in", 3, "String");
+                    blocks.push(quote! {
+                        if let Some(inner) = self.#accessor.as_option() {
+                            const DISALLOWED: &[&str] = &[ #( #set ),* ];
+                            if DISALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field_path2, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             }
             let _ = full_name;
@@ -953,21 +952,21 @@ fn emit_optional_inner(
             }
         }
         FieldKind::Bool => {
-            if let Some(b) = &field.standard.bool_rules {
-                if let Some(c) = b.r#const {
-                    let fp = field_path_scalar(name_lit, field.field_number, "Bool");
-                    let rp = rule_path_scalar("bool", 13, "const", 1, "Bool");
-                    out.push(quote! {
-                        if #v != #c {
-                            violations.push(::protovalidate_buffa::Violation {
-                                field: #fp, rule: #rp,
-                                rule_id: ::std::borrow::Cow::Borrowed("bool.const"),
-                                message: ::std::borrow::Cow::Borrowed(""),
-                                for_key: false,
-                            });
-                        }
-                    });
-                }
+            if let Some(b) = &field.standard.bool_rules
+                && let Some(c) = b.r#const
+            {
+                let fp = field_path_scalar(name_lit, field.field_number, "Bool");
+                let rp = rule_path_scalar("bool", 13, "const", 1, "Bool");
+                out.push(quote! {
+                    if #v != #c {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #fp, rule: #rp,
+                            rule_id: ::std::borrow::Cow::Borrowed("bool.const"),
+                            message: ::std::borrow::Cow::Borrowed(""),
+                            for_key: false,
+                        });
+                    }
+                });
             }
         }
         FieldKind::Enum { .. }
@@ -4108,19 +4107,19 @@ fn emit_wrapper_inner(
                 }
             }
             FieldKind::Bool => {
-                if let Some(b) = &std.bool_rules {
-                    if let Some(c) = b.r#const {
-                        push_v(
-                            &mut out,
-                            "bool",
-                            13,
-                            "const",
-                            1,
-                            "Bool",
-                            "bool.const",
-                            quote! { #v != #c },
-                        );
-                    }
+                if let Some(b) = &std.bool_rules
+                    && let Some(c) = b.r#const
+                {
+                    push_v(
+                        &mut out,
+                        "bool",
+                        13,
+                        "const",
+                        1,
+                        "Bool",
+                        "bool.const",
+                        quote! { #v != #c },
+                    );
                 }
             }
             _ => {}
