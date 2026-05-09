@@ -8,8 +8,8 @@ use buffa::ExtensionSet;
 use buffa_codegen::generated::{
     compiler::CodeGeneratorRequest,
     descriptor::{
-        feature_set, field_descriptor_proto, DescriptorProto, FieldDescriptorProto,
-        FileDescriptorProto, OneofDescriptorProto,
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, OneofDescriptorProto,
+        feature_set, field_descriptor_proto,
     },
 };
 use protovalidate_buffa_protos::buf::validate::{
@@ -677,7 +677,9 @@ fn scan_predefined_on(
                 UnknownFieldData::LengthDelimited(data),
             ) => {
                 let s = String::from_utf8_lossy(data).to_string();
-                format!("::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))")
+                format!(
+                    "::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"
+                )
             }
             _ => continue,
         };
@@ -1102,7 +1104,9 @@ fn decode_wrapper_value(ty: field_descriptor_proto::Type, bytes: &[u8]) -> Optio
                     return None;
                 }
                 let s = String::from_utf8_lossy(&r[..len]).to_string();
-                Some(format!("::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"))
+                Some(format!(
+                    "::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"
+                ))
             }
             Type::TYPE_BYTES => {
                 let (len, r) = varint_decode(buf)?;
@@ -1111,7 +1115,9 @@ fn decode_wrapper_value(ty: field_descriptor_proto::Type, bytes: &[u8]) -> Optio
                     return None;
                 }
                 let bytes: Vec<u8> = r[..len].to_vec();
-                Some(format!("::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{bytes:?}))"))
+                Some(format!(
+                    "::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{bytes:?}))"
+                ))
             }
             _ => None,
         };
@@ -1591,31 +1597,31 @@ fn classify_field(
     if label == Label::LABEL_REPEATED {
         // Map detection: a `map<K,V>` compiles to a `repeated MessageType` where
         // the referenced MessageType has `option map_entry = true`.
-        if proto_type == Type::TYPE_MESSAGE {
-            if let Some(inner) = find_map_entry(file, msg, type_name) {
-                // inner is the synthetic MapEntry DescriptorProto.
-                // field[0] = key, field[1] = value.
-                let key_field = inner
-                    .field
-                    .first()
-                    .ok_or_else(|| anyhow!("map entry has no key field"))?;
-                let val_field = inner
-                    .field
-                    .get(1)
-                    .ok_or_else(|| anyhow!("map entry has no value field"))?;
-                let key_kind = scalar_kind(
-                    key_field.r#type.unwrap_or(Type::TYPE_STRING),
-                    key_field.type_name.as_deref().unwrap_or(""),
-                );
-                let val_kind = scalar_kind(
-                    val_field.r#type.unwrap_or(Type::TYPE_STRING),
-                    val_field.type_name.as_deref().unwrap_or(""),
-                );
-                return Ok(FieldKind::Map {
-                    key: Box::new(key_kind),
-                    value: Box::new(val_kind),
-                });
-            }
+        if proto_type == Type::TYPE_MESSAGE
+            && let Some(inner) = find_map_entry(file, msg, type_name)
+        {
+            // inner is the synthetic MapEntry DescriptorProto.
+            // field[0] = key, field[1] = value.
+            let key_field = inner
+                .field
+                .first()
+                .ok_or_else(|| anyhow!("map entry has no key field"))?;
+            let val_field = inner
+                .field
+                .get(1)
+                .ok_or_else(|| anyhow!("map entry has no value field"))?;
+            let key_kind = scalar_kind(
+                key_field.r#type.unwrap_or(Type::TYPE_STRING),
+                key_field.type_name.as_deref().unwrap_or(""),
+            );
+            let val_kind = scalar_kind(
+                val_field.r#type.unwrap_or(Type::TYPE_STRING),
+                val_field.type_name.as_deref().unwrap_or(""),
+            );
+            return Ok(FieldKind::Map {
+                key: Box::new(key_kind),
+                value: Box::new(val_kind),
+            });
         }
         // Regular repeated.
         let item_kind = scalar_kind(proto_type, type_name);

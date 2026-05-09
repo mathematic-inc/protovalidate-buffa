@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    cel_core::{
-        extractors::{Arguments, This},
-        Context, Program, Value,
-    },
     FieldPath, Violation,
+    cel_core::{
+        Context, Program, Value,
+        extractors::{Arguments, This},
+    },
 };
 
 pub struct CelConstraint {
