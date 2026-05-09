@@ -18,7 +18,7 @@
 
 use std::cell::Cell;
 
-use protovalidate_buffa::{connect_impl, FieldPath, Validate, ValidationError, Violation};
+use protovalidate_buffa::{FieldPath, Validate, ValidationError, Violation, connect_impl};
 
 struct FakeOwned {
     valid: bool,

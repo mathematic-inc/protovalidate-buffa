@@ -43,10 +43,10 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
         if matches!(f.ignore, crate::scan::Ignore::Always) {
             continue;
         }
-        if let crate::scan::FieldKind::Message { full_name } = &f.field_type {
-            if full_name.starts_with("google.protobuf.") {
-                continue;
-            }
+        if let crate::scan::FieldKind::Message { full_name } = &f.field_type
+            && full_name.starts_with("google.protobuf.")
+        {
+            continue;
         }
         let field_ident = format_ident!("{}", f.field_name);
         let field_name = &f.field_name;
@@ -116,7 +116,7 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
                     }
                 }
                 crate::scan::FieldKind::Optional(_) => quote! {
-                    if let Some(ref v) = self.#field_ident {
+                    if let Some(v) = &self.#field_ident {
                         if let Err(viol) = #ident.#method(
                             ::protovalidate_buffa::cel::to_cel_value(v),
                             #fp,
@@ -493,7 +493,7 @@ pub fn emit_as_cel_value(msg: &MessageValidators, rust_path: &Path) -> Result<To
             // skip the insert when unset so CEL's has() reports false.
             match &f.field_type {
                 FieldKind::Optional(_) => quote! {
-                    if let Some(ref v) = self.#field_ident {
+                    if let Some(v) = &self.#field_ident {
                         map.insert(
                             ::std::string::String::from(#field_name),
                             ::protovalidate_buffa::cel::to_cel_value(v),
@@ -574,8 +574,8 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
         FieldKind::Optional(_) => {
             // EXPLICIT-presence scalar: `Option<T>`. Map None→Null, Some(v)→to_cel_value.
             quote! {
-                match self.#field_ident {
-                    Some(ref v) => ::protovalidate_buffa::cel::to_cel_value(v),
+                match &self.#field_ident {
+                    Some(v) => ::protovalidate_buffa::cel::to_cel_value(v),
                     None => ::protovalidate_buffa::cel_core::Value::Null,
                 }
             }
