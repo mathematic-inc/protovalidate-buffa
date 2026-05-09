@@ -137,10 +137,10 @@ pub mod string {
                 return false;
             }
         }
-        if let Some(last) = labels.last() {
-            if last.bytes().all(|b| b.is_ascii_digit()) {
-                return false;
-            }
+        if let Some(last) = labels.last()
+            && last.bytes().all(|b| b.is_ascii_digit())
+        {
+            return false;
         }
         true
     }
