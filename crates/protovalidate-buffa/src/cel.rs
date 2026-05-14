@@ -111,6 +111,49 @@ impl<T: AsCelValue + Default> ToCelValue for buffa::MessageField<T> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Well-Known Type `AsCelValue` impls.
+//
+// These let plugin-emitted code call
+// `::protovalidate_buffa::cel::AsCelValue::as_cel_value(inner)` for fields of
+// type `google.protobuf.FieldMask`, `google.protobuf.Timestamp`, and
+// `google.protobuf.Duration` — including the predefined-rule path, which binds
+// `this` to the field value via `AsCelValue`.
+//
+// `FieldMask` is exposed as a CEL map with one entry, `paths`, so expressions
+// like `this.paths.all(p, ...)` work. `Timestamp` and `Duration` are exposed
+// as native CEL `Timestamp` / `Duration` values, which carry their own
+// comparison and arithmetic operators in CEL.
+
+impl AsCelValue for buffa_types::google::protobuf::FieldMask {
+    fn as_cel_value(&self) -> Value {
+        let paths: Vec<Value> = self
+            .paths
+            .iter()
+            .map(|p| Value::String(Arc::new(p.clone())))
+            .collect();
+        let mut map: std::collections::HashMap<crate::cel_core::objects::Key, Value> =
+            std::collections::HashMap::with_capacity(1);
+        map.insert(
+            crate::cel_core::objects::Key::String(Arc::new("paths".to_string())),
+            Value::List(Arc::new(paths)),
+        );
+        Value::Map(map.into())
+    }
+}
+
+impl AsCelValue for buffa_types::google::protobuf::Timestamp {
+    fn as_cel_value(&self) -> Value {
+        Value::Timestamp(timestamp_from_secs_nanos(self.seconds, self.nanos))
+    }
+}
+
+impl AsCelValue for buffa_types::google::protobuf::Duration {
+    fn as_cel_value(&self) -> Value {
+        Value::Duration(duration_from_secs_nanos(self.seconds, self.nanos))
+    }
+}
+
 impl<E: buffa::Enumeration> ToCelValue for buffa::EnumValue<E> {
     fn to_cel_value(&self) -> Value {
         Value::Int(i64::from(self.to_i32()))
