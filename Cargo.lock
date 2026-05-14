@@ -802,6 +802,7 @@ name = "protovalidate-buffa"
 version = "0.2.0"
 dependencies = [
  "buffa",
+ "buffa-types",
  "cel",
  "chrono",
  "connectrpc",
