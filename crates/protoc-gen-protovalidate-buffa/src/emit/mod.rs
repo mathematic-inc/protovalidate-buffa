@@ -25,6 +25,7 @@ pub mod repeated;
 pub fn render(messages: &[MessageValidators]) -> Result<Vec<File>> {
     use std::collections::BTreeMap;
 
+    let cel_set = cel::cel_value_set(messages);
     let mut by_file: BTreeMap<String, Vec<&MessageValidators>> = BTreeMap::new();
     for m in messages {
         by_file.entry(m.source_file.clone()).or_default().push(m);
@@ -32,7 +33,7 @@ pub fn render(messages: &[MessageValidators]) -> Result<Vec<File>> {
 
     let mut files = Vec::new();
     for (source_file, msgs) in by_file {
-        let body = render_file(&msgs)?;
+        let body = render_file(&msgs, &cel_set)?;
         let stem = source_file.trim_end_matches(".proto").replace('/', ".");
         let path = format!("{stem}.rs");
         let body_str = body.to_string();
@@ -50,13 +51,13 @@ pub fn render(messages: &[MessageValidators]) -> Result<Vec<File>> {
     Ok(files)
 }
 
-fn render_file(msgs: &[&MessageValidators]) -> Result<TokenStream> {
-    // Build the set of proto names that need AsCelValue impls.
-    let cel_set = cel::cel_value_set(msgs.iter().copied());
-
+fn render_file(
+    msgs: &[&MessageValidators],
+    cel_set: &std::collections::HashSet<String>,
+) -> Result<TokenStream> {
     let impls: Vec<TokenStream> = msgs
         .iter()
-        .map(|m| render_message(m, &cel_set))
+        .map(|m| render_message(m, cel_set))
         .collect::<Result<_>>()?;
     Ok(quote! {
         use super::*;
