@@ -87,6 +87,12 @@ impl ToCelValue for Vec<u8> {
     }
 }
 
+impl ToCelValue for buffa::bytes::Bytes {
+    fn to_cel_value(&self) -> Value {
+        Value::Bytes(self.to_vec().into())
+    }
+}
+
 impl<T: AsCelValue> ToCelValue for Option<T> {
     fn to_cel_value(&self) -> Value {
         self.as_ref().map_or(Value::Null, AsCelValue::as_cel_value)
@@ -120,10 +126,25 @@ impl<T: AsCelValue + Default> ToCelValue for buffa::MessageField<T> {
 // `google.protobuf.Duration` — including the predefined-rule path, which binds
 // `this` to the field value via `AsCelValue`.
 //
-// `FieldMask` is exposed as a CEL map with one entry, `paths`, so expressions
-// like `this.paths.all(p, ...)` work. `Timestamp` and `Duration` are exposed
-// as native CEL `Timestamp` / `Duration` values, which carry their own
-// comparison and arithmetic operators in CEL.
+// `Any`, `Empty`, and `FieldMask` are exposed as CEL maps. `Timestamp` and
+// `Duration` are exposed as native CEL `Timestamp` / `Duration` values, which
+// carry their own comparison and arithmetic operators in CEL.
+
+impl AsCelValue for buffa_types::google::protobuf::Any {
+    fn as_cel_value(&self) -> Value {
+        let mut map: std::collections::HashMap<String, Value> =
+            std::collections::HashMap::with_capacity(2);
+        map.insert("type_url".to_string(), self.type_url.to_cel_value());
+        map.insert("value".to_string(), self.value.to_cel_value());
+        Value::Map(map.into())
+    }
+}
+
+impl AsCelValue for buffa_types::google::protobuf::Empty {
+    fn as_cel_value(&self) -> Value {
+        Value::Map(std::collections::HashMap::<String, Value>::new().into())
+    }
+}
 
 impl AsCelValue for buffa_types::google::protobuf::FieldMask {
     fn as_cel_value(&self) -> Value {
@@ -153,6 +174,26 @@ impl AsCelValue for buffa_types::google::protobuf::Duration {
         Value::Duration(duration_from_secs_nanos(self.seconds, self.nanos))
     }
 }
+
+macro_rules! impl_to_cel_for_as_cel_wkt {
+    ($($ty:path),* $(,)?) => {
+        $(
+            impl ToCelValue for $ty {
+                fn to_cel_value(&self) -> Value {
+                    self.as_cel_value()
+                }
+            }
+        )*
+    };
+}
+
+impl_to_cel_for_as_cel_wkt!(
+    buffa_types::google::protobuf::Any,
+    buffa_types::google::protobuf::Empty,
+    buffa_types::google::protobuf::FieldMask,
+    buffa_types::google::protobuf::Timestamp,
+    buffa_types::google::protobuf::Duration,
+);
 
 impl<E: buffa::Enumeration> ToCelValue for buffa::EnumValue<E> {
     fn to_cel_value(&self) -> Value {
