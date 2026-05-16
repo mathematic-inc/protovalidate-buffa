@@ -474,7 +474,8 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
         }
         FieldKind::Bool => {
             if let Some(b) = &field.standard.bool_rules {
-                blocks.extend(emit_bool(&accessor, name_lit, field.field_number, b));
+                let value = quote! { self.#accessor };
+                blocks.extend(emit_bool(&value, name_lit, field.field_number, b));
             }
         }
         FieldKind::Wrapper(inner) => {
@@ -948,25 +949,12 @@ fn emit_optional_inner(
         }
         FieldKind::Bytes => {
             if let Some(b) = &field.standard.bytes {
-                out.extend(emit_bytes_on(&v, name_lit, b));
+                out.extend(emit_bytes_checks_on(&v, name_lit, field.field_number, b));
             }
         }
         FieldKind::Bool => {
-            if let Some(b) = &field.standard.bool_rules
-                && let Some(c) = b.r#const
-            {
-                let fp = field_path_scalar(name_lit, field.field_number, "Bool");
-                let rp = rule_path_scalar("bool", 13, "const", 1, "Bool");
-                out.push(quote! {
-                    if #v != #c {
-                        violations.push(::protovalidate_buffa::Violation {
-                            field: #fp, rule: #rp,
-                            rule_id: ::std::borrow::Cow::Borrowed("bool.const"),
-                            message: ::std::borrow::Cow::Borrowed(""),
-                            for_key: false,
-                        });
-                    }
-                });
+            if let Some(b) = &field.standard.bool_rules {
+                out.extend(emit_bool_checks_on(&v, name_lit, field.field_number, b));
             }
         }
         FieldKind::Enum { .. }
@@ -981,37 +969,35 @@ fn emit_optional_inner(
     out
 }
 
-fn emit_bytes_on(val: &syn::Ident, _name_lit: &str, b: &BytesStandard) -> Vec<TokenStream> {
-    let mut out: Vec<TokenStream> = Vec::new();
-    if let Some(n) = b.min_len {
-        let n_usize = usize::try_from(n).expect("proto length bound fits in usize");
-        out.push(quote! {
-            if #val.len() < #n_usize {
-                violations.push(::protovalidate_buffa::Violation {
-                    field: ::protovalidate_buffa::FieldPath::default(),
-                    rule: ::protovalidate_buffa::FieldPath::default(),
-                    rule_id: ::std::borrow::Cow::Borrowed("bytes.min_len"),
-                    message: ::std::borrow::Cow::Borrowed(""),
-                    for_key: false,
-                });
-            }
-        });
-    }
-    if let Some(n) = b.max_len {
-        let n_usize = usize::try_from(n).expect("proto length bound fits in usize");
-        out.push(quote! {
-            if #val.len() > #n_usize {
-                violations.push(::protovalidate_buffa::Violation {
-                    field: ::protovalidate_buffa::FieldPath::default(),
-                    rule: ::protovalidate_buffa::FieldPath::default(),
-                    rule_id: ::std::borrow::Cow::Borrowed("bytes.max_len"),
-                    message: ::std::borrow::Cow::Borrowed(""),
-                    for_key: false,
-                });
-            }
-        });
-    }
-    out
+pub(crate) fn emit_bytes_checks_on(
+    val: &syn::Ident,
+    name_lit: &str,
+    field_number: i32,
+    b: &BytesStandard,
+) -> Vec<TokenStream> {
+    let value = quote! { #val };
+    emit_bytes_value(&value, name_lit, field_number, b)
+}
+
+pub(crate) fn emit_bool_checks_on(
+    val: &syn::Ident,
+    name_lit: &str,
+    field_number: i32,
+    b: &BoolStandard,
+) -> Vec<TokenStream> {
+    let value = quote! { #val };
+    emit_bool(&value, name_lit, field_number, b)
+}
+
+pub(crate) fn emit_enum_checks_on(
+    val: &syn::Ident,
+    name_lit: &str,
+    field_number: i32,
+    e: &EnumStandard,
+    full_name: &str,
+) -> Result<Vec<TokenStream>> {
+    let value = quote! { #val };
+    emit_enum_value(&value, name_lit, field_number, e, full_name)
 }
 
 // Variants of numeric/float emitters that take an explicit `value_ident`
@@ -1984,15 +1970,27 @@ fn emit_bytes(
     field_number: i32,
     b: &BytesStandard,
 ) -> Vec<TokenStream> {
+    let value = quote! { self.#accessor };
+    emit_bytes_value(&value, name_lit, field_number, b)
+}
+
+fn emit_bytes_value(
+    value: &TokenStream,
+    name_lit: &str,
+    field_number: i32,
+    b: &BytesStandard,
+) -> Vec<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || bytes_field_path(name_lit, field_number);
+    let value_len = quote! { #value.len() };
+    let value_slice = quote! { #value.as_slice() };
 
     // bytes.ip = 4 or 16 bytes; bytes.ipv4 = 4 bytes; bytes.ipv6 = 16 bytes.
     if b.ip == Some(true) {
         let field = fp();
         let rule = bytes_rule_path_ty("ip", 10, "Bool");
         out.push(quote! {
-            if self.#accessor.len() != 4 && self.#accessor.len() != 16 {
+            if #value_len != 4 && #value_len != 16 {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.ip"),
@@ -2006,7 +2004,7 @@ fn emit_bytes(
         let field = fp();
         let rule = bytes_rule_path_ty("ipv4", 11, "Bool");
         out.push(quote! {
-            if self.#accessor.len() != 4 {
+            if #value_len != 4 {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.ipv4"),
@@ -2020,7 +2018,7 @@ fn emit_bytes(
         let field = fp();
         let rule = bytes_rule_path_ty("ipv6", 12, "Bool");
         out.push(quote! {
-            if self.#accessor.len() != 16 {
+            if #value_len != 16 {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.ipv6"),
@@ -2037,14 +2035,14 @@ fn emit_bytes(
         out.push(quote! {
             {
                 // Empty is a special-cased _empty rule.
-                if self.#accessor.is_empty() {
+                if #value_slice.is_empty() {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field.clone(), rule: #rule.clone(),
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.uuid_empty"),
                         message: ::std::borrow::Cow::Borrowed(""),
                         for_key: false,
                     });
-                } else if self.#accessor.len() != 16 {
+                } else if #value_len != 16 {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.uuid"),
@@ -2063,7 +2061,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 const EXPECTED: &[u8] = &[ #( #set ),* ];
-                if self.#accessor.as_slice() != EXPECTED {
+                if #value_slice != EXPECTED {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.const"),
@@ -2080,13 +2078,13 @@ fn emit_bytes(
         let field = fp();
         let rule = bytes_rule_path_ty("min_len", 2, "Uint64");
         out.push(quote! {
-            if self.#accessor.len() < #n_usize {
+            if #value_len < #n_usize {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.min_len"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
                         "value length must be at least {} bytes (got {})",
-                        #n_usize, self.#accessor.len()
+                        #n_usize, #value_len
                     )),
                     for_key: false,
                 });
@@ -2099,13 +2097,13 @@ fn emit_bytes(
         let field = fp();
         let rule = bytes_rule_path_ty("len", 13, "Uint64");
         out.push(quote! {
-            if self.#accessor.len() != #n_usize {
+            if #value_len != #n_usize {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.len"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
                         "value must be exactly {} bytes (got {})",
-                        #n_usize, self.#accessor.len()
+                        #n_usize, #value_len
                     )),
                     for_key: false,
                 });
@@ -2118,13 +2116,13 @@ fn emit_bytes(
         let field = fp();
         let rule = bytes_rule_path_ty("max_len", 3, "Uint64");
         out.push(quote! {
-            if self.#accessor.len() > #n_usize {
+            if #value_len > #n_usize {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("bytes.max_len"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
                         "value length must be at most {} bytes (got {})",
-                        #n_usize, self.#accessor.len()
+                        #n_usize, #value_len
                     )),
                     for_key: false,
                 });
@@ -2134,7 +2132,7 @@ fn emit_bytes(
 
     if let Some(pat) = &b.pattern {
         let pat_str = pat.as_str();
-        let cache_ident = format_ident!("RE_BYTES_{}", accessor.to_string().to_uppercase());
+        let cache_ident = format_ident!("RE_BYTES_{}", name_lit.to_uppercase());
         let field = fp();
         let rule = bytes_rule_path_ty("pattern", 4, "String");
         out.push(quote! {
@@ -2145,7 +2143,7 @@ fn emit_bytes(
                     ::protovalidate_buffa::regex::Regex::new(#pat_str)
                         .expect("pattern regex compiled at code-gen time")
                 });
-                match ::std::str::from_utf8(&self.#accessor) {
+                match ::std::str::from_utf8(#value_slice) {
                     Ok(s) => {
                         if !re.is_match(s) {
                             violations.push(::protovalidate_buffa::Violation {
@@ -2180,7 +2178,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 const PREFIX: &[u8] = &[ #( #p ),* ];
-                if !self.#accessor.starts_with(PREFIX) {
+                if !#value_slice.starts_with(PREFIX) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.prefix"),
@@ -2199,7 +2197,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 const SUFFIX: &[u8] = &[ #( #p ),* ];
-                if !self.#accessor.ends_with(SUFFIX) {
+                if !#value_slice.ends_with(SUFFIX) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.suffix"),
@@ -2218,7 +2216,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 const NEEDLE: &[u8] = &[ #( #p ),* ];
-                if !self.#accessor.windows(NEEDLE.len()).any(|w| w == NEEDLE) {
+                if !#value_slice.windows(NEEDLE.len()).any(|w| w == NEEDLE) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.contains"),
@@ -2245,7 +2243,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 let allowed: &[&[u8]] = &[ #( #bytes_lits ),* ];
-                if !allowed.iter().any(|a| *a == self.#accessor.as_slice()) {
+                if !allowed.iter().any(|a| *a == #value_slice) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.in"),
@@ -2271,7 +2269,7 @@ fn emit_bytes(
         out.push(quote! {
             {
                 let disallowed: &[&[u8]] = &[ #( #bytes_lits ),* ];
-                if disallowed.iter().any(|a| *a == self.#accessor.as_slice()) {
+                if disallowed.iter().any(|a| *a == #value_slice) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("bytes.not_in"),
@@ -3430,6 +3428,17 @@ fn emit_enum(
     e: &EnumStandard,
     full_name: &str,
 ) -> Result<Vec<TokenStream>> {
+    let value = quote! { self.#accessor };
+    emit_enum_value(&value, name_lit, field_number, e, full_name)
+}
+
+fn emit_enum_value(
+    value: &TokenStream,
+    name_lit: &str,
+    field_number: i32,
+    e: &EnumStandard,
+    full_name: &str,
+) -> Result<Vec<TokenStream>> {
     // EnumRules outer field number = 16; inner: const=1 (TYPE_INT32),
     // defined_only=2 (TYPE_BOOL), in=3 (TYPE_INT32), not_in=4 (TYPE_INT32).
     let fp = || field_path_scalar(name_lit, field_number, "Enum");
@@ -3442,7 +3451,7 @@ fn emit_enum(
         let rule = rule_path("const", 1, "Int32");
         out.push(quote! {
             {
-                let raw_val: i32 = self.#accessor.to_i32();
+                let raw_val: i32 = #value.to_i32();
                 if raw_val != #c {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
@@ -3463,7 +3472,7 @@ fn emit_enum(
         let rule = rule_path("defined_only", 2, "Bool");
         out.push(quote! {
             {
-                let raw_val: i32 = self.#accessor.to_i32();
+                let raw_val: i32 = #value.to_i32();
                 if <#enum_type as ::buffa::Enumeration>::from_i32(raw_val).is_none() {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
@@ -3485,7 +3494,7 @@ fn emit_enum(
         out.push(quote! {
             {
                 const ALLOWED: &[i32] = &[ #( #set ),* ];
-                let raw_val: i32 = self.#accessor.to_i32();
+                let raw_val: i32 = #value.to_i32();
                 if !ALLOWED.contains(&raw_val) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
@@ -3507,7 +3516,7 @@ fn emit_enum(
         out.push(quote! {
             {
                 const DISALLOWED: &[i32] = &[ #( #set ),* ];
-                let raw_val: i32 = self.#accessor.to_i32();
+                let raw_val: i32 = #value.to_i32();
                 if DISALLOWED.contains(&raw_val) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
@@ -3634,7 +3643,7 @@ fn to_snake_case(s: &str) -> String {
 /// entries where the inner scalar type is known.
 /// Wrapper-specific: the outer field (in the rule path) is TYPE_MESSAGE
 /// (the wrapper), not the inner scalar.
-fn emit_wrapper_inner(
+pub(crate) fn emit_wrapper_inner(
     name_lit: &str,
     field_number: i32,
     inner: &FieldKind,
@@ -4155,6 +4164,7 @@ pub(crate) fn emit_numeric_checks_on(
         _ => return Vec::new(),
     };
     let field_path_expr = field_path_scalar(name_lit, field_number, fam.scalar_ty);
+    let value = quote! { #v };
     let mut out: Vec<TokenStream> = Vec::new();
     let push_cmp = |out: &mut Vec<TokenStream>,
                     inner_name: &str,
@@ -4180,10 +4190,33 @@ pub(crate) fn emit_numeric_checks_on(
             }
         });
     };
-    let is_float = matches!(kind, FieldKind::Float | FieldKind::Double);
     match kind {
         FieldKind::Int32 | FieldKind::Sint32 | FieldKind::Sfixed32 => {
             if let Some(n) = &std.int32 {
+                if let (Some(lo), Some(hi)) = (n.gt, n.lt) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (n.gte, n.lte) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = n.r#const {
                     push_cmp(
                         &mut out,
@@ -4228,11 +4261,85 @@ pub(crate) fn emit_numeric_checks_on(
                         format!("{}.lte", fam.family),
                         quote! { #v > #hi },
                     );
+                }
+                if !n.in_set.is_empty() {
+                    let set = &n.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[i32] = &[ #( #set ),* ];
+                            if !ALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !n.not_in.is_empty() {
+                    let set = &n.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[i32] = &[ #( #set ),* ];
+                            if DISALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
                 }
             }
         }
         FieldKind::Int64 | FieldKind::Sint64 | FieldKind::Sfixed64 => {
             if let Some(n) = &std.int64 {
+                if let (Some(lo), Some(hi)) = (n.gt, n.lt) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (n.gte, n.lte) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = n.r#const {
                     push_cmp(
                         &mut out,
@@ -4277,11 +4384,85 @@ pub(crate) fn emit_numeric_checks_on(
                         format!("{}.lte", fam.family),
                         quote! { #v > #hi },
                     );
+                }
+                if !n.in_set.is_empty() {
+                    let set = &n.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[i64] = &[ #( #set ),* ];
+                            if !ALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !n.not_in.is_empty() {
+                    let set = &n.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[i64] = &[ #( #set ),* ];
+                            if DISALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
                 }
             }
         }
         FieldKind::Uint32 | FieldKind::Fixed32 => {
             if let Some(n) = &std.uint32 {
+                if let (Some(lo), Some(hi)) = (n.gt, n.lt) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (n.gte, n.lte) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = n.r#const {
                     push_cmp(
                         &mut out,
@@ -4326,11 +4507,85 @@ pub(crate) fn emit_numeric_checks_on(
                         format!("{}.lte", fam.family),
                         quote! { #v > #hi },
                     );
+                }
+                if !n.in_set.is_empty() {
+                    let set = &n.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[u32] = &[ #( #set ),* ];
+                            if !ALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !n.not_in.is_empty() {
+                    let set = &n.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[u32] = &[ #( #set ),* ];
+                            if DISALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
                 }
             }
         }
         FieldKind::Uint64 | FieldKind::Fixed64 => {
             if let Some(n) = &std.uint64 {
+                if let (Some(lo), Some(hi)) = (n.gt, n.lt) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (n.gte, n.lte) {
+                    out.push(range_check(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = n.r#const {
                     push_cmp(
                         &mut out,
@@ -4376,10 +4631,84 @@ pub(crate) fn emit_numeric_checks_on(
                         quote! { #v > #hi },
                     );
                 }
+                if !n.in_set.is_empty() {
+                    let set = &n.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[u64] = &[ #( #set ),* ];
+                            if !ALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !n.not_in.is_empty() {
+                    let set = &n.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[u64] = &[ #( #set ),* ];
+                            if DISALLOWED.contains(&#v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
             }
         }
         FieldKind::Float => {
             if let Some(f) = &std.float {
+                if let (Some(lo), Some(hi)) = (f.gt, f.lt) {
+                    out.push(range_check_fp(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (f.gte, f.lte) {
+                    out.push(range_check_fp(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = f.r#const {
                     push_cmp(
                         &mut out,
@@ -4425,10 +4754,93 @@ pub(crate) fn emit_numeric_checks_on(
                         quote! { !(#v <= #hi) },
                     );
                 }
+                if !f.in_set.is_empty() {
+                    let set = &f.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[f32] = &[ #( #set ),* ];
+                            if !ALLOWED.iter().any(|c| *c == #v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !f.not_in.is_empty() {
+                    let set = &f.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[f32] = &[ #( #set ),* ];
+                            if DISALLOWED.iter().any(|c| *c == #v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if f.finite {
+                    push_cmp(
+                        &mut out,
+                        "finite",
+                        INNER_FINITE,
+                        format!("{}.finite", fam.family),
+                        quote! { !::protovalidate_buffa::rules::float::is_finite_f32(#v) },
+                    );
+                }
             }
         }
         FieldKind::Double => {
             if let Some(d) = &std.double {
+                if let (Some(lo), Some(hi)) = (d.gt, d.lt) {
+                    out.push(range_check_fp(
+                        &field_path_expr,
+                        fam,
+                        false,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
+                if let (Some(lo), Some(hi)) = (d.gte, d.lte) {
+                    out.push(range_check_fp(
+                        &field_path_expr,
+                        fam,
+                        true,
+                        &quote! { #lo },
+                        &quote! { #hi },
+                        &value,
+                        hi < lo,
+                    ));
+                    return out;
+                }
                 if let Some(c) = d.r#const {
                     push_cmp(
                         &mut out,
@@ -4474,11 +4886,69 @@ pub(crate) fn emit_numeric_checks_on(
                         quote! { !(#v <= #hi) },
                     );
                 }
+                if !d.in_set.is_empty() {
+                    let set = &d.in_set;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "in",
+                        INNER_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.in", fam.family);
+                    out.push(quote! {
+                        {
+                            const ALLOWED: &[f64] = &[ #( #set ),* ];
+                            if !ALLOWED.iter().any(|c| *c == #v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if !d.not_in.is_empty() {
+                    let set = &d.not_in;
+                    let field = field_path_expr.clone();
+                    let rule = rule_path_scalar(
+                        fam.family,
+                        fam.outer_number,
+                        "not_in",
+                        INNER_NOT_IN,
+                        fam.scalar_ty,
+                    );
+                    let rule_id = format!("{}.not_in", fam.family);
+                    out.push(quote! {
+                        {
+                            const DISALLOWED: &[f64] = &[ #( #set ),* ];
+                            if DISALLOWED.iter().any(|c| *c == #v) {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #field, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                                    message: ::std::borrow::Cow::Borrowed(""),
+                                    for_key: false,
+                                });
+                            }
+                        }
+                    });
+                }
+                if d.finite {
+                    push_cmp(
+                        &mut out,
+                        "finite",
+                        INNER_FINITE,
+                        format!("{}.finite", fam.family),
+                        quote! { !::protovalidate_buffa::rules::float::is_finite_f64(#v) },
+                    );
+                }
             }
         }
         _ => {}
     }
-    let _ = is_float;
     out
 }
 
@@ -4586,7 +5056,7 @@ const INNER_IN: i32 = 6;
 const INNER_NOT_IN: i32 = 7;
 
 fn emit_bool(
-    accessor: &syn::Ident,
+    value: &TokenStream,
     name_lit: &str,
     field_number: i32,
     b: &BoolStandard,
@@ -4596,13 +5066,13 @@ fn emit_bool(
         let field_path = field_path_scalar(name_lit, field_number, "Bool");
         let rule_path = rule_path_scalar("bool", 13, "const", 1, "Bool");
         out.push(quote! {
-            if self.#accessor != #c {
+            if #value != #c {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field_path,
                     rule: #rule_path,
                     rule_id: ::std::borrow::Cow::Borrowed("bool.const"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
-                        "value must equal {} (got {})", #c, self.#accessor
+                        "value must equal {} (got {})", #c, #value
                     )),
                     for_key: false,
                 });

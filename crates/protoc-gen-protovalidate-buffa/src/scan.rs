@@ -1270,7 +1270,8 @@ fn gather_message(
         .iter()
         .find_map(|f| check_rule_field_mismatch(&f.field_type, &f.standard))
         .or_else(|| check_message_oneof_specs(&qualified_name, &message_oneofs, &field_rules_out))
-        .or_else(|| check_message_cel_missing_fields(&message_cel, &field_rules_out));
+        .or_else(|| check_message_cel_missing_fields(&message_cel, &field_rules_out))
+        .or_else(|| check_message_cel_type_errors(&message_cel, &field_rules_out));
 
     out.push(MessageValidators {
         proto_name: qualified_name.clone(),
@@ -1412,6 +1413,63 @@ fn check_message_cel_missing_fields(cels: &[CelRule], fields: &[FieldValidator])
         }
     }
     None
+}
+
+/// Detect simple schema/type CEL compile errors that `cel-interpreter` only
+/// reports when the expression is evaluated against a concrete runtime value.
+fn check_message_cel_type_errors(cels: &[CelRule], fields: &[FieldValidator]) -> Option<String> {
+    let kinds: std::collections::HashMap<&str, &FieldKind> = fields
+        .iter()
+        .map(|f| (f.field_name.as_str(), &f.field_type))
+        .collect();
+    for rule in cels {
+        let bytes = rule.expression.as_bytes();
+        let mut i = 0;
+        while i + 5 <= bytes.len() {
+            if &bytes[i..i + 5] == b"this." {
+                if i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_') {
+                    i += 1;
+                    continue;
+                }
+                let mut j = i + 5;
+                let start = j;
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                    j += 1;
+                }
+                if j > start {
+                    let ident = std::str::from_utf8(&bytes[start..j]).unwrap_or("");
+                    if has_string_method_call(&bytes[j..])
+                        && let Some(kind) = kinds.get(ident)
+                    {
+                        let underlying = cel_underlying_kind(kind);
+                        if !matches!(underlying, FieldKind::String) {
+                            return Some(format!(
+                                "expression incorrectly treats an {} field as a string",
+                                kind_family_name(underlying)
+                            ));
+                        }
+                    }
+                }
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+fn has_string_method_call(bytes: &[u8]) -> bool {
+    bytes.starts_with(b".startsWith(")
+        || bytes.starts_with(b".endsWith(")
+        || bytes.starts_with(b".matches(")
+}
+
+fn cel_underlying_kind(kind: &FieldKind) -> &FieldKind {
+    match kind {
+        FieldKind::Optional(inner) | FieldKind::Wrapper(inner) => cel_underlying_kind(inner),
+        other => other,
+    }
 }
 
 fn check_message_oneof_specs(
