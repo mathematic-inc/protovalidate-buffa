@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.2.0...protoc-gen-protovalidate-buffa-v0.2.1) (2026-05-16)
+
+
+### Features
+
+* Complete protovalidate coverage ([bbe9772](https://github.com/mathematic-inc/protovalidate-buffa/commit/bbe977247acd9afdc6c23c6e8c3be4bcdb12e114))
+
 ## [0.2.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.1.2...protoc-gen-protovalidate-buffa-v0.2.0) (2026-05-09)
 
 
