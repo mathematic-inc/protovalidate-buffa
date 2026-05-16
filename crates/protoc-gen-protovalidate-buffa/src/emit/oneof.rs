@@ -213,12 +213,19 @@ fn has_field_rules(f: &FieldValidator) -> bool {
     f.required
         || f.standard.string.is_some()
         || f.standard.bytes.is_some()
+        || f.standard.bool_rules.is_some()
+        || f.standard.enum_rules.is_some()
         || f.standard.int32.is_some()
         || f.standard.int64.is_some()
         || f.standard.uint32.is_some()
         || f.standard.uint64.is_some()
         || f.standard.float.is_some()
         || f.standard.double.is_some()
+        || f.standard.any_rules.is_some()
+        || f.standard.duration.is_some()
+        || f.standard.timestamp.is_some()
+        || f.standard.field_mask.is_some()
+        || !f.standard.predefined.is_empty()
         || !f.cel.is_empty()
         || matches!(f.field_type, FieldKind::Message { ref full_name } if !full_name.starts_with("google.protobuf."))
 }
@@ -253,6 +260,16 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
                 ));
             }
         }
+        FieldKind::Bytes => {
+            if let Some(b) = &f.standard.bytes {
+                checks.extend(crate::emit::field::emit_bytes_checks_on(
+                    &val_ident,
+                    name_lit,
+                    f.field_number,
+                    b,
+                ));
+            }
+        }
         FieldKind::Int32
         | FieldKind::Sint32
         | FieldKind::Sfixed32
@@ -273,6 +290,27 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
                 &f.standard,
             ));
         }
+        FieldKind::Bool => {
+            if let Some(b) = &f.standard.bool_rules {
+                checks.extend(crate::emit::field::emit_bool_checks_on(
+                    &val_ident,
+                    name_lit,
+                    f.field_number,
+                    b,
+                ));
+            }
+        }
+        FieldKind::Enum { full_name } => {
+            if let Some(e) = &f.standard.enum_rules {
+                checks.extend(crate::emit::field::emit_enum_checks_on(
+                    &val_ident,
+                    name_lit,
+                    f.field_number,
+                    e,
+                    full_name,
+                )?);
+            }
+        }
         FieldKind::Message { full_name } if !full_name.starts_with("google.protobuf.") => {
             let fnum = f.field_number;
             let nlit = name_lit.clone();
@@ -292,8 +330,26 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
                 }
             });
         }
+        FieldKind::Message { full_name } => {
+            checks.extend(emit_oneof_wkt_checks(f, full_name, &val_ident));
+        }
+        FieldKind::Wrapper(inner) => {
+            let inner_checks =
+                crate::emit::field::emit_wrapper_inner(name_lit, f.field_number, inner, f);
+            if !inner_checks.is_empty() {
+                checks.push(quote! {
+                    {
+                        let v = v.value.clone();
+                        #( #inner_checks )*
+                    }
+                });
+            }
+        }
         _ => {}
     }
+
+    checks.extend(emit_oneof_field_cel(v, f, &val_ident));
+    checks.extend(emit_oneof_predefined(v, f, &val_ident));
 
     if checks.is_empty() {
         // Arm with no checks — return a wildcard so caller can decide.
@@ -336,6 +392,678 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
 }
 
 /// Emit string field checks using an explicit `value_ident` instead of `self.<field>`.
+fn emit_oneof_field_cel(
+    oneof: &OneofValidator,
+    f: &FieldValidator,
+    val_ident: &syn::Ident,
+) -> Vec<TokenStream> {
+    if f.cel.is_empty() {
+        return Vec::new();
+    }
+    if let FieldKind::Message { full_name } = &f.field_type
+        && crate::emit::cel::is_unsupported_wkt_for_cel(full_name)
+    {
+        return Vec::new();
+    }
+
+    let field_path = oneof_field_path(f);
+    let this_expr = oneof_value_to_cel_expr(&f.field_type, val_ident);
+    let mut out = Vec::new();
+    let mut cel_idx: u64 = 0;
+    let mut expr_idx: u64 = 0;
+
+    for rule in &f.cel {
+        let ident = crate::emit::cel::const_ident(
+            &format!("{}_{}", oneof.parent_msg_name, f.field_name),
+            &rule.id,
+        );
+        let id = &rule.id;
+        let message = &rule.message;
+        let expr = &rule.expression;
+        let (idx_lit, method) = if rule.is_cel_expression {
+            let i = expr_idx;
+            expr_idx += 1;
+            (i, format_ident!("eval_expr_value_at"))
+        } else {
+            let i = cel_idx;
+            cel_idx += 1;
+            (i, format_ident!("eval_value_at"))
+        };
+        let fp = field_path.clone();
+        let this = this_expr.clone();
+        out.push(quote! {
+            static #ident: ::protovalidate_buffa::cel::CelConstraint =
+                ::protovalidate_buffa::cel::CelConstraint::new(#id, #message, #expr);
+            if let Err(viol) = #ident.#method(#this, #fp, #idx_lit) {
+                violations.push(viol);
+            }
+        });
+    }
+
+    out
+}
+
+fn emit_oneof_predefined(
+    oneof: &OneofValidator,
+    f: &FieldValidator,
+    val_ident: &syn::Ident,
+) -> Vec<TokenStream> {
+    if f.standard.predefined.is_empty() {
+        return Vec::new();
+    }
+    let default_family = crate::emit::cel::predef_family_for(&f.field_type, &f.standard);
+    let field_path = oneof_field_path(f);
+    let this_expr = oneof_value_to_cel_expr(&f.field_type, val_ident);
+    let mut out = Vec::new();
+
+    for (pi, rule) in f.standard.predefined.iter().enumerate() {
+        let family = match rule.family_override {
+            Some((name, number)) => crate::emit::cel::Family { name, number },
+            None => match default_family {
+                Some(family) => family,
+                None => continue,
+            },
+        };
+        let ident = format_ident!(
+            "{}",
+            format!(
+                "CEL_{}_{}_PRED{}_{}_{}",
+                oneof
+                    .parent_msg_name
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                    .to_uppercase(),
+                f.field_name.to_uppercase(),
+                pi,
+                rule.ext_number,
+                rule.id
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                    .to_uppercase(),
+            )
+        );
+        let id = &rule.id;
+        let message = &rule.message;
+        let expr = &rule.expression;
+        let family_name = family.name;
+        let family_num = family.number;
+        let ext_num = rule.ext_number;
+        let ext_fty = format_ident!("{}", rule.ext_field_type);
+        let ext_bracketed = format!("[buf.validate.conformance.cases.{}]", rule.ext_name);
+        let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
+            .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
+        let rule_path = quote! {
+            ::protovalidate_buffa::FieldPath {
+                elements: ::std::vec![
+                    ::protovalidate_buffa::FieldPathElement {
+                        field_number: Some(#family_num),
+                        field_name: Some(::std::borrow::Cow::Borrowed(#family_name)),
+                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                        key_type: None,
+                        value_type: None,
+                        subscript: None,
+                    },
+                    ::protovalidate_buffa::FieldPathElement {
+                        field_number: Some(#ext_num),
+                        field_name: Some(::std::borrow::Cow::Borrowed(#ext_bracketed)),
+                        field_type: Some(::protovalidate_buffa::FieldType::#ext_fty),
+                        key_type: None,
+                        value_type: None,
+                        subscript: None,
+                    },
+                ],
+            }
+        };
+        let fp = field_path.clone();
+        let this = this_expr.clone();
+        out.push(quote! {
+            static #ident: ::protovalidate_buffa::cel::CelConstraint =
+                ::protovalidate_buffa::cel::CelConstraint::new(#id, #message, #expr);
+            if let Err(viol) = #ident.eval_predefined(#this, #rule_value, #fp, #rule_path) {
+                violations.push(viol);
+            }
+        });
+    }
+
+    out
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "codegen helper mirrors the WKT rule families oneof members can carry"
+)]
+fn emit_oneof_wkt_checks(
+    f: &FieldValidator,
+    full_name: &str,
+    val_ident: &syn::Ident,
+) -> Vec<TokenStream> {
+    let mut out = Vec::new();
+    let field_path = oneof_field_path(f);
+
+    if full_name == "google.protobuf.Any"
+        && let Some(any) = &f.standard.any_rules
+    {
+        if !any.in_set.is_empty() {
+            let set = &any.in_set;
+            let field = &field_path;
+            let rule = oneof_rule_path("any", 20, "in", 2, "String");
+            out.push(quote! {
+                {
+                    const ALLOWED: &[&str] = &[ #( #set ),* ];
+                    if !ALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #field,
+                            rule: #rule,
+                            rule_id: ::std::borrow::Cow::Borrowed("any.in"),
+                            message: ::std::borrow::Cow::Borrowed(""),
+                            for_key: false,
+                        });
+                    }
+                }
+            });
+        }
+        if !any.not_in.is_empty() {
+            let set = &any.not_in;
+            let field = &field_path;
+            let rule = oneof_rule_path("any", 20, "not_in", 3, "String");
+            out.push(quote! {
+                {
+                    const DISALLOWED: &[&str] = &[ #( #set ),* ];
+                    if DISALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #field,
+                            rule: #rule,
+                            rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
+                            message: ::std::borrow::Cow::Borrowed(""),
+                            for_key: false,
+                        });
+                    }
+                }
+            });
+        }
+    }
+
+    if full_name == "google.protobuf.FieldMask"
+        && let Some(field_mask) = &f.standard.field_mask
+    {
+        if let Some(expected) = &field_mask.r#const {
+            let expected_lits = expected.iter().map(String::as_str);
+            let message = format!("must equal paths [{}]", expected.join(", "));
+            let field = &field_path;
+            let rule = oneof_rule_path("field_mask", 28, "const", 1, "Message");
+            out.push(quote! {
+                {
+                    const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
+                    let actual: ::std::vec::Vec<&str> = #val_ident.paths.iter().map(|s| s.as_str()).collect();
+                    let eq = actual.len() == EXPECTED.len()
+                        && actual.iter().zip(EXPECTED.iter()).all(|(a, b)| a == b);
+                    if !eq {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #field,
+                            rule: #rule,
+                            rule_id: ::std::borrow::Cow::Borrowed("field_mask.const"),
+                            message: ::std::borrow::Cow::Borrowed(#message),
+                            for_key: false,
+                        });
+                    }
+                }
+            });
+        }
+        if !field_mask.in_set.is_empty() {
+            let allowed = field_mask.in_set.iter().map(String::as_str);
+            let field = &field_path;
+            let rule = oneof_rule_path("field_mask", 28, "in", 2, "String");
+            out.push(quote! {
+                {
+                    const ALLOWED: &[&str] = &[ #( #allowed ),* ];
+                    let ok = #val_ident.paths.iter().all(|p| {
+                        ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str()))
+                    });
+                    if !ok {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #field,
+                            rule: #rule,
+                            rule_id: ::std::borrow::Cow::Borrowed("field_mask.in"),
+                            message: ::std::borrow::Cow::Borrowed(""),
+                            for_key: false,
+                        });
+                    }
+                }
+            });
+        }
+        if !field_mask.not_in.is_empty() {
+            let denied = field_mask.not_in.iter().map(String::as_str);
+            let field = &field_path;
+            let rule = oneof_rule_path("field_mask", 28, "not_in", 3, "String");
+            out.push(quote! {
+                {
+                    const DENIED: &[&str] = &[ #( #denied ),* ];
+                    let bad = #val_ident.paths.iter().any(|p| {
+                        DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str())
+                            || ::protovalidate_buffa::rules::string::fieldmask_covers(p.as_str(), c))
+                    });
+                    if bad {
+                        violations.push(::protovalidate_buffa::Violation {
+                            field: #field,
+                            rule: #rule,
+                            rule_id: ::std::borrow::Cow::Borrowed("field_mask.not_in"),
+                            message: ::std::borrow::Cow::Borrowed(""),
+                            for_key: false,
+                        });
+                    }
+                }
+            });
+        }
+    }
+
+    if full_name == "google.protobuf.Duration"
+        && let Some(duration) = &f.standard.duration
+    {
+        out.extend(emit_oneof_duration_checks(duration, val_ident, &field_path));
+    }
+
+    if full_name == "google.protobuf.Timestamp"
+        && let Some(timestamp) = &f.standard.timestamp
+    {
+        out.extend(emit_oneof_timestamp_checks(
+            timestamp,
+            val_ident,
+            &field_path,
+        ));
+    }
+
+    out
+}
+
+fn oneof_rule_path(
+    outer_name: &str,
+    outer_number: i32,
+    inner_name: &str,
+    inner_number: i32,
+    inner_type_variant: &str,
+) -> TokenStream {
+    let inner_ty = format_ident!("{}", inner_type_variant);
+    quote! {
+        ::protovalidate_buffa::FieldPath {
+            elements: ::std::vec![
+                ::protovalidate_buffa::FieldPathElement {
+                    field_number: Some(#outer_number),
+                    field_name: Some(::std::borrow::Cow::Borrowed(#outer_name)),
+                    field_type: Some(::protovalidate_buffa::FieldType::Message),
+                    key_type: None,
+                    value_type: None,
+                    subscript: None,
+                },
+                ::protovalidate_buffa::FieldPathElement {
+                    field_number: Some(#inner_number),
+                    field_name: Some(::std::borrow::Cow::Borrowed(#inner_name)),
+                    field_type: Some(::protovalidate_buffa::FieldType::#inner_ty),
+                    key_type: None,
+                    value_type: None,
+                    subscript: None,
+                },
+            ],
+        }
+    }
+}
+
+fn duration_nanos_literal(value: (i64, i32)) -> TokenStream {
+    let total = (value.0 as i128) * 1_000_000_000 + (value.1 as i128);
+    let total_i128 = proc_macro2::Literal::i128_suffixed(total);
+    quote! { #total_i128 }
+}
+
+const fn duration_nanos_lt(left: (i64, i32), right: (i64, i32)) -> bool {
+    let left_ns = (left.0 as i128) * 1_000_000_000 + (left.1 as i128);
+    let right_ns = (right.0 as i128) * 1_000_000_000 + (right.1 as i128);
+    left_ns < right_ns
+}
+
+fn emit_oneof_duration_checks(
+    duration: &crate::scan::DurationStandard,
+    val_ident: &syn::Ident,
+    field_path: &TokenStream,
+) -> Vec<TokenStream> {
+    let actual =
+        quote! { ((#val_ident.seconds as i128) * 1_000_000_000 + (#val_ident.nanos as i128)) };
+    emit_oneof_time_checks(
+        "duration",
+        21,
+        duration.r#const,
+        duration.lt,
+        duration.lte,
+        duration.gt,
+        duration.gte,
+        &duration.in_set,
+        &duration.not_in,
+        None,
+        None,
+        None,
+        &actual,
+        field_path,
+    )
+}
+
+fn emit_oneof_timestamp_checks(
+    timestamp: &crate::scan::TimestampStandard,
+    val_ident: &syn::Ident,
+    field_path: &TokenStream,
+) -> Vec<TokenStream> {
+    let actual =
+        quote! { ((#val_ident.seconds as i128) * 1_000_000_000 + (#val_ident.nanos as i128)) };
+    emit_oneof_time_checks(
+        "timestamp",
+        22,
+        timestamp.r#const,
+        timestamp.lt,
+        timestamp.lte,
+        timestamp.gt,
+        timestamp.gte,
+        &[],
+        &[],
+        Some(timestamp.lt_now),
+        Some(timestamp.gt_now),
+        timestamp.within,
+        &actual,
+        field_path,
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared codegen helper for DurationRules and TimestampRules"
+)]
+fn emit_oneof_time_checks(
+    family: &'static str,
+    family_number: i32,
+    const_value: Option<(i64, i32)>,
+    lt: Option<(i64, i32)>,
+    lte: Option<(i64, i32)>,
+    gt: Option<(i64, i32)>,
+    gte: Option<(i64, i32)>,
+    in_set: &[(i64, i32)],
+    not_in: &[(i64, i32)],
+    lt_now: Option<bool>,
+    gt_now: Option<bool>,
+    within: Option<(i64, i32)>,
+    actual: &TokenStream,
+    field_path: &TokenStream,
+) -> Vec<TokenStream> {
+    let mut out = Vec::new();
+    let push = |out: &mut Vec<TokenStream>,
+                inner: &str,
+                inner_num: i32,
+                inner_ty: &str,
+                rule_id: &'static str,
+                cond: TokenStream| {
+        let field = field_path.clone();
+        let rule = oneof_rule_path(family, family_number, inner, inner_num, inner_ty);
+        out.push(quote! {
+            if #cond {
+                violations.push(::protovalidate_buffa::Violation {
+                    field: #field,
+                    rule: #rule,
+                    rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                    message: ::std::borrow::Cow::Borrowed(""),
+                    for_key: false,
+                });
+            }
+        });
+    };
+
+    if let (Some(lo), Some(hi)) = (gt, lt) {
+        let lo_ns = duration_nanos_literal(lo);
+        let hi_ns = duration_nanos_literal(hi);
+        let is_exclusive = duration_nanos_lt(hi, lo);
+        let rule_id = if family == "duration" {
+            if is_exclusive {
+                "duration.gt_lt_exclusive"
+            } else {
+                "duration.gt_lt"
+            }
+        } else if is_exclusive {
+            "timestamp.gt_lt_exclusive"
+        } else {
+            "timestamp.gt_lt"
+        };
+        let cond = if is_exclusive {
+            quote! { #actual >= #hi_ns && #actual <= #lo_ns }
+        } else {
+            quote! { #actual <= #lo_ns || #actual >= #hi_ns }
+        };
+        push(&mut out, "gt", 5, "Message", rule_id, cond);
+        return out;
+    }
+    if let (Some(lo), Some(hi)) = (gte, lte) {
+        let lo_ns = duration_nanos_literal(lo);
+        let hi_ns = duration_nanos_literal(hi);
+        let is_exclusive = duration_nanos_lt(hi, lo);
+        let rule_id = if family == "duration" {
+            if is_exclusive {
+                "duration.gte_lte_exclusive"
+            } else {
+                "duration.gte_lte"
+            }
+        } else if is_exclusive {
+            "timestamp.gte_lte_exclusive"
+        } else {
+            "timestamp.gte_lte"
+        };
+        let cond = if is_exclusive {
+            quote! { #actual > #hi_ns && #actual < #lo_ns }
+        } else {
+            quote! { #actual < #lo_ns || #actual > #hi_ns }
+        };
+        push(&mut out, "gte", 6, "Message", rule_id, cond);
+        return out;
+    }
+
+    if let Some(value) = const_value {
+        let expected = duration_nanos_literal(value);
+        let rule_id = if family == "duration" {
+            "duration.const"
+        } else {
+            "timestamp.const"
+        };
+        push(
+            &mut out,
+            "const",
+            2,
+            "Message",
+            rule_id,
+            quote! { #actual != #expected },
+        );
+    }
+    if let Some(value) = lt {
+        let bound = duration_nanos_literal(value);
+        let rule_id = if family == "duration" {
+            "duration.lt"
+        } else {
+            "timestamp.lt"
+        };
+        push(
+            &mut out,
+            "lt",
+            3,
+            "Message",
+            rule_id,
+            quote! { #actual >= #bound },
+        );
+    }
+    if let Some(value) = lte {
+        let bound = duration_nanos_literal(value);
+        let rule_id = if family == "duration" {
+            "duration.lte"
+        } else {
+            "timestamp.lte"
+        };
+        push(
+            &mut out,
+            "lte",
+            4,
+            "Message",
+            rule_id,
+            quote! { #actual > #bound },
+        );
+    }
+    if let Some(value) = gt {
+        let bound = duration_nanos_literal(value);
+        let rule_id = if family == "duration" {
+            "duration.gt"
+        } else {
+            "timestamp.gt"
+        };
+        push(
+            &mut out,
+            "gt",
+            5,
+            "Message",
+            rule_id,
+            quote! { #actual <= #bound },
+        );
+    }
+    if let Some(value) = gte {
+        let bound = duration_nanos_literal(value);
+        let rule_id = if family == "duration" {
+            "duration.gte"
+        } else {
+            "timestamp.gte"
+        };
+        push(
+            &mut out,
+            "gte",
+            6,
+            "Message",
+            rule_id,
+            quote! { #actual < #bound },
+        );
+    }
+    if !in_set.is_empty() {
+        let values: Vec<TokenStream> = in_set.iter().copied().map(duration_nanos_literal).collect();
+        let field = field_path.clone();
+        let rule = oneof_rule_path(family, family_number, "in", 7, "Message");
+        out.push(quote! {
+            {
+                const ALLOWED: &[i128] = &[ #( #values ),* ];
+                if !ALLOWED.iter().any(|x| *x == #actual) {
+                    violations.push(::protovalidate_buffa::Violation {
+                        field: #field,
+                        rule: #rule,
+                        rule_id: ::std::borrow::Cow::Borrowed("duration.in"),
+                        message: ::std::borrow::Cow::Borrowed(""),
+                        for_key: false,
+                    });
+                }
+            }
+        });
+    }
+    if !not_in.is_empty() {
+        let values: Vec<TokenStream> = not_in.iter().copied().map(duration_nanos_literal).collect();
+        let field = field_path.clone();
+        let rule = oneof_rule_path(family, family_number, "not_in", 8, "Message");
+        out.push(quote! {
+            {
+                const DISALLOWED: &[i128] = &[ #( #values ),* ];
+                if DISALLOWED.iter().any(|x| *x == #actual) {
+                    violations.push(::protovalidate_buffa::Violation {
+                        field: #field,
+                        rule: #rule,
+                        rule_id: ::std::borrow::Cow::Borrowed("duration.not_in"),
+                        message: ::std::borrow::Cow::Borrowed(""),
+                        for_key: false,
+                    });
+                }
+            }
+        });
+    }
+    if lt_now == Some(true) {
+        push(
+            &mut out,
+            "lt_now",
+            7,
+            "Bool",
+            "timestamp.lt_now",
+            quote! {
+                #actual >= ::std::time::SystemTime::now()
+                    .duration_since(::std::time::UNIX_EPOCH)
+                    .map_or(0i128, |d| d.as_nanos() as i128)
+            },
+        );
+    }
+    if gt_now == Some(true) {
+        push(
+            &mut out,
+            "gt_now",
+            8,
+            "Bool",
+            "timestamp.gt_now",
+            quote! {
+                #actual <= ::std::time::SystemTime::now()
+                    .duration_since(::std::time::UNIX_EPOCH)
+                    .map_or(0i128, |d| d.as_nanos() as i128)
+            },
+        );
+    }
+    if let Some(value) = within {
+        let bound = duration_nanos_literal(value);
+        push(
+            &mut out,
+            "within",
+            9,
+            "Message",
+            "timestamp.within",
+            quote! {
+                {
+                    let now_ns = ::std::time::SystemTime::now()
+                        .duration_since(::std::time::UNIX_EPOCH)
+                        .map_or(0i128, |d| d.as_nanos() as i128);
+                    (#actual - now_ns).abs() > #bound
+                }
+            },
+        );
+    }
+
+    out
+}
+
+fn oneof_field_path(f: &FieldValidator) -> TokenStream {
+    let field_name = &f.field_name;
+    let field_number = f.field_number;
+    let field_type = if f.is_group {
+        "Group"
+    } else {
+        crate::emit::field::kind_to_field_type(&f.field_type)
+    };
+    let field_type_ident = format_ident!("{}", field_type);
+    quote! {
+        ::protovalidate_buffa::FieldPath {
+            elements: ::std::vec![
+                ::protovalidate_buffa::FieldPathElement {
+                    field_number: Some(#field_number),
+                    field_name: Some(::std::borrow::Cow::Borrowed(#field_name)),
+                    field_type: Some(::protovalidate_buffa::FieldType::#field_type_ident),
+                    key_type: None,
+                    value_type: None,
+                    subscript: None,
+                },
+            ],
+        }
+    }
+}
+
+fn oneof_value_to_cel_expr(kind: &FieldKind, val_ident: &syn::Ident) -> TokenStream {
+    match kind {
+        FieldKind::String | FieldKind::Bytes | FieldKind::Enum { .. } => {
+            quote! { ::protovalidate_buffa::cel::to_cel_value(#val_ident) }
+        }
+        FieldKind::Message { .. } => {
+            quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(#val_ident.as_ref()) }
+        }
+        FieldKind::Wrapper(_) => {
+            quote! { ::protovalidate_buffa::cel::to_cel_value(&#val_ident.value) }
+        }
+        _ => quote! { ::protovalidate_buffa::cel::to_cel_value(&#val_ident) },
+    }
+}
+
 fn to_snake_case(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len() + 2);
