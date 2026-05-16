@@ -43,9 +43,7 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
         if matches!(f.ignore, crate::scan::Ignore::Always) {
             continue;
         }
-        if let crate::scan::FieldKind::Message { full_name } = &f.field_type
-            && full_name.starts_with("google.protobuf.")
-        {
+        if is_unsupported_wkt_field_for_cel(&f.field_type) {
             continue;
         }
         let field_ident = format_ident!("{}", f.field_name);
@@ -102,11 +100,24 @@ pub fn emit_message_level(msg: &MessageValidators) -> (Vec<TokenStream>, Vec<Tok
                 (i, format_ident!("eval_value_at"))
             };
             let call = match &f.field_type {
-                crate::scan::FieldKind::Message { .. } | crate::scan::FieldKind::Wrapper(_) => {
+                crate::scan::FieldKind::Message { .. } => {
                     quote! {
                         if let Some(inner) = self.#field_ident.as_option() {
                             if let Err(v) = #ident.#method(
                                 ::protovalidate_buffa::cel::AsCelValue::as_cel_value(inner),
+                                #fp,
+                                #idx_lit,
+                            ) {
+                                violations.push(v);
+                            }
+                        }
+                    }
+                }
+                crate::scan::FieldKind::Wrapper(_) => {
+                    quote! {
+                        if let Some(inner) = self.#field_ident.as_option() {
+                            if let Err(v) = #ident.#method(
+                                ::protovalidate_buffa::cel::to_cel_value(&inner.value),
                                 #fp,
                                 #idx_lit,
                             ) {
@@ -469,24 +480,24 @@ pub(crate) fn predef_family_for(
 /// message-typed fields to avoid requiring downstream `ToCelValue` bounds on
 /// proto-generated structs.
 ///
-/// WKT fields (`google.protobuf.*`) are skipped — they do not implement `AsCelValue`.
-/// Repeated WKT fields are also skipped.
+/// WKT fields are included when the runtime provides a CEL representation.
 ///
 /// # Errors
 ///
 /// Returns an error if a field's Rust path cannot be parsed from the proto type name.
 pub fn emit_as_cel_value(msg: &MessageValidators, rust_path: &Path) -> Result<TokenStream> {
+    let parent_msg_name = msg.proto_name.rsplit('.').next().unwrap_or(&msg.proto_name);
     let inserts: Vec<TokenStream> = msg
         .field_rules
         .iter()
         // Skip inner-only synthetic validators (field_number == -1 means no real field).
         .filter(|f| f.field_number != -1)
-        // Skip oneof-member fields: they're represented as `Option<XxxOneof>` enums
-        // in buffa, not as flat struct fields, so `self.<field>` would not compile.
-        .filter(|f| f.oneof_name.is_none())
-        // Skip WKT message fields — no AsCelValue impl for google.protobuf.*
-        .filter(|f| !is_wkt_field(&f.field_type))
+        // Skip WKT message fields without a runtime CEL representation.
+        .filter(|f| !is_unsupported_wkt_field_for_cel(&f.field_type))
         .map(|f| {
+            if let Some(oneof_name) = &f.oneof_name {
+                return oneof_field_to_cel_insert(f, parent_msg_name, oneof_name);
+            }
             let field_ident = format_ident!("{}", f.field_name);
             let field_name = &f.field_name;
             // For fields with explicit presence (Optional scalar / Message),
@@ -505,6 +516,14 @@ pub fn emit_as_cel_value(msg: &MessageValidators, rust_path: &Path) -> Result<To
                         map.insert(
                             ::std::string::String::from(#field_name),
                             ::protovalidate_buffa::cel::AsCelValue::as_cel_value(v),
+                        );
+                    }
+                },
+                FieldKind::Wrapper(_) => quote! {
+                    if let Some(v) = self.#field_ident.as_option() {
+                        map.insert(
+                            ::std::string::String::from(#field_name),
+                            ::protovalidate_buffa::cel::to_cel_value(&v.value),
                         );
                     }
                 },
@@ -543,14 +562,29 @@ pub fn emit_as_cel_value(msg: &MessageValidators, rust_path: &Path) -> Result<To
     })
 }
 
-/// Returns true if a field type references a WKT (google.protobuf.*) message,
-/// including when nested inside a Repeated.
-fn is_wkt_field(kind: &FieldKind) -> bool {
+fn is_unsupported_wkt_field_for_cel(kind: &FieldKind) -> bool {
     match kind {
-        FieldKind::Message { full_name } => full_name.starts_with("google.protobuf."),
-        FieldKind::Repeated(inner) | FieldKind::Optional(inner) => is_wkt_field(inner),
+        FieldKind::Message { full_name } => is_unsupported_wkt_for_cel(full_name),
+        FieldKind::Repeated(inner) | FieldKind::Optional(inner) => {
+            is_unsupported_wkt_field_for_cel(inner)
+        }
         _ => false,
     }
+}
+
+pub(crate) fn is_unsupported_wkt_for_cel(full_name: &str) -> bool {
+    full_name.starts_with("google.protobuf.") && !supports_wkt_as_cel_value(full_name)
+}
+
+pub(crate) const fn supports_wkt_as_cel_value(full_name: &str) -> bool {
+    matches!(
+        full_name.as_bytes(),
+        b"google.protobuf.Any"
+            | b"google.protobuf.Empty"
+            | b"google.protobuf.FieldMask"
+            | b"google.protobuf.Timestamp"
+            | b"google.protobuf.Duration"
+    )
 }
 
 /// Generate the expression that converts a field to a CEL Value for insertion
@@ -576,6 +610,14 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
             quote! {
                 match &self.#field_ident {
                     Some(v) => ::protovalidate_buffa::cel::to_cel_value(v),
+                    None => ::protovalidate_buffa::cel_core::Value::Null,
+                }
+            }
+        }
+        FieldKind::Wrapper(_) => {
+            quote! {
+                match self.#field_ident.as_option() {
+                    Some(v) => ::protovalidate_buffa::cel::to_cel_value(&v.value),
                     None => ::protovalidate_buffa::cel_core::Value::Null,
                 }
             }
@@ -609,6 +651,69 @@ fn field_to_cel_value_expr(f: &FieldValidator, field_ident: &syn::Ident) -> Toke
             }
         }
     }
+}
+
+fn oneof_field_to_cel_insert(
+    f: &FieldValidator,
+    parent_msg_name: &str,
+    oneof_name: &str,
+) -> TokenStream {
+    let oneof_ident = format_ident!("{}", oneof_name);
+    let module_ident = format_ident!("{}", to_snake_case(parent_msg_name));
+    let oneof_enum_ident = format_ident!("{}", to_pascal_case(oneof_name));
+    let variant_ident = format_ident!("{}", to_pascal_case(&f.field_name));
+    let field_name = &f.field_name;
+    let value_expr = quote! { v };
+    let value = oneof_value_to_cel_expr(&f.field_type, &value_expr);
+    quote! {
+        if let Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(v)) = &self.#oneof_ident {
+            map.insert(
+                ::std::string::String::from(#field_name),
+                #value,
+            );
+        }
+    }
+}
+
+fn oneof_value_to_cel_expr(kind: &FieldKind, value: &TokenStream) -> TokenStream {
+    match kind {
+        FieldKind::Message { .. } => quote! {
+            ::protovalidate_buffa::cel::AsCelValue::as_cel_value(#value.as_ref())
+        },
+        FieldKind::Wrapper(_) => quote! {
+            ::protovalidate_buffa::cel::to_cel_value(&#value.value)
+        },
+        _ => quote! {
+            ::protovalidate_buffa::cel::to_cel_value(#value)
+        },
+    }
+}
+
+fn to_snake_case(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len() + 2);
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            let prev = chars[i - 1];
+            let next_is_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+            if prev.is_lowercase() || (prev.is_uppercase() && next_is_lower) {
+                out.push('_');
+            }
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |c| {
+                c.to_uppercase().collect::<String>() + chars.as_str()
+            })
+        })
+        .collect()
 }
 
 /// Build the identifier for a static CEL constraint.

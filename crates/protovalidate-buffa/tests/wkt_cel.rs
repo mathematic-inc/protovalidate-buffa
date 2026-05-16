@@ -1,10 +1,35 @@
-//! `AsCelValue` impls for `google.protobuf.FieldMask`, `Timestamp`, and
-//! `Duration`. Each test compiles and runs a real CEL expression against the
-//! WKT, exercising the same `CelConstraint::eval` path used by
-//! plugin-emitted field-level predefined rules.
+//! `AsCelValue` impls for supported `google.protobuf.*` well-known types.
+//! Each test compiles and runs a real CEL expression against the WKT,
+//! exercising the same `CelConstraint::eval` path used by plugin-emitted CEL
+//! rules.
 
-use buffa_types::google::protobuf::{Duration, FieldMask, Timestamp};
+use buffa_types::google::protobuf::{Any, Duration, Empty, FieldMask, Timestamp};
 use protovalidate_buffa::cel::CelConstraint;
+
+#[test]
+fn any_exposes_type_url() {
+    static RULE: CelConstraint = CelConstraint::new(
+        "test.any.type_url",
+        "Any type URL must match",
+        "this.type_url == 'type.googleapis.com/example.Widget'",
+    );
+
+    let any = Any {
+        type_url: "type.googleapis.com/example.Widget".to_string(),
+        ..Any::default()
+    };
+
+    RULE.eval(&any).expect("matching type_url should pass");
+}
+
+#[test]
+fn empty_is_empty_map() {
+    static RULE: CelConstraint =
+        CelConstraint::new("test.empty.map", "Empty has no fields", "size(this) == 0");
+
+    RULE.eval(&Empty::default())
+        .expect("Empty should expose an empty CEL map");
+}
 
 #[test]
 fn field_mask_paths_all_true() {
