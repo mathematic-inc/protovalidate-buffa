@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.2.1...protoc-gen-protovalidate-buffa-v0.3.0) (2026-05-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10))
+
+### Features
+
+* Compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10)) ([ba01ffe](https://github.com/mathematic-inc/protovalidate-buffa/commit/ba01ffe75b6da086253c8366d266fbbd12c55e30))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-protos bumped from 0.2.0 to 0.3.0
+
 ## [0.2.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.2.0...protoc-gen-protovalidate-buffa-v0.2.1) (2026-05-16)
 
 
