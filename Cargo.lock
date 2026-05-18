@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "protoc-gen-protovalidate-buffa"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "buffa",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "buffa",
  "chrono",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-conformance"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "anyhow",
  "buffa",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-protos"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "buffa",
  "buffa-build",
