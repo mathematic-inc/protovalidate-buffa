@@ -18,6 +18,5 @@
     reason = "FieldDescriptorProto.number and related wire ints are i32 by protobuf schema but semantically non-negative and bounded; casts to usize/u32 are intrinsic to the wire format"
 )]
 
-pub mod ctx;
 pub mod emit;
 pub mod scan;

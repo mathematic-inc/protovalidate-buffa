@@ -1186,6 +1186,7 @@ pub fn emit_repeated(
     element_type_variant: &str,
     spec: &RepeatedStandard,
     element_kind: &FieldKind,
+    schemas: &crate::emit::cel::SchemaIndex,
 ) -> Result<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || repeated_field_path(name_lit, field_number, element_type_variant);
@@ -1596,67 +1597,173 @@ pub fn emit_repeated(
         && !items.standard.predefined.is_empty()
     {
         let element_ty_ident = format_ident!("{}", element_type_variant);
-        let family = crate::emit::cel::predef_family_for(element_kind, &items.standard);
-        for (pi, rule) in items.standard.predefined.iter().enumerate() {
+        let family = crate::emit::cel::predef_family_for(element_kind);
+        for rule in &items.standard.predefined {
             let id = rule.id.as_str();
             let msg = rule.message.as_str();
             let expr = rule.expression.as_str();
             let ext_num = rule.ext_number;
             let ext_name = &rule.ext_name;
             let ext_ty_ident = format_ident!("{}", rule.ext_field_type);
-            let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
-                .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
             let Some(fam) = family else { continue };
             let fam_name = fam.name;
             let fam_num = fam.number;
             let ext_bracketed = format!("[buf.validate.conformance.cases.{ext_name}]");
-            let static_ident = format_ident!(
-                "__ITEMS_PRED_{}_{}",
-                pi,
-                id.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
-                    .to_uppercase()
-            );
-            let as_value: TokenStream = match element_kind {
+            // Native path: bind `this` to the element value and `rule` to
+            // the extension's constant value.
+            let fp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                        field_number: Some(#field_number),
+                        field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
+                        field_type: Some(::protovalidate_buffa::FieldType::#element_ty_ident),
+                        key_type: None, value_type: None,
+                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                    }],
+                }
+            };
+            let rp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(#fam_num), field_name: Some(::std::borrow::Cow::Borrowed(#fam_name)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(#ext_num), field_name: Some(::std::borrow::Cow::Borrowed(#ext_bracketed)), field_type: Some(::protovalidate_buffa::FieldType::#ext_ty_ident), key_type: None, value_type: None, subscript: None },
+                    ],
+                }
+            };
+            // Element access expression for scalar element kinds. Wrapper
+            // elements yield `(*elem).value` which still satisfies CelScalar.
+            let elem_access: Option<TokenStream> = match element_kind {
+                FieldKind::String => Some(quote! { elem.as_str() }),
+                FieldKind::Bytes => Some(quote! { elem.as_slice() }),
+                FieldKind::Bool => Some(quote! { (*elem) }),
+                FieldKind::Float
+                | FieldKind::Double
+                | FieldKind::Int32
+                | FieldKind::Int64
+                | FieldKind::Sint32
+                | FieldKind::Sint64
+                | FieldKind::Sfixed32
+                | FieldKind::Sfixed64
+                | FieldKind::Uint32
+                | FieldKind::Uint64
+                | FieldKind::Fixed32
+                | FieldKind::Fixed64
+                | FieldKind::Enum { .. } => Some(quote! { (*elem) }),
+                FieldKind::Message { full_name } if full_name == "google.protobuf.StringValue" => {
+                    Some(quote! { elem.value.as_str() })
+                }
+                FieldKind::Message { full_name } if full_name == "google.protobuf.BytesValue" => {
+                    Some(quote! { elem.value.as_slice() })
+                }
                 FieldKind::Message { full_name }
                     if full_name.starts_with("google.protobuf.")
                         && full_name.ends_with("Value") =>
                 {
-                    // Wrapper (FloatValue, Int32Value, etc.) — use inner .value.
-                    quote! { ::protovalidate_buffa::cel::to_cel_value(&elem.value) }
+                    Some(quote! { elem.value })
                 }
-                FieldKind::Message { .. } => {
-                    quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
-                }
-                _ => quote! { ::protovalidate_buffa::cel::to_cel_value(elem) },
+                _ => None,
             };
-            out.push(quote! {
+            let native = elem_access.and_then(|access| {
+                let scalar_kind = match element_kind {
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.FloatValue" =>
                     {
-                        static #static_ident: ::protovalidate_buffa::cel::CelConstraint =
-                            ::protovalidate_buffa::cel::CelConstraint::new(#id, #msg, #expr);
-                        for (idx, elem) in self.#accessor.iter().enumerate() {
-                            let field_path = ::protovalidate_buffa::FieldPath {
-                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                    field_number: Some(#field_number),
-                                    field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
-                                    field_type: Some(::protovalidate_buffa::FieldType::#element_ty_ident),
-                                    key_type: None, value_type: None,
-                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                }],
-                            };
-                            let rule_path = ::protovalidate_buffa::FieldPath {
-                                elements: ::std::vec![
-                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(#fam_num), field_name: Some(::std::borrow::Cow::Borrowed(#fam_name)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
-                                    ::protovalidate_buffa::FieldPathElement { field_number: Some(#ext_num), field_name: Some(::std::borrow::Cow::Borrowed(#ext_bracketed)), field_type: Some(::protovalidate_buffa::FieldType::#ext_ty_ident), key_type: None, value_type: None, subscript: None },
-                                ],
-                            };
-                            if let Err(v) = #static_ident.eval_predefined(#as_value, #rule_value, field_path, rule_path) {
-                                violations.push(v);
-                            }
-                        }
+                        FieldKind::Float
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.DoubleValue" =>
+                    {
+                        FieldKind::Double
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.Int32Value" =>
+                    {
+                        FieldKind::Int32
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.Int64Value" =>
+                    {
+                        FieldKind::Int64
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.UInt32Value" =>
+                    {
+                        FieldKind::Uint32
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.UInt64Value" =>
+                    {
+                        FieldKind::Uint64
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.BoolValue" =>
+                    {
+                        FieldKind::Bool
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.StringValue" =>
+                    {
+                        FieldKind::String
+                    }
+                    FieldKind::Message { full_name }
+                        if full_name == "google.protobuf.BytesValue" =>
+                    {
+                        FieldKind::Bytes
+                    }
+                    other => match other {
+                        FieldKind::String => FieldKind::String,
+                        FieldKind::Bytes => FieldKind::Bytes,
+                        FieldKind::Bool => FieldKind::Bool,
+                        FieldKind::Float => FieldKind::Float,
+                        FieldKind::Double => FieldKind::Double,
+                        FieldKind::Int32 => FieldKind::Int32,
+                        FieldKind::Int64 => FieldKind::Int64,
+                        FieldKind::Sint32 => FieldKind::Sint32,
+                        FieldKind::Sint64 => FieldKind::Sint64,
+                        FieldKind::Sfixed32 => FieldKind::Sfixed32,
+                        FieldKind::Sfixed64 => FieldKind::Sfixed64,
+                        FieldKind::Uint32 => FieldKind::Uint32,
+                        FieldKind::Uint64 => FieldKind::Uint64,
+                        FieldKind::Fixed32 => FieldKind::Fixed32,
+                        FieldKind::Fixed64 => FieldKind::Fixed64,
+                        FieldKind::Enum { full_name } => FieldKind::Enum {
+                            full_name: full_name.clone(),
+                        },
+                        _ => return None,
+                    },
+                };
+                let (this_expr, this_ty) =
+                    crate::emit::cel::this_binding_for_kind(&scalar_kind, &access)?;
+                crate::emit::cel::try_compile_cel_check(
+                    expr,
+                    id,
+                    msg,
+                    this_expr,
+                    this_ty,
+                    rule.rule_const.as_ref(),
+                    &fp_quote,
+                    &rp_quote,
+                    false,
+                )
+            });
+            if let Some(check) = native {
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        #check
                     }
                 });
+                continue;
+            }
+            // Unsupported predefined items rule — emit a runtime-error
+            // marker so the user sees a clear runtime signal.
+            let id_s = id.to_string();
+            let expr_s = expr.to_string();
+            out.push(crate::emit::cel::emit_runtime_error_violation(
+                &id_s,
+                &format!("unsupported predefined CEL (repeated items): {expr_s}"),
+            ));
         }
     }
 
@@ -1671,32 +1778,70 @@ pub fn emit_repeated(
             let msg = rule.message.as_str();
             let expr = rule.expression.as_str();
             let idx_lit = idx as u64;
-            let as_value: TokenStream = if matches!(element_kind, FieldKind::Message { .. }) {
-                quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(elem) }
-            } else {
-                quote! { ::protovalidate_buffa::cel::to_cel_value(elem) }
+            let fp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                        field_number: Some(#field_number),
+                        field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
+                        field_type: Some(::protovalidate_buffa::FieldType::#element_ty_ident),
+                        key_type: None,
+                        value_type: None,
+                        subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
+                    }],
+                }
             };
-            out.push(quote! {
-                    {
-                        static __ITEMS_CEL: ::protovalidate_buffa::cel::CelConstraint =
-                            ::protovalidate_buffa::cel::CelConstraint::new(#id, #msg, #expr);
-                        for (idx, elem) in self.#accessor.iter().enumerate() {
-                            let fp = ::protovalidate_buffa::FieldPath {
-                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                    field_number: Some(#field_number),
-                                    field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
-                                    field_type: Some(::protovalidate_buffa::FieldType::#element_ty_ident),
-                                    key_type: None,
-                                    value_type: None,
-                                    subscript: Some(::protovalidate_buffa::Subscript::Index(idx as u64)),
-                                }],
-                            };
-                            if let Err(v) = __ITEMS_CEL.eval_repeated_items_cel(#as_value, fp, #idx_lit) {
-                                violations.push(v);
-                            }
-                        }
+            let rp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(18i32), field_name: Some(::std::borrow::Cow::Borrowed("repeated")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(4i32), field_name: Some(::std::borrow::Cow::Borrowed("items")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(23i32), field_name: Some(::std::borrow::Cow::Borrowed("cel")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: Some(::protovalidate_buffa::Subscript::Index(#idx_lit)) },
+                    ],
+                }
+            };
+            // Native path: bind `this` to the element value and transpile.
+            let elem_access = match element_kind {
+                FieldKind::String => Some(quote! { elem.as_str() }),
+                FieldKind::Bytes => Some(quote! { elem.as_slice() }),
+                FieldKind::Bool => Some(quote! { (*elem) }),
+                FieldKind::Float
+                | FieldKind::Double
+                | FieldKind::Int32
+                | FieldKind::Int64
+                | FieldKind::Sint32
+                | FieldKind::Sint64
+                | FieldKind::Sfixed32
+                | FieldKind::Sfixed64
+                | FieldKind::Uint32
+                | FieldKind::Uint64
+                | FieldKind::Fixed32
+                | FieldKind::Fixed64
+                | FieldKind::Enum { .. } => Some(quote! { (*elem) }),
+                FieldKind::Message { .. } => Some(quote! { elem }),
+                _ => None,
+            };
+            let native = elem_access.and_then(|access| {
+                let (this_expr, this_ty) = crate::emit::cel::this_binding_for_kind_with(
+                    element_kind,
+                    &access,
+                    Some(schemas),
+                )?;
+                crate::emit::cel::try_compile_cel_check(
+                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, false,
+                )
+            });
+            if let Some(check) = native {
+                out.push(quote! {
+                    for (idx, elem) in self.#accessor.iter().enumerate() {
+                        #check
                     }
                 });
+                continue;
+            }
+            out.push(crate::emit::cel::emit_runtime_error_violation(
+                id,
+                &format!("unsupported CEL (repeated items): {expr}"),
+            ));
         }
     }
 
@@ -1755,6 +1900,7 @@ pub fn emit_map(
     spec: &MapStandard,
     key_kind: &FieldKind,
     value_kind: &FieldKind,
+    schemas: &crate::emit::cel::SchemaIndex,
 ) -> Result<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || map_field_path(name_lit, field_number);
@@ -1915,56 +2061,89 @@ pub fn emit_map(
     // Per-key / per-value CEL rules.
     let key_ty_ident = format_ident!("{}", crate::emit::field::kind_to_field_type(key_kind));
     let val_ty_ident = format_ident!("{}", crate::emit::field::kind_to_field_type(value_kind));
-    let emit_map_cel =
-        |out: &mut Vec<TokenStream>, rules: &[crate::scan::CelRule], for_key: bool| {
-            let Some(key_subscript) =
-                kind_variant_to_subscript(crate::emit::field::kind_to_field_type(key_kind))
-            else {
-                return;
+    let emit_map_cel = |out: &mut Vec<TokenStream>,
+                        rules: &[crate::scan::CelRule],
+                        for_key: bool| {
+        let Some(key_subscript) =
+            kind_variant_to_subscript(crate::emit::field::kind_to_field_type(key_kind))
+        else {
+            return;
+        };
+        for (idx, rule) in rules.iter().enumerate() {
+            let id = rule.id.as_str();
+            let msg = rule.message.as_str();
+            let expr = rule.expression.as_str();
+            let idx_lit = idx as u64;
+            let value_ident = format_ident!("{}", if for_key { "key" } else { "value" });
+            let target_kind = if for_key { key_kind } else { value_kind };
+            let kt = key_ty_ident.clone();
+            let vt = val_ty_ident.clone();
+            let ks = key_subscript.clone();
+            let fp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
+                        field_number: Some(#field_number),
+                        field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
+                        field_type: Some(::protovalidate_buffa::FieldType::Message),
+                        key_type: Some(::protovalidate_buffa::FieldType::#kt),
+                        value_type: Some(::protovalidate_buffa::FieldType::#vt),
+                        subscript: Some(#ks),
+                    }],
+                }
             };
-            for (idx, rule) in rules.iter().enumerate() {
-                let id = rule.id.as_str();
-                let msg = rule.message.as_str();
-                let expr = rule.expression.as_str();
-                let idx_lit = idx as u64;
-                let value_ident = format_ident!("{}", if for_key { "key" } else { "value" });
-                let target_kind = if for_key { key_kind } else { value_kind };
-                let as_value: TokenStream = if matches!(target_kind, FieldKind::Message { .. }) {
-                    quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(#value_ident) }
-                } else {
-                    quote! { ::protovalidate_buffa::cel::to_cel_value(#value_ident) }
-                };
-                let method = if for_key {
-                    format_ident!("eval_map_keys_cel")
-                } else {
-                    format_ident!("eval_map_values_cel")
-                };
-                let kt = key_ty_ident.clone();
-                let vt = val_ty_ident.clone();
-                let ks = key_subscript.clone();
+            // Rule path: map.<keys|values>.cel[idx]
+            let leaf_name = if for_key { "keys" } else { "values" };
+            let leaf_num = if for_key { 4i32 } else { 5i32 };
+            let rp_quote = quote! {
+                ::protovalidate_buffa::FieldPath {
+                    elements: ::std::vec![
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(19i32), field_name: Some(::std::borrow::Cow::Borrowed("map")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(#leaf_num), field_name: Some(::std::borrow::Cow::Borrowed(#leaf_name)), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: None },
+                        ::protovalidate_buffa::FieldPathElement { field_number: Some(23i32), field_name: Some(::std::borrow::Cow::Borrowed("cel")), field_type: Some(::protovalidate_buffa::FieldType::Message), key_type: None, value_type: None, subscript: Some(::protovalidate_buffa::Subscript::Index(#idx_lit)) },
+                    ],
+                }
+            };
+            let access = match target_kind {
+                FieldKind::String => Some(quote! { #value_ident.as_str() }),
+                FieldKind::Bytes => Some(quote! { #value_ident.as_slice() }),
+                FieldKind::Bool => Some(quote! { (*#value_ident) }),
+                FieldKind::Float
+                | FieldKind::Double
+                | FieldKind::Int32
+                | FieldKind::Int64
+                | FieldKind::Sint32
+                | FieldKind::Sint64
+                | FieldKind::Sfixed32
+                | FieldKind::Sfixed64
+                | FieldKind::Uint32
+                | FieldKind::Uint64
+                | FieldKind::Fixed32
+                | FieldKind::Fixed64
+                | FieldKind::Enum { .. } => Some(quote! { (*#value_ident) }),
+                FieldKind::Message { .. } => Some(quote! { #value_ident }),
+                _ => None,
+            };
+            let native = access.and_then(|a| {
+                let (this_expr, this_ty) =
+                    crate::emit::cel::this_binding_for_kind_with(target_kind, &a, Some(schemas))?;
+                crate::emit::cel::try_compile_cel_check(
+                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, for_key,
+                )
+            });
+            if let Some(check) = native {
                 out.push(quote! {
-                    {
-                        static __MAP_CEL: ::protovalidate_buffa::cel::CelConstraint =
-                            ::protovalidate_buffa::cel::CelConstraint::new(#id, #msg, #expr);
-                        for (key, value) in self.#accessor.iter() {
-                            let fp = ::protovalidate_buffa::FieldPath {
-                                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                                    field_number: Some(#field_number),
-                                    field_name: Some(::std::borrow::Cow::Borrowed(#name_lit)),
-                                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                                    key_type: Some(::protovalidate_buffa::FieldType::#kt),
-                                    value_type: Some(::protovalidate_buffa::FieldType::#vt),
-                                    subscript: Some(#ks),
-                                }],
-                            };
-                            if let Err(v) = __MAP_CEL.#method(#as_value, fp, #idx_lit) {
-                                violations.push(v);
-                            }
-                        }
+                    for (key, value) in self.#accessor.iter() {
+                        #check
                     }
                 });
+                continue;
             }
-        };
+            out.push(crate::emit::cel::emit_runtime_error_violation(
+                id,
+                &format!("unsupported CEL (map): {expr}"),
+            ));
+        }
+    };
     if let Some(k) = spec.keys.as_deref()
         && !matches!(k.ignore, crate::scan::Ignore::Always)
         && !k.cel.is_empty()

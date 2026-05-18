@@ -21,11 +21,16 @@ path = "src/main.rs"
 
 [dependencies]
 buffa = "0.5"
-buffa-types = "0.5"
-protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.2.2", default-features = false }
+protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.2.2", default-features = false, features = ["tz"] }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.2.0" }
 anyhow = "1"
 regex = "1"
+
+[dev-dependencies]
+# Referenced by the emit-compile fixture (`tests/emit_compiles.rs`) for
+# Duration / Timestamp typing in transpiler outputs. Runtime crate
+# already depends on chrono via protovalidate-buffa.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
 buffa-build = "0.5"
@@ -35,3 +40,5 @@ buffa-codegen = "0.5"
 anyhow = "1"
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
