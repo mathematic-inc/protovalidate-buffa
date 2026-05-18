@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.2.0...protovalidate-buffa-macros-v0.3.0) (2026-05-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10))
+
+### Features
+
+* Compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10)) ([ba01ffe](https://github.com/mathematic-inc/protovalidate-buffa/commit/ba01ffe75b6da086253c8366d266fbbd12c55e30))
+
 ## [0.2.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.1.0...protovalidate-buffa-macros-v0.2.0) (2026-05-09)
 
 
