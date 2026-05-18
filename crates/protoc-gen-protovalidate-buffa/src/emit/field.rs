@@ -26,7 +26,10 @@ use crate::scan::{
     clippy::too_many_lines,
     reason = "codegen helper — one branch per FieldKind; splitting hurts readability"
 )]
-pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
+pub fn emit(
+    field: &FieldValidator,
+    schemas: &crate::emit::cel::SchemaIndex,
+) -> Result<TokenStream> {
     if matches!(field.ignore, Ignore::Always) {
         return Ok(quote! {});
     }
@@ -232,6 +235,7 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                     kind_to_field_type(inner),
                     r,
                     inner,
+                    schemas,
                 )?);
             } else if let FieldKind::Message { full_name } = inner.as_ref() {
                 // Repeated message with no repeated-level rules — still recurse.
@@ -266,6 +270,7 @@ pub fn emit(field: &FieldValidator) -> Result<TokenStream> {
                     m,
                     key,
                     value,
+                    schemas,
                 )?);
             } else if let FieldKind::Message { full_name } = value.as_ref() {
                 // Map<K, Message> with no map-level rules — still recurse

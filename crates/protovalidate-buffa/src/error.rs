@@ -8,9 +8,13 @@ pub struct ValidationError {
     /// spec, CEL referencing a non-existent field). Maps to protovalidate's
     /// compilation error.
     pub compile_error: Option<String>,
-    /// Non-empty when a rule's runtime precondition failed (bytes.pattern on
-    /// non-UTF-8 input, CEL type mismatch). Maps to protovalidate's runtime
-    /// error.
+    /// Non-empty when a rule's runtime precondition failed. Examples:
+    /// `bytes.pattern` applied to non-UTF-8 input; a CEL expression
+    /// that the plugin transpiler classified as always-runtime-error
+    /// (e.g. `dyn(this).<unknown_field>`); a CEL expression the
+    /// transpiler couldn't compile (the unsupported construct is
+    /// inlined into the error message). Maps to protovalidate's
+    /// runtime error.
     pub runtime_error: Option<String>,
 }
 

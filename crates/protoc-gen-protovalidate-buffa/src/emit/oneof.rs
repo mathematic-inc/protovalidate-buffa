@@ -348,8 +348,8 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
         _ => {}
     }
 
-    checks.extend(emit_oneof_field_cel(v, f, &val_ident));
-    checks.extend(emit_oneof_predefined(v, f, &val_ident));
+    checks.extend(emit_oneof_field_cel(f));
+    checks.extend(emit_oneof_predefined(f));
 
     if checks.is_empty() {
         // Arm with no checks — return a wildcard so caller can decide.
@@ -392,11 +392,7 @@ fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStrea
 }
 
 /// Emit string field checks using an explicit `value_ident` instead of `self.<field>`.
-fn emit_oneof_field_cel(
-    oneof: &OneofValidator,
-    f: &FieldValidator,
-    val_ident: &syn::Ident,
-) -> Vec<TokenStream> {
+fn emit_oneof_field_cel(f: &FieldValidator) -> Vec<TokenStream> {
     if f.cel.is_empty() {
         return Vec::new();
     }
@@ -405,125 +401,28 @@ fn emit_oneof_field_cel(
     {
         return Vec::new();
     }
-
-    let field_path = oneof_field_path(f);
-    let this_expr = oneof_value_to_cel_expr(&f.field_type, val_ident);
-    let mut out = Vec::new();
-    let mut cel_idx: u64 = 0;
-    let mut expr_idx: u64 = 0;
-
-    for rule in &f.cel {
-        let ident = crate::emit::cel::const_ident(
-            &format!("{}_{}", oneof.parent_msg_name, f.field_name),
-            &rule.id,
-        );
-        let id = &rule.id;
-        let message = &rule.message;
-        let expr = &rule.expression;
-        let (idx_lit, method) = if rule.is_cel_expression {
-            let i = expr_idx;
-            expr_idx += 1;
-            (i, format_ident!("eval_expr_value_at"))
-        } else {
-            let i = cel_idx;
-            cel_idx += 1;
-            (i, format_ident!("eval_value_at"))
-        };
-        let fp = field_path.clone();
-        let this = this_expr.clone();
-        out.push(quote! {
-            static #ident: ::protovalidate_buffa::cel::CelConstraint =
-                ::protovalidate_buffa::cel::CelConstraint::new(#id, #message, #expr);
-            if let Err(viol) = #ident.#method(#this, #fp, #idx_lit) {
-                violations.push(viol);
-            }
-        });
-    }
-
-    out
+    f.cel
+        .iter()
+        .map(|rule| {
+            crate::emit::cel::emit_runtime_error_violation(
+                &rule.id,
+                &format!("unsupported CEL (oneof): {}", rule.expression),
+            )
+        })
+        .collect()
 }
 
-fn emit_oneof_predefined(
-    oneof: &OneofValidator,
-    f: &FieldValidator,
-    val_ident: &syn::Ident,
-) -> Vec<TokenStream> {
-    if f.standard.predefined.is_empty() {
-        return Vec::new();
-    }
-    let default_family = crate::emit::cel::predef_family_for(&f.field_type, &f.standard);
-    let field_path = oneof_field_path(f);
-    let this_expr = oneof_value_to_cel_expr(&f.field_type, val_ident);
-    let mut out = Vec::new();
-
-    for (pi, rule) in f.standard.predefined.iter().enumerate() {
-        let family = match rule.family_override {
-            Some((name, number)) => crate::emit::cel::Family { name, number },
-            None => match default_family {
-                Some(family) => family,
-                None => continue,
-            },
-        };
-        let ident = format_ident!(
-            "{}",
-            format!(
-                "CEL_{}_{}_PRED{}_{}_{}",
-                oneof
-                    .parent_msg_name
-                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
-                    .to_uppercase(),
-                f.field_name.to_uppercase(),
-                pi,
-                rule.ext_number,
-                rule.id
-                    .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
-                    .to_uppercase(),
+fn emit_oneof_predefined(f: &FieldValidator) -> Vec<TokenStream> {
+    f.standard
+        .predefined
+        .iter()
+        .map(|rule| {
+            crate::emit::cel::emit_runtime_error_violation(
+                &rule.id,
+                &format!("unsupported predefined CEL (oneof): {}", rule.expression),
             )
-        );
-        let id = &rule.id;
-        let message = &rule.message;
-        let expr = &rule.expression;
-        let family_name = family.name;
-        let family_num = family.number;
-        let ext_num = rule.ext_number;
-        let ext_fty = format_ident!("{}", rule.ext_field_type);
-        let ext_bracketed = format!("[buf.validate.conformance.cases.{}]", rule.ext_name);
-        let rule_value: TokenStream = syn::parse_str(&rule.rule_value_expr)
-            .unwrap_or_else(|_| quote! { ::protovalidate_buffa::cel_core::Value::Null });
-        let rule_path = quote! {
-            ::protovalidate_buffa::FieldPath {
-                elements: ::std::vec![
-                    ::protovalidate_buffa::FieldPathElement {
-                        field_number: Some(#family_num),
-                        field_name: Some(::std::borrow::Cow::Borrowed(#family_name)),
-                        field_type: Some(::protovalidate_buffa::FieldType::Message),
-                        key_type: None,
-                        value_type: None,
-                        subscript: None,
-                    },
-                    ::protovalidate_buffa::FieldPathElement {
-                        field_number: Some(#ext_num),
-                        field_name: Some(::std::borrow::Cow::Borrowed(#ext_bracketed)),
-                        field_type: Some(::protovalidate_buffa::FieldType::#ext_fty),
-                        key_type: None,
-                        value_type: None,
-                        subscript: None,
-                    },
-                ],
-            }
-        };
-        let fp = field_path.clone();
-        let this = this_expr.clone();
-        out.push(quote! {
-            static #ident: ::protovalidate_buffa::cel::CelConstraint =
-                ::protovalidate_buffa::cel::CelConstraint::new(#id, #message, #expr);
-            if let Err(viol) = #ident.eval_predefined(#this, #rule_value, #fp, #rule_path) {
-                violations.push(viol);
-            }
-        });
-    }
-
-    out
+        })
+        .collect()
 }
 
 #[expect(
@@ -1046,21 +945,6 @@ fn oneof_field_path(f: &FieldValidator) -> TokenStream {
                 },
             ],
         }
-    }
-}
-
-fn oneof_value_to_cel_expr(kind: &FieldKind, val_ident: &syn::Ident) -> TokenStream {
-    match kind {
-        FieldKind::String | FieldKind::Bytes | FieldKind::Enum { .. } => {
-            quote! { ::protovalidate_buffa::cel::to_cel_value(#val_ident) }
-        }
-        FieldKind::Message { .. } => {
-            quote! { ::protovalidate_buffa::cel::AsCelValue::as_cel_value(#val_ident.as_ref()) }
-        }
-        FieldKind::Wrapper(_) => {
-            quote! { ::protovalidate_buffa::cel::to_cel_value(&#val_ident.value) }
-        }
-        _ => quote! { ::protovalidate_buffa::cel::to_cel_value(&#val_ident) },
     }
 }
 

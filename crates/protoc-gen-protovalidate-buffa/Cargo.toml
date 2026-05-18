@@ -1,6 +1,6 @@
 [package]
 name = "protoc-gen-protovalidate-buffa"
-description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages."
+description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages. CEL expressions are transpiled to native Rust at codegen time — no runtime interpreter."
 version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
@@ -30,3 +30,8 @@ quote = "1"
 syn = { version = "2", features = ["full"] }
 prettyplease = "0.2"
 anyhow = "1"
+# Used parse-only — the runtime interpreter, regex pattern matching, and
+# chrono-based timestamp handling all live on the runtime side or get
+# transpiled away at codegen time, so the plugin can opt out of the
+# `regex` and `chrono` default features.
+cel = { version = "0.13", default-features = false }

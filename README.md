@@ -33,7 +33,7 @@ Compared to reflection-based implementations, the codegen approach has two chara
 
 | Crate | Purpose |
 |-------|---------|
-| [`protovalidate-buffa`](crates/protovalidate-buffa/) | Runtime library: `Validate` trait, structured `ValidationError` (with typed `compile_error` / `runtime_error` slots), `Violation` / `FieldPath`, rule helpers, CEL integration via `cel-interpreter`, Connect error adapter. |
+| [`protovalidate-buffa`](crates/protovalidate-buffa/) | Runtime library: `Validate` trait, structured `ValidationError` (with typed `compile_error` / `runtime_error` slots), `Violation` / `FieldPath`, rule helpers, `CelScalar` widening trait + Duration/Timestamp helpers, Connect error adapter. CEL rules are transpiled to native Rust at codegen time, so the runtime carries no interpreter. |
 | [`protovalidate-buffa-macros`](crates/protovalidate-buffa-macros/) | `#[connect_impl]` attribute macro — inserts `req.validate()?` at the top of every handler in a service `impl` block. Re-exported from the runtime crate. |
 | [`protoc-gen-protovalidate-buffa`](crates/protoc-gen-protovalidate-buffa/) | Codegen plugin. Reads `(buf.validate.*)` extensions off descriptors via buffa's `ExtensionSet`, emits `impl Validate for Foo` blocks. Wire into `buf.gen.yaml`. |
 | [`protovalidate-buffa-protos`](crates/protovalidate-buffa-protos/) | Compiled Rust for `buf/validate/validate.proto` (vendored under `proto/`). Consumed by the codegen plugin. |

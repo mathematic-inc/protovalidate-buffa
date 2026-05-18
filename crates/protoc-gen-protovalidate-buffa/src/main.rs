@@ -39,6 +39,27 @@ fn main() -> anyhow::Result<()> {
 fn run(
     request: &CodeGeneratorRequest,
 ) -> anyhow::Result<Vec<buffa_codegen::generated::compiler::code_generator_response::File>> {
+    let opts = parse_opts(request.parameter.as_deref().unwrap_or(""));
     let validators = scan::gather(request)?;
-    emit::render(&validators)
+    emit::render_with_options(&validators, &opts)
+}
+
+/// Parse the `opt: [...]` parameters passed via `buf.gen.yaml`. Accepts a
+/// comma-separated `key=value,flag,...` list (the format protoc / buf use
+/// to invoke plugins). Unknown keys are ignored so callers can pass
+/// forward-compatible options.
+fn parse_opts(parameter: &str) -> emit::Options {
+    let mut opts = emit::Options::default();
+    for part in parameter.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some((k, v)) = part.split_once('=')
+            && k.trim() == "proto_module"
+        {
+            opts.proto_module = v.trim().to_string();
+        }
+    }
+    opts
 }
