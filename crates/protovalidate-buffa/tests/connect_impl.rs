@@ -3,11 +3,7 @@
 //! inserts the decode + validate because it recognizes `OwnedView<_>` in
 //! the signature.
 
-// The generated macro output names `::buffa_protovalidate` paths that aren't
-// reachable from this test crate; we re-expose them under the expected
-// path via `extern crate self as buffa_protovalidate;`. Not part of the
-// public API — just test scaffolding.
-//
+#![cfg(feature = "connect")]
 // `clippy::result_large_err` fires on the fake trait because
 // `connectrpc::ConnectError` is a hefty type; the test doesn't care.
 #![allow(
