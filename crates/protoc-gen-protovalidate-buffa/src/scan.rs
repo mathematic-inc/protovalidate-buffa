@@ -73,8 +73,8 @@ pub struct FieldValidator {
     /// or `"source"`). `None` for non-oneof fields.
     pub oneof_name: Option<String>,
     /// True if the field has explicit presence semantics but is stored as
-    /// plain T (not Option<T>): proto2 LABEL_REQUIRED or editions
-    /// LEGACY_REQUIRED. IGNORE_IF_ZERO_VALUE should NOT skip rules for
+    /// plain `T` (not `Option<T>`): proto2 `LABEL_REQUIRED` or editions
+    /// `LEGACY_REQUIRED`. `IGNORE_IF_ZERO_VALUE` should NOT skip rules for
     /// such fields since the zero value is considered "set".
     pub is_legacy_required: bool,
     /// True if the field is proto group (TYPE_GROUP) — emits TYPE_GROUP in
@@ -121,10 +121,12 @@ pub struct PredefinedCel {
     pub id: String,
     pub message: String,
     pub expression: String,
-    /// Pre-rendered CEL value for the `rule` binding — e.g. `Value::Int(-2)`,
-    /// `Value::List(...)`, `Value::Bool(true)`. Stored as a Rust expression
-    /// string that the emit stage can splice directly into TokenStreams.
-    pub rule_value_expr: String,
+    /// The extension value decoded into a typed Rust enum so the
+    /// compile-time CEL transpiler can fold `rule` references to
+    /// literals. `None` when the value doesn't decode into a pure
+    /// scalar / list (e.g., message-typed rules other than wrapper
+    /// types).
+    pub rule_const: Option<RuleConst>,
     /// Extension number (for rule-path metadata).
     pub ext_number: i32,
     /// Extension name (e.g. "int32_abs_in_proto2").
@@ -135,6 +137,22 @@ pub struct PredefinedCel {
     /// MapRules directly (name=\"repeated\"/\"map\", number=18/19), rather
     /// than the field's scalar/message type.
     pub family_override: Option<(&'static str, i32)>,
+}
+
+/// Structured form of a predefined-rule extension value.
+///
+/// Carried on [`PredefinedCel::rule_const`] as the `rule` binding's
+/// compile-time value, so the CEL transpiler can fold `rule`
+/// references into Rust literals.
+#[derive(Debug, Clone)]
+pub enum RuleConst {
+    Bool(bool),
+    Int(i64),
+    UInt(u64),
+    Double(f64),
+    Str(String),
+    Bytes(Vec<u8>),
+    List(Vec<Self>),
 }
 
 /// Ignore semantics, mirroring `buf.validate.Ignore`.
@@ -540,6 +558,212 @@ fn collect_predefined_extensions(req: &CodeGeneratorRequest) -> PredefinedExtReg
     out
 }
 
+/// Decode a single optional predefined-rule extension value into a typed
+/// [`RuleConst`].
+///
+/// Returns `None` when the wire data shape doesn't match the declared proto
+/// type (the value is then unrepresentable as a plain Rust scalar, e.g. a
+/// non-wrapper message-typed extension).
+fn decode_optional_rule_const(
+    proto_type: field_descriptor_proto::Type,
+    data: &buffa::unknown_fields::UnknownFieldData,
+    type_name: &str,
+) -> Option<RuleConst> {
+    use buffa::unknown_fields::UnknownFieldData;
+    use field_descriptor_proto::Type;
+    match (proto_type, data) {
+        (Type::TYPE_BOOL, UnknownFieldData::Varint(v)) => Some(RuleConst::Bool(*v != 0)),
+        (Type::TYPE_INT32, UnknownFieldData::Varint(v)) => {
+            Some(RuleConst::Int(i64::from(*v as i32)))
+        }
+        (Type::TYPE_INT64 | Type::TYPE_SFIXED64, UnknownFieldData::Varint(v)) => {
+            Some(RuleConst::Int(*v as i64))
+        }
+        (Type::TYPE_SINT32 | Type::TYPE_SINT64, UnknownFieldData::Varint(v)) => {
+            // zigzag decode
+            let s = ((*v >> 1) as i64) ^ -((*v & 1) as i64);
+            Some(RuleConst::Int(s))
+        }
+        (Type::TYPE_UINT32, UnknownFieldData::Varint(v)) => Some(RuleConst::UInt(*v as u32 as u64)),
+        (Type::TYPE_UINT64 | Type::TYPE_FIXED64, UnknownFieldData::Varint(v)) => {
+            Some(RuleConst::UInt(*v))
+        }
+        (Type::TYPE_FIXED32, UnknownFieldData::Fixed32(v)) => Some(RuleConst::UInt(u64::from(*v))),
+        (Type::TYPE_SFIXED32, UnknownFieldData::Fixed32(v)) => {
+            Some(RuleConst::Int(i64::from(*v as i32)))
+        }
+        (Type::TYPE_FLOAT, UnknownFieldData::Fixed32(v)) => {
+            Some(RuleConst::Double(f64::from(f32::from_bits(*v))))
+        }
+        (Type::TYPE_DOUBLE, UnknownFieldData::Fixed64(v)) => {
+            Some(RuleConst::Double(f64::from_bits(*v)))
+        }
+        (Type::TYPE_STRING, UnknownFieldData::LengthDelimited(data)) => {
+            Some(RuleConst::Str(String::from_utf8_lossy(data).into_owned()))
+        }
+        (Type::TYPE_BYTES, UnknownFieldData::LengthDelimited(data)) => {
+            Some(RuleConst::Bytes(data.clone()))
+        }
+        // Wrapper types (e.g. google.protobuf.Int64Value) — decode the inner
+        // .value field (field 1).
+        (Type::TYPE_MESSAGE, UnknownFieldData::LengthDelimited(data)) => {
+            decode_wrapper_rule_const(type_name, data.as_slice())
+        }
+        _ => None,
+    }
+}
+
+fn decode_repeated_rule_const(
+    proto_type: field_descriptor_proto::Type,
+    data: &buffa::unknown_fields::UnknownFieldData,
+    type_name: &str,
+) -> Vec<RuleConst> {
+    use buffa::unknown_fields::UnknownFieldData;
+    use field_descriptor_proto::Type;
+    let mut out = Vec::new();
+    if let Some(v) = decode_optional_rule_const(proto_type, data, type_name) {
+        out.push(v);
+    } else if let UnknownFieldData::LengthDelimited(bytes) = data {
+        // Packed repeated numeric.
+        let mut buf: &[u8] = bytes.as_slice();
+        while !buf.is_empty() {
+            match proto_type {
+                Type::TYPE_INT32
+                | Type::TYPE_INT64
+                | Type::TYPE_UINT32
+                | Type::TYPE_UINT64
+                | Type::TYPE_BOOL
+                | Type::TYPE_ENUM => {
+                    let Some((v, rest)) = varint_decode(buf) else {
+                        break;
+                    };
+                    let elem = match proto_type {
+                        Type::TYPE_BOOL => RuleConst::Bool(v != 0),
+                        Type::TYPE_INT32 => RuleConst::Int(i64::from(v as i32)),
+                        Type::TYPE_INT64 => RuleConst::Int(v as i64),
+                        Type::TYPE_UINT32 => RuleConst::UInt(u64::from(v as u32)),
+                        Type::TYPE_UINT64 => RuleConst::UInt(v),
+                        Type::TYPE_ENUM => RuleConst::Int(i64::from(v as i32)),
+                        _ => unreachable!(),
+                    };
+                    out.push(elem);
+                    buf = rest;
+                }
+                Type::TYPE_SINT32 | Type::TYPE_SINT64 => {
+                    let Some((v, rest)) = varint_decode(buf) else {
+                        break;
+                    };
+                    let s = ((v >> 1) as i64) ^ -((v & 1) as i64);
+                    out.push(RuleConst::Int(s));
+                    buf = rest;
+                }
+                Type::TYPE_FIXED32 | Type::TYPE_SFIXED32 => {
+                    if buf.len() < 4 {
+                        break;
+                    }
+                    let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+                    let elem = if proto_type == Type::TYPE_FIXED32 {
+                        RuleConst::UInt(u64::from(v))
+                    } else {
+                        RuleConst::Int(i64::from(v as i32))
+                    };
+                    out.push(elem);
+                    buf = &buf[4..];
+                }
+                Type::TYPE_FIXED64 | Type::TYPE_SFIXED64 => {
+                    if buf.len() < 8 {
+                        break;
+                    }
+                    let v = u64::from_le_bytes([
+                        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+                    ]);
+                    let elem = if proto_type == Type::TYPE_FIXED64 {
+                        RuleConst::UInt(v)
+                    } else {
+                        RuleConst::Int(v as i64)
+                    };
+                    out.push(elem);
+                    buf = &buf[8..];
+                }
+                Type::TYPE_FLOAT => {
+                    if buf.len() < 4 {
+                        break;
+                    }
+                    let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+                    out.push(RuleConst::Double(f64::from(f32::from_bits(v))));
+                    buf = &buf[4..];
+                }
+                Type::TYPE_DOUBLE => {
+                    if buf.len() < 8 {
+                        break;
+                    }
+                    let v = u64::from_le_bytes([
+                        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+                    ]);
+                    out.push(RuleConst::Double(f64::from_bits(v)));
+                    buf = &buf[8..];
+                }
+                _ => break,
+            }
+        }
+    }
+    out
+}
+
+/// Decode a `google.protobuf.<X>Value` wrapper extension's inner scalar.
+fn decode_wrapper_rule_const(type_name: &str, data: &[u8]) -> Option<RuleConst> {
+    use field_descriptor_proto::Type;
+    let inner_ty = wrapper_inner_type(type_name)?;
+    // Wrapper messages always have a single `value` field (number 1).
+    // Wire format: tag(1, <wire>) + payload.
+    let (tag, rest) = varint_decode(data)?;
+    let field_number = tag >> 3;
+    let wire_type = (tag & 0x07) as u8;
+    if field_number != 1 {
+        return None;
+    }
+    match (inner_ty, wire_type) {
+        (Type::TYPE_BOOL, 0) => varint_decode(rest).map(|(v, _)| RuleConst::Bool(v != 0)),
+        (Type::TYPE_INT32, 0) => {
+            varint_decode(rest).map(|(v, _)| RuleConst::Int(i64::from(v as i32)))
+        }
+        (Type::TYPE_INT64, 0) => varint_decode(rest).map(|(v, _)| RuleConst::Int(v as i64)),
+        (Type::TYPE_UINT32, 0) => {
+            varint_decode(rest).map(|(v, _)| RuleConst::UInt(u64::from(v as u32)))
+        }
+        (Type::TYPE_UINT64, 0) => varint_decode(rest).map(|(v, _)| RuleConst::UInt(v)),
+        (Type::TYPE_FLOAT, 5) if rest.len() >= 4 => {
+            let v = u32::from_le_bytes([rest[0], rest[1], rest[2], rest[3]]);
+            Some(RuleConst::Double(f64::from(f32::from_bits(v))))
+        }
+        (Type::TYPE_DOUBLE, 1) if rest.len() >= 8 => {
+            let v = u64::from_le_bytes([
+                rest[0], rest[1], rest[2], rest[3], rest[4], rest[5], rest[6], rest[7],
+            ]);
+            Some(RuleConst::Double(f64::from_bits(v)))
+        }
+        (Type::TYPE_STRING, 2) => {
+            let (len, after_tag) = varint_decode(rest)?;
+            let len_u = len as usize;
+            if after_tag.len() < len_u {
+                return None;
+            }
+            Some(RuleConst::Str(
+                String::from_utf8_lossy(&after_tag[..len_u]).into_owned(),
+            ))
+        }
+        (Type::TYPE_BYTES, 2) => {
+            let (len, after_tag) = varint_decode(rest)?;
+            let len_u = len as usize;
+            if after_tag.len() < len_u {
+                return None;
+            }
+            Some(RuleConst::Bytes(after_tag[..len_u].to_vec()))
+        }
+        _ => None,
+    }
+}
+
 /// Decode unknown-field extension values on a rule message (e.g., `Int32Rules`)
 /// and match them against the `predef` registry to produce `PredefinedCel`
 /// entries suitable for emission.
@@ -548,10 +772,10 @@ fn scan_predefined_on(
     unknown: &buffa::UnknownFields,
     predef: &PredefinedExtRegistry,
 ) -> Vec<PredefinedCel> {
-    use buffa::unknown_fields::UnknownFieldData;
-    // Group repeated extension values by number so we can emit a single CEL
-    // rule with `rule` bound to a list.
-    let mut repeated_groups: std::collections::BTreeMap<u32, Vec<String>> =
+    // Group repeated extension values by number so we can emit a single
+    // CEL rule with `rule` bound to a list of `RuleConst`s (consumed by
+    // the compile-time CEL transpiler).
+    let mut repeated_groups: std::collections::BTreeMap<u32, Vec<RuleConst>> =
         std::collections::BTreeMap::default();
     for uf in unknown {
         let Some(meta) = predef.get(&(extendee_fqn.to_string(), uf.number)) else {
@@ -563,32 +787,27 @@ fn scan_predefined_on(
         if meta.label == field_descriptor_proto::Label::LABEL_REPEATED {
             // For packed: LengthDelimited contains a sequence of varints/fixed values.
             // For non-packed: each element shows as its own UnknownField.
-            let elems = decode_repeated_element(meta, &uf.data);
-            for e in elems {
-                repeated_groups.entry(uf.number).or_default().push(e);
-            }
+            let consts = decode_repeated_rule_const(meta.proto_type, &uf.data, &meta.type_name);
+            repeated_groups.entry(uf.number).or_default().extend(consts);
         }
     }
     let mut out = Vec::new();
     // Emit repeated rules first (one CEL per extension number, value = list).
-    for (num, elems) in &repeated_groups {
+    for (num, consts) in &repeated_groups {
         let Some(meta) = predef.get(&(extendee_fqn.to_string(), *num)) else {
             continue;
         };
         if meta.cel.is_empty() {
             continue;
         }
-        let items = elems.join(", ");
-        let rule_value_expr = format!(
-            "::protovalidate_buffa::cel_core::Value::List(::std::sync::Arc::new(::std::vec![{items}]))"
-        );
+        let rule_const = Some(RuleConst::List(consts.clone()));
         let ext_ty_name = ext_type_name(meta.proto_type);
         for rule in &meta.cel {
             out.push(PredefinedCel {
                 id: rule.id.clone(),
                 message: rule.message.clone(),
                 expression: rule.expression.clone(),
-                rule_value_expr: rule_value_expr.clone(),
+                rule_const: rule_const.clone(),
                 ext_number: meta.number as i32,
                 ext_name: meta.name.clone(),
                 ext_field_type: ext_ty_name.to_string(),
@@ -606,86 +825,13 @@ fn scan_predefined_on(
         if meta.label == field_descriptor_proto::Label::LABEL_REPEATED {
             continue;
         }
-        // Decode the value based on label + proto type.
-        let rule_value_expr = match (meta.label, meta.proto_type, &uf.data) {
-            (_, field_descriptor_proto::Type::TYPE_BOOL, UnknownFieldData::Varint(v)) => {
-                format!("::protovalidate_buffa::cel_core::Value::Bool({})", *v != 0)
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_INT32,
-                UnknownFieldData::Varint(v),
-            ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::Int({} as i64)",
-                    *v as i32
-                )
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_INT64
-                | field_descriptor_proto::Type::TYPE_SINT64
-                | field_descriptor_proto::Type::TYPE_SFIXED64,
-                UnknownFieldData::Varint(v),
-            ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::Int({}i64)",
-                    *v as i64
-                )
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_UINT32,
-                UnknownFieldData::Varint(v),
-            ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::UInt({}u64)",
-                    *v as u32
-                )
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_UINT64
-                | field_descriptor_proto::Type::TYPE_FIXED64,
-                UnknownFieldData::Varint(v),
-            ) => {
-                format!("::protovalidate_buffa::cel_core::Value::UInt({}u64)", *v)
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_FLOAT,
-                UnknownFieldData::Fixed32(v),
-            ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({}u32) as f64)",
-                    *v
-                )
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_DOUBLE,
-                UnknownFieldData::Fixed64(v),
-            ) => {
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({}u64))",
-                    *v
-                )
-            }
-            (
-                field_descriptor_proto::Label::LABEL_OPTIONAL,
-                field_descriptor_proto::Type::TYPE_STRING,
-                UnknownFieldData::LengthDelimited(data),
-            ) => {
-                let s = String::from_utf8_lossy(data).to_string();
-                format!(
-                    "::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"
-                )
-            }
-            _ => continue,
-        };
-        // Map proto type → FieldType variant name for rule-path metadata.
-        let ext_ty_name = ext_type_name(meta.proto_type);
-        let _ = ext_ty_name;
+        let rule_const = decode_optional_rule_const(meta.proto_type, &uf.data, &meta.type_name);
+        // Skip extensions whose value we couldn't decode (matches the
+        // previous behavior of bailing on unsupported (label, type, wire)
+        // combinations).
+        if rule_const.is_none() {
+            continue;
+        }
         let ext_ty_name = match meta.proto_type {
             field_descriptor_proto::Type::TYPE_INT32 => "Int32",
             field_descriptor_proto::Type::TYPE_INT64 => "Int64",
@@ -711,7 +857,7 @@ fn scan_predefined_on(
                 id: rule.id.clone(),
                 message: rule.message.clone(),
                 expression: rule.expression.clone(),
-                rule_value_expr: rule_value_expr.clone(),
+                rule_const: rule_const.clone(),
                 ext_number: meta.number as i32,
                 ext_name: meta.name.clone(),
                 ext_field_type: ext_ty_name.to_string(),
@@ -791,225 +937,6 @@ const fn ext_type_name(t: field_descriptor_proto::Type) -> &'static str {
     }
 }
 
-/// Decode a single element of a repeated extension field from its UnknownFieldData.
-/// For packed (LengthDelimited) repeated, multiple elements may be in one entry;
-/// this function returns each as a CEL Value expression.
-fn decode_repeated_element(
-    meta: &PredefinedExt,
-    data: &buffa::unknown_fields::UnknownFieldData,
-) -> Vec<String> {
-    use buffa::unknown_fields::UnknownFieldData;
-    use field_descriptor_proto::Type;
-    let mut out = Vec::new();
-    match (meta.proto_type, data) {
-        (
-            Type::TYPE_INT32
-            | Type::TYPE_INT64
-            | Type::TYPE_UINT32
-            | Type::TYPE_UINT64
-            | Type::TYPE_BOOL
-            | Type::TYPE_ENUM,
-            UnknownFieldData::Varint(v),
-        ) => {
-            let expr = scalar_to_cel_value_expr(meta.proto_type, Some(*v), None, None, None);
-            out.push(expr);
-        }
-        (Type::TYPE_SINT32 | Type::TYPE_SINT64, UnknownFieldData::Varint(v)) => {
-            // zigzag decode
-            let s = ((*v >> 1) as i64) ^ -((*v & 1) as i64);
-            out.push(format!(
-                "::protovalidate_buffa::cel_core::Value::Int({s}i64)"
-            ));
-        }
-        (Type::TYPE_FIXED32 | Type::TYPE_SFIXED32, UnknownFieldData::Fixed32(v)) => {
-            out.push(scalar_to_cel_value_expr(
-                meta.proto_type,
-                None,
-                Some(*v as u64),
-                None,
-                None,
-            ));
-        }
-        (Type::TYPE_FIXED64 | Type::TYPE_SFIXED64, UnknownFieldData::Fixed64(v)) => {
-            out.push(scalar_to_cel_value_expr(
-                meta.proto_type,
-                None,
-                Some(*v),
-                None,
-                None,
-            ));
-        }
-        (Type::TYPE_FLOAT, UnknownFieldData::Fixed32(v)) => {
-            let v = *v;
-            out.push(format!(
-                "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"
-            ));
-        }
-        (Type::TYPE_DOUBLE, UnknownFieldData::Fixed64(v)) => {
-            let v = *v;
-            out.push(format!(
-                "::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({v}u64))"
-            ));
-        }
-        (Type::TYPE_STRING, UnknownFieldData::LengthDelimited(data)) => {
-            let s = String::from_utf8_lossy(data).to_string();
-            out.push(format!("::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"));
-        }
-        (Type::TYPE_BYTES, UnknownFieldData::LengthDelimited(data)) => {
-            let b: Vec<u8> = data.clone();
-            out.push(format!(
-                "::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{b:?}))"
-            ));
-        }
-        // Wrapper types (e.g. google.protobuf.Int64Value) — decode the inner
-        // .value field (field 1). The wire format for an Int64Value{value:3}
-        // is tag(1, Varint) + 0x03.
-        (Type::TYPE_MESSAGE, UnknownFieldData::LengthDelimited(data)) => {
-            let inner_ty = wrapper_inner_type(&meta.type_name);
-            if let Some(t) = inner_ty {
-                // Find first field of tag 1 in the inner bytes.
-                if let Some(val) = decode_wrapper_value(t, data.as_slice()) {
-                    out.push(val);
-                }
-            }
-        }
-        // Packed repeated numeric.
-        (_, UnknownFieldData::LengthDelimited(data)) => {
-            let mut buf: &[u8] = data.as_slice();
-            while !buf.is_empty() {
-                match meta.proto_type {
-                    Type::TYPE_INT32
-                    | Type::TYPE_INT64
-                    | Type::TYPE_UINT32
-                    | Type::TYPE_UINT64
-                    | Type::TYPE_BOOL
-                    | Type::TYPE_ENUM => {
-                        let Some((v, rest)) = varint_decode(buf) else {
-                            break;
-                        };
-                        out.push(scalar_to_cel_value_expr(
-                            meta.proto_type,
-                            Some(v),
-                            None,
-                            None,
-                            None,
-                        ));
-                        buf = rest;
-                    }
-                    Type::TYPE_SINT32 | Type::TYPE_SINT64 => {
-                        let Some((v, rest)) = varint_decode(buf) else {
-                            break;
-                        };
-                        let s = ((v >> 1) as i64) ^ -((v & 1) as i64);
-                        out.push(format!(
-                            "::protovalidate_buffa::cel_core::Value::Int({s}i64)"
-                        ));
-                        buf = rest;
-                    }
-                    Type::TYPE_FIXED32 | Type::TYPE_SFIXED32 => {
-                        if buf.len() < 4 {
-                            break;
-                        }
-                        let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                        out.push(scalar_to_cel_value_expr(
-                            meta.proto_type,
-                            None,
-                            Some(v as u64),
-                            None,
-                            None,
-                        ));
-                        buf = &buf[4..];
-                    }
-                    Type::TYPE_FIXED64 | Type::TYPE_SFIXED64 => {
-                        if buf.len() < 8 {
-                            break;
-                        }
-                        let v = u64::from_le_bytes([
-                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
-                        ]);
-                        out.push(scalar_to_cel_value_expr(
-                            meta.proto_type,
-                            None,
-                            Some(v),
-                            None,
-                            None,
-                        ));
-                        buf = &buf[8..];
-                    }
-                    Type::TYPE_FLOAT => {
-                        if buf.len() < 4 {
-                            break;
-                        }
-                        let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                        out.push(format!("::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"));
-                        buf = &buf[4..];
-                    }
-                    Type::TYPE_DOUBLE => {
-                        if buf.len() < 8 {
-                            break;
-                        }
-                        let v = u64::from_le_bytes([
-                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
-                        ]);
-                        out.push(format!(
-                            "::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({v}u64))"
-                        ));
-                        buf = &buf[8..];
-                    }
-                    _ => break,
-                }
-            }
-        }
-        _ => {}
-    }
-    out
-}
-
-fn scalar_to_cel_value_expr(
-    ty: field_descriptor_proto::Type,
-    varint: Option<u64>,
-    fixed: Option<u64>,
-    _len: Option<&[u8]>,
-    _str_: Option<&str>,
-) -> String {
-    use field_descriptor_proto::Type;
-    match ty {
-        Type::TYPE_INT32 => format!(
-            "::protovalidate_buffa::cel_core::Value::Int({} as i64)",
-            varint.unwrap_or(0) as i32
-        ),
-        Type::TYPE_INT64 | Type::TYPE_SFIXED64 => format!(
-            "::protovalidate_buffa::cel_core::Value::Int({}i64)",
-            fixed.or(varint).unwrap_or(0) as i64
-        ),
-        Type::TYPE_UINT32 => format!(
-            "::protovalidate_buffa::cel_core::Value::UInt({}u64)",
-            varint.unwrap_or(0) as u32
-        ),
-        Type::TYPE_UINT64 | Type::TYPE_FIXED64 => format!(
-            "::protovalidate_buffa::cel_core::Value::UInt({}u64)",
-            fixed.or(varint).unwrap_or(0)
-        ),
-        Type::TYPE_FIXED32 => format!(
-            "::protovalidate_buffa::cel_core::Value::UInt({}u64)",
-            fixed.unwrap_or(0) as u32
-        ),
-        Type::TYPE_SFIXED32 => format!(
-            "::protovalidate_buffa::cel_core::Value::Int({}i64)",
-            fixed.unwrap_or(0) as i32
-        ),
-        Type::TYPE_BOOL => format!(
-            "::protovalidate_buffa::cel_core::Value::Bool({})",
-            varint.unwrap_or(0) != 0
-        ),
-        Type::TYPE_ENUM => format!(
-            "::protovalidate_buffa::cel_core::Value::Int({}i64)",
-            varint.unwrap_or(0) as i32
-        ),
-        _ => "::protovalidate_buffa::cel_core::Value::Null".to_string(),
-    }
-}
-
 fn wrapper_inner_type(type_name: &str) -> Option<field_descriptor_proto::Type> {
     use field_descriptor_proto::Type;
     let name = type_name.trim_start_matches('.');
@@ -1025,104 +952,6 @@ fn wrapper_inner_type(type_name: &str) -> Option<field_descriptor_proto::Type> {
         "google.protobuf.BytesValue" => Some(Type::TYPE_BYTES),
         _ => None,
     }
-}
-
-fn decode_wrapper_value(ty: field_descriptor_proto::Type, bytes: &[u8]) -> Option<String> {
-    use field_descriptor_proto::Type;
-    // Look for tag (field 1, wire type depends on ty).
-    let mut buf = bytes;
-    while !buf.is_empty() {
-        let (tag, rest) = varint_decode(buf)?;
-        let field_num = tag >> 3;
-        let wire_type = tag & 0x7;
-        buf = rest;
-        if field_num != 1 {
-            // Skip unknown field of this wire type.
-            match wire_type {
-                0 => {
-                    let (_, r) = varint_decode(buf)?;
-                    buf = r;
-                }
-                1 => {
-                    if buf.len() < 8 {
-                        return None;
-                    }
-                    buf = &buf[8..];
-                }
-                2 => {
-                    let (len, r) = varint_decode(buf)?;
-                    let len = len as usize;
-                    if r.len() < len {
-                        return None;
-                    }
-                    buf = &r[len..];
-                }
-                5 => {
-                    if buf.len() < 4 {
-                        return None;
-                    }
-                    buf = &buf[4..];
-                }
-                _ => return None,
-            }
-            continue;
-        }
-        // Field 1 — decode based on ty.
-        return match ty {
-            Type::TYPE_INT32
-            | Type::TYPE_INT64
-            | Type::TYPE_UINT32
-            | Type::TYPE_UINT64
-            | Type::TYPE_BOOL => {
-                let (v, _) = varint_decode(buf)?;
-                Some(scalar_to_cel_value_expr(ty, Some(v), None, None, None))
-            }
-            Type::TYPE_FLOAT => {
-                if buf.len() < 4 {
-                    return None;
-                }
-                let v = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                Some(format!(
-                    "::protovalidate_buffa::cel_core::Value::Float(f32::from_bits({v}u32) as f64)"
-                ))
-            }
-            Type::TYPE_DOUBLE => {
-                if buf.len() < 8 {
-                    return None;
-                }
-                let v = u64::from_le_bytes([
-                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
-                ]);
-                Some(format!(
-                    "::protovalidate_buffa::cel_core::Value::Float(f64::from_bits({v}u64))"
-                ))
-            }
-            Type::TYPE_STRING => {
-                let (len, r) = varint_decode(buf)?;
-                let len = len as usize;
-                if r.len() < len {
-                    return None;
-                }
-                let s = String::from_utf8_lossy(&r[..len]).to_string();
-                Some(format!(
-                    "::protovalidate_buffa::cel_core::Value::String(::std::sync::Arc::new({s:?}.to_string()))"
-                ))
-            }
-            Type::TYPE_BYTES => {
-                let (len, r) = varint_decode(buf)?;
-                let len = len as usize;
-                if r.len() < len {
-                    return None;
-                }
-                let bytes: Vec<u8> = r[..len].to_vec();
-                Some(format!(
-                    "::protovalidate_buffa::cel_core::Value::Bytes(::std::sync::Arc::new(vec!{bytes:?}))"
-                ))
-            }
-            _ => None,
-        };
-    }
-    None
 }
 
 /// Decode a single protobuf varint from the front of `buf`, returning the
@@ -1415,8 +1244,14 @@ fn check_message_cel_missing_fields(cels: &[CelRule], fields: &[FieldValidator])
     None
 }
 
-/// Detect simple schema/type CEL compile errors that `cel-interpreter` only
-/// reports when the expression is evaluated against a concrete runtime value.
+/// Detect simple schema/type CEL compile errors that a runtime CEL
+/// evaluator would only report once the rule is evaluated against a
+/// concrete message instance.
+///
+/// Examples: `this.foo.startsWith(this.bar)` where `bar` is a numeric
+/// field, or `this.foo == 0` where `foo` is a string. Catching these
+/// at codegen time lets the plugin surface a clean `compile_error`
+/// instead of waiting for a runtime mismatch.
 fn check_message_cel_type_errors(cels: &[CelRule], fields: &[FieldValidator]) -> Option<String> {
     let kinds: std::collections::HashMap<&str, &FieldKind> = fields
         .iter()

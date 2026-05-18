@@ -28,8 +28,8 @@ fn main() {
     }
     let includes_str: Vec<&str> = includes.iter().map(String::as_str).collect();
 
-    // validate.proto transitively uses FieldDescriptorProto.Type, which is not
-    // in buffa_types. Compile all required google.protobuf WKTs locally.
+    // validate.proto transitively uses FieldDescriptorProto.Type, so compile
+    // all required google.protobuf WKTs locally alongside it.
     let mut files = vec![validate_proto.to_str().expect("utf-8 path").to_string()];
     if let Some(ref inc) = protoc_include {
         for wkt in &[

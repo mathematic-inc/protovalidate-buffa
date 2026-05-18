@@ -153,18 +153,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buffa-types"
-version = "0.5.2"
-source = "git+https://github.com/anthropics/buffa?rev=4c264ddd6fdd286f237dac0551fd420907b4864c#4c264ddd6fdd286f237dac0551fd420907b4864c"
-dependencies = [
- "buffa",
- "bytes",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -204,11 +192,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47a40f338a8c3505921000b609279775792c07cc21f97a3011578c0c5e1738ae"
 dependencies = [
  "antlr4rust",
- "chrono",
  "lazy_static",
  "nom",
  "pastey",
- "regex",
  "serde",
  "thiserror 1.0.69",
 ]
@@ -227,8 +213,17 @@ checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
  "num-traits",
- "serde",
  "windows-link",
+]
+
+[[package]]
+name = "chrono-tz"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6139a8597ed92cf816dfb33f5dd6cf0bb93a6adc938f11039f371bc5bcd26c3"
+dependencies = [
+ "chrono",
+ "phf",
 ]
 
 [[package]]
@@ -724,6 +719,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "phf"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "913273894cec178f401a31ec4b656318d95473527be05c0752cc41cdc32be8b7"
+dependencies = [
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06005508882fb681fd97892ecff4b7fd0fee13ef1aa569f8695dae7ab9099981"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -790,6 +803,7 @@ dependencies = [
  "anyhow",
  "buffa",
  "buffa-codegen",
+ "cel",
  "prettyplease",
  "proc-macro2",
  "protovalidate-buffa-protos",
@@ -802,9 +816,8 @@ name = "protovalidate-buffa"
 version = "0.2.2"
 dependencies = [
  "buffa",
- "buffa-types",
- "cel",
  "chrono",
+ "chrono-tz",
  "connectrpc",
  "fluent-uri",
  "http",
@@ -824,11 +837,13 @@ dependencies = [
  "buffa",
  "buffa-build",
  "buffa-codegen",
- "buffa-types",
+ "chrono",
  "prettyplease",
+ "proc-macro2",
  "protoc-gen-protovalidate-buffa",
  "protovalidate-buffa",
  "protovalidate-buffa-protos",
+ "quote",
  "regex",
  "syn",
 ]
@@ -837,7 +852,6 @@ dependencies = [
 name = "protovalidate-buffa-macros"
 version = "0.2.0"
 dependencies = [
- "connectrpc",
  "proc-macro2",
  "quote",
  "syn",
@@ -849,7 +863,6 @@ version = "0.2.0"
 dependencies = [
  "buffa",
  "buffa-build",
- "buffa-types",
 ]
 
 [[package]]
@@ -1045,6 +1058,12 @@ name = "simd-adler32"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+
+[[package]]
+name = "siphasher"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
 name = "slab"

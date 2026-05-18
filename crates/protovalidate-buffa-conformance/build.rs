@@ -6,7 +6,14 @@ use std::{collections::BTreeMap, fmt::Write as _, path::PathBuf};
 
 use buffa::Message;
 use buffa_codegen::generated::{compiler::CodeGeneratorRequest, descriptor::FileDescriptorSet};
+use protoc_gen_protovalidate_buffa::emit::cel_compile::{
+    Binding, CelType, Compiler, MapTy, RustScalar,
+};
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "build script orchestration is sequential by nature; splitting further would just thread arguments through helpers without adding clarity"
+)]
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
@@ -116,9 +123,18 @@ fn main() {
     // Write each emitted file under a `pv_` prefix so it doesn't collide with
     // buffa-build's output. Emitted filename is `<stem_with_dots>.rs` —
     // e.g. `buf.validate.conformance.cases.bool.rs`.
+    //
+    // The plugin also emits a top-level `mod.rs` and per-package
+    // `<pkg>.mod.rs` packaging files for downstream Rust crates that just
+    // want `pub mod protovalidate;` to wire everything up. The conformance
+    // crate has its own merging include scheme (`write_merged_include`),
+    // so skip these here.
     let mut emitted_paths: Vec<(String, String)> = Vec::new(); // (package, include_filename)
     for f in &emitted {
         let name = f.name.as_deref().expect("emitted file has name");
+        if name == "mod.rs" || name.ends_with(".mod.rs") {
+            continue;
+        }
         // Figure out the package: strip trailing `.rs`, then everything up
         // to the last `.` is the package.
         let stem = name.trim_end_matches(".rs");
@@ -136,6 +152,13 @@ fn main() {
     // Write a dispatch module listing all registered types (package FQN +
     // local Rust path). The runtime registry uses this.
     write_dispatch_rs(&out_dir, &validators);
+
+    // Run the CEL transpiler against a curated battery of expressions and
+    // write the emitted tokens into a Rust source file. The `emit_compiles`
+    // integration test `include!()`s that file, so the test crate's compile
+    // is the verification — any token sequence that doesn't type-check
+    // breaks the build.
+    write_cel_emit_fixtures(&out_dir);
 }
 
 fn walk_protos(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
@@ -339,6 +362,695 @@ fn snake_case(s: &str) -> String {
         out.push(c.to_ascii_lowercase());
     }
     out
+}
+
+/// Spec for one CEL → Rust transpile-and-compile check.
+///
+/// `name` becomes the generated function name; `expr` is the CEL source;
+/// `this_ty` is the static type bound to the `this` ident; `extras` are
+/// additional bindings (e.g. a `rule` const for predefined-rule cases);
+/// `expect_ret` is the Rust type the transpiler is expected to produce —
+/// the generated function ascribes `let _: <expect_ret> = <emitted>;` so
+/// the Rust compile verifies both type-correctness AND that the
+/// transpiler returned the type we anticipated.
+struct CelCheck {
+    name: &'static str,
+    expr: &'static str,
+    this_ty: CelType,
+    /// `(name, CelType, optional rule-const)` for additional `bind` calls.
+    extras: Vec<(
+        &'static str,
+        CelType,
+        Option<protoc_gen_protovalidate_buffa::scan::RuleConst>,
+    )>,
+    /// Rust type the emitted tokens evaluate to.
+    expect_ret: &'static str,
+}
+
+/// Generate the integration-test fixture file. Each check becomes a
+/// `pub fn _check_<name>(...)` whose body is the emitted expression
+/// ascribed to its expected Rust type. The test crate must compile;
+/// if any emitted token doesn't type-check, the build fails.
+#[allow(clippy::too_many_lines)]
+fn write_cel_emit_fixtures(out_dir: &std::path::Path) {
+    let str_map = || {
+        CelType::Map(Box::new(MapTy {
+            key_cel: CelType::Str { owned: false },
+            value_cel: CelType::Int,
+            key_rust: RustScalar::Str,
+            value_rust: RustScalar::I64,
+        }))
+    };
+    let int_map = || {
+        CelType::Map(Box::new(MapTy {
+            key_cel: CelType::Int,
+            value_cel: CelType::Str { owned: false },
+            key_rust: RustScalar::I64,
+            value_rust: RustScalar::Str,
+        }))
+    };
+
+    let checks: Vec<CelCheck> = vec![
+        // --- int/uint cross-type compare (i128 promotion path)
+        CelCheck {
+            name: "int_eq_uint",
+            expr: "this == 1u",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "int_lt_uint",
+            expr: "this < 5u",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "uint_gt_int",
+            expr: "this > 0",
+            this_ty: CelType::UInt,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- type() reflection
+        CelCheck {
+            name: "type_of_int_eq_int_marker",
+            expr: "type(this) == int",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "type_of_string",
+            expr: "type(this) == string",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- dynamic duration / timestamp
+        CelCheck {
+            name: "duration_literal",
+            expr: "this >= duration('1s')",
+            this_ty: CelType::Duration,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_dynamic",
+            expr: "duration(this) >= duration('1s')",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_literal",
+            expr: "this > timestamp('2020-01-01T00:00:00Z')",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_dynamic",
+            expr: "timestamp(this) > timestamp('2020-01-01T00:00:00Z')",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- two-variable comprehensions
+        CelCheck {
+            name: "two_var_map_all",
+            expr: "this.all(k, v, size(k) > 0 && v > 0)",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "two_var_map_exists",
+            expr: "this.exists(k, v, v == 1)",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "two_var_map_exists_one",
+            expr: "this.exists_one(k, v, v == 1)",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "two_var_map_filter",
+            expr: "size(this.filter(k, v, v > 0)) >= 0",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "two_var_map_map_four_arg",
+            expr: "size(this.map(k, v, v > 0, v * 2)) >= 0",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "two_var_list_all",
+            expr: "this.all(i, v, i >= 0 && v > 0)",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- non-string join
+        CelCheck {
+            name: "join_int_list",
+            expr: "this.join(',')",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        CelCheck {
+            name: "join_double_list",
+            expr: "this.join(' ')",
+            this_ty: CelType::List(Box::new(CelType::Double)),
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        // --- format directives
+        CelCheck {
+            name: "format_hex_lower",
+            expr: "'%x'.format([this])",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        CelCheck {
+            name: "format_hex_upper",
+            expr: "'%X'.format([this])",
+            this_ty: CelType::UInt,
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        CelCheck {
+            name: "format_octal",
+            expr: "'%o'.format([this])",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        CelCheck {
+            name: "format_binary",
+            expr: "'%b'.format([this])",
+            this_ty: CelType::UInt,
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        CelCheck {
+            name: "format_scientific",
+            expr: "'%e'.format([this])",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "::std::string::String",
+        },
+        // --- map literals
+        CelCheck {
+            name: "map_literal_string_keys",
+            expr: "size({'a': 1, 'b': 2}) == 2",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "map_literal_int_keys_lookup",
+            expr: "{1: 'a', 2: 'b'}[1] == 'a'",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "map_literal_in_op",
+            expr: "'a' in {'a': 1, 'b': 2}",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "empty_map_size",
+            expr: "size({}) == 0",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- list indexing
+        CelCheck {
+            name: "list_index_int",
+            expr: "this[0] == 1",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "list_index_string",
+            expr: "this[0] == 'foo'",
+            this_ty: CelType::List(Box::new(CelType::Str { owned: false })),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "list_index_literal",
+            expr: "[10, 20, 30][1] == 20",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- empty list short-circuits
+        CelCheck {
+            name: "empty_list_all_vacuous",
+            expr: "[].all(x, x > 0)",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "empty_list_exists_false",
+            expr: "[].exists(x, x > 0)",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- map .in / contains_key path
+        CelCheck {
+            name: "in_op_on_map_string_key",
+            expr: "'k' in this",
+            this_ty: str_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "in_op_on_map_int_key",
+            expr: "1 in this",
+            this_ty: int_map(),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- string semantics
+        CelCheck {
+            name: "size_string_unicode",
+            expr: "size(this) >= 0",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "string_matches_literal",
+            expr: "this.matches('^[a-z]+$')",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // Dynamic regex pattern.
+        CelCheck {
+            name: "string_matches_dynamic_pattern",
+            expr: "this.matches(pat)",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![("pat", CelType::Str { owned: false }, None)],
+            expect_ret: "bool",
+        },
+        // --- rule-const folding
+        CelCheck {
+            name: "rule_const_int",
+            expr: "this == rule",
+            this_ty: CelType::Int,
+            extras: vec![(
+                "rule",
+                CelType::Int,
+                Some(protoc_gen_protovalidate_buffa::scan::RuleConst::Int(7)),
+            )],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "rule_const_str",
+            expr: "this == rule",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![(
+                "rule",
+                CelType::Str { owned: false },
+                Some(protoc_gen_protovalidate_buffa::scan::RuleConst::Str(
+                    "hello".to_string(),
+                )),
+            )],
+            expect_ret: "bool",
+        },
+        // --- timestamp accessors
+        CelCheck {
+            name: "ts_get_full_year",
+            expr: "this.getFullYear() >= 2020",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_get_month",
+            expr: "this.getMonth() < 12",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_get_day_of_week",
+            expr: "this.getDayOfWeek() == 0",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_get_hours",
+            expr: "this.getHours() < 24",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_get_minutes_milliseconds",
+            expr: "this.getMinutes() < 60 && this.getMilliseconds() < 1000",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- math.* extension
+        CelCheck {
+            name: "math_abs_int",
+            expr: "math.abs(this) > 5",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_abs_double",
+            expr: "math.abs(this) > 0.0",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_greatest",
+            expr: "math.greatest(this, 5, 10) >= 10",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_least",
+            expr: "math.least(this, 0) <= 0",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_ceil",
+            expr: "math.ceil(this) >= 0.0",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_floor",
+            expr: "math.floor(this) <= 0.0",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_round",
+            expr: "math.round(this) >= 0.0",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_sign_int",
+            expr: "math.sign(this) > 0",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_bit_and",
+            expr: "math.bitAnd(this, 5u) >= 0u",
+            this_ty: CelType::UInt,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "math_bit_shift_left",
+            expr: "math.bitShiftLeft(this, 2u) >= 0u",
+            this_ty: CelType::UInt,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- isFinite, reverse, distinct
+        CelCheck {
+            name: "float_is_finite",
+            expr: "this.isFinite()",
+            this_ty: CelType::Double,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "string_reverse",
+            expr: "this.reverse() == 'olleh'",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "list_reverse",
+            expr: "size(this.reverse()) >= 0",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "list_distinct_int",
+            expr: "size(this.distinct()) >= 0",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "list_distinct_str",
+            expr: "size(this.distinct()) >= 0",
+            this_ty: CelType::List(Box::new(CelType::Str { owned: false })),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- timezone-arg timestamp accessors
+        CelCheck {
+            name: "ts_year_in_tz",
+            expr: "this.getFullYear('America/New_York') >= 2020",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_hours_in_utc",
+            expr: "this.getHours('UTC') < 24",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "ts_day_of_week_in_tz",
+            expr: "this.getDayOfWeek('Europe/Berlin') < 7",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        // --- optional types
+        CelCheck {
+            name: "optional_of_int_hasvalue",
+            expr: "optional.of(this).hasValue()",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "optional_or_value",
+            expr: "optional.of(this).orValue(-1) >= 0",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "optional_value_unwrap",
+            expr: "optional.of(this).value() == 5",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "optional_of_non_zero_int",
+            expr: "optional.ofNonZeroValue(this).hasValue()",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "optional_of_non_zero_string",
+            expr: "optional.ofNonZeroValue(this).hasValue()",
+            this_ty: CelType::Str { owned: false },
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "optional_none_unified_via_ternary",
+            expr: "(this > 0 ? optional.of(this) : optional.none()).orValue(0) >= 0",
+            this_ty: CelType::Int,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "opt_index_map_string_key",
+            expr: "this[?'k'].hasValue()",
+            this_ty: CelType::Map(Box::new(MapTy {
+                key_cel: CelType::Str { owned: false },
+                value_cel: CelType::Int,
+                key_rust: RustScalar::Str,
+                value_rust: RustScalar::I64,
+            })),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "opt_index_list_int",
+            expr: "this[?0].orValue(0) >= 0",
+            this_ty: CelType::List(Box::new(CelType::Int)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "opt_index_map_str_value",
+            expr: "this[?'k'].orValue('') == ''",
+            this_ty: CelType::Map(Box::new(MapTy {
+                key_cel: CelType::Str { owned: false },
+                value_cel: CelType::Str { owned: false },
+                key_rust: RustScalar::Str,
+                value_rust: RustScalar::Str,
+            })),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+    ];
+
+    let mut body = String::new();
+    body.push_str(
+        "// @generated by protovalidate-buffa-conformance build.rs\n\
+         // Token-emission compile checks — one fn per CEL test case.\n\
+         // The integration test that include!()s this file relies on\n\
+         // the Rust compiler to verify each emitted body type-checks.\n\n\
+         use ::protovalidate_buffa::cel::CelScalar as _;\n\n",
+    );
+
+    for check in &checks {
+        let mut compiler = Compiler::new();
+        compiler.bind("this", binding_for_emit(&check.this_ty, "__this"));
+        for (name, ty, rule_const) in &check.extras {
+            if let Some(rc) = rule_const {
+                compiler.bind_rule_const(name, rc);
+            } else {
+                compiler.bind(name, binding_for_emit(ty, name));
+            }
+        }
+        let out = match compiler.compile(check.expr) {
+            Ok(o) => o,
+            Err(e) => panic!(
+                "transpile fixture `{}` failed at codegen: {:?}",
+                check.name, e
+            ),
+        };
+        let now_prelude = if out.needs_now {
+            "let now = ::protovalidate_buffa::cel::now_local();".to_string()
+        } else {
+            String::new()
+        };
+        let rust_param = rust_emit_param_type(&check.this_ty);
+        let mut extras_params = String::new();
+        for (name, ty, _) in check.extras.iter().filter(|(_, _, rc)| rc.is_none()) {
+            let pt = rust_emit_param_type(ty);
+            write!(extras_params, ", {name}: {pt}").unwrap();
+        }
+        let body_tokens = out.tokens.to_string();
+        writeln!(
+            body,
+            "pub fn _check_{name}(__this: {rust_param}{extras}) -> {ret} {{\n    \
+             {now_prelude}\
+             let __out: {ret} = {tokens};\n    \
+             __out\n\
+             }}\n",
+            name = check.name,
+            rust_param = rust_param,
+            extras = extras_params,
+            ret = check.expect_ret,
+            now_prelude = now_prelude,
+            tokens = body_tokens,
+        )
+        .unwrap();
+    }
+
+    std::fs::write(out_dir.join("cel_emit_fixtures.rs"), body).expect("write cel_emit_fixtures");
+}
+
+/// Rust parameter type for binding the given CEL type as an input. The
+/// transpiler's `this` access patterns assume references for compound
+/// types (slices for lists / bytes, `&HashMap` for maps, `&str` for
+/// strings); scalars are passed by value.
+///
+/// Only covers the shapes used by the fixture cases. New cases that
+/// need a different `this` shape should extend this match.
+fn rust_emit_param_type(ty: &CelType) -> &'static str {
+    match ty {
+        CelType::UInt => "u64",
+        CelType::Double => "f64",
+        CelType::Bool => "bool",
+        CelType::Str { .. } => "&str",
+        CelType::Bytes { .. } => "&[u8]",
+        CelType::List(elem) => match elem.as_ref() {
+            CelType::UInt => "&::std::vec::Vec<u64>",
+            CelType::Double => "&::std::vec::Vec<f64>",
+            CelType::Bool => "&::std::vec::Vec<bool>",
+            CelType::Str { .. } => "&::std::vec::Vec<::std::string::String>",
+            CelType::Bytes { .. } => "&::std::vec::Vec<::std::vec::Vec<u8>>",
+            // Default: List<Int> — also covers `_` for any unmodeled
+            // element type, treated as i64-bearing for the fixture.
+            _ => "&::std::vec::Vec<i64>",
+        },
+        CelType::Map(map_ty) => match (&map_ty.key_rust, &map_ty.value_rust) {
+            (RustScalar::I64, RustScalar::Str) => {
+                "&::std::collections::HashMap<i64, ::std::string::String>"
+            }
+            (RustScalar::Bool, RustScalar::I64) => "&::std::collections::HashMap<bool, i64>",
+            (RustScalar::Str, RustScalar::Str) => {
+                "&::std::collections::HashMap<::std::string::String, ::std::string::String>"
+            }
+            // Default: Map<Str, Int>.
+            _ => "&::std::collections::HashMap<::std::string::String, i64>",
+        },
+        CelType::Duration => "::chrono::Duration",
+        CelType::Timestamp => "::chrono::DateTime<::chrono::FixedOffset>",
+        // Default for Int and anything not modeled above.
+        _ => "i64",
+    }
+}
+
+fn binding_for_emit(ty: &CelType, ident: &str) -> Binding {
+    use proc_macro2::{Ident, Span, TokenStream};
+    use quote::quote;
+    let id = Ident::new(ident, Span::call_site());
+    let rust_expr: TokenStream = quote! { #id };
+    Binding {
+        rust_expr,
+        ty: ty.clone(),
+        constant: None,
+    }
 }
 
 fn which_protoc() -> Option<String> {

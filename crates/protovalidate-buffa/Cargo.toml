@@ -1,6 +1,6 @@
 [package]
 name = "protovalidate-buffa"
-description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, CEL integration, rule helpers."
+description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."
 version = "0.2.2"
 edition.workspace = true
 rust-version.workspace = true
@@ -17,14 +17,20 @@ workspace = true
 [features]
 default = ["connect"]
 connect = ["dep:connectrpc"]
+# Enables `chrono-tz` for the timezone argument on CEL timestamp
+# accessors (`t.getHours("America/New_York")`). chrono-tz ships the
+# full IANA database (~4 MiB), so it's opt-in — rules that only use
+# the no-arg accessor forms have no reason to pay the cost. When the
+# feature is off, generated code that references the tz arg fails to
+# compile with a clear "chrono_tz" missing-module error.
+tz = ["dep:chrono-tz"]
 
 [dependencies]
 buffa = "0.5"
-buffa-types = "0.5"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.2.0" }
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-cel = "0.13"
+chrono-tz = { version = "0.10", optional = true }
 uuid = "1"
 ulid = "1"
 ipnet = "2"

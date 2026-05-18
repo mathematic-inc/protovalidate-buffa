@@ -16,6 +16,8 @@ pub mod generated {
         dead_code,
         non_camel_case_types,
         unused_imports,
+        rustdoc::broken_intra_doc_links,
+        rustdoc::invalid_html_tags,
         reason = "buffa-build generated code — upstream codegen style; do not police"
     )]
     include!(concat!(env!("OUT_DIR"), "/_include.rs"));
