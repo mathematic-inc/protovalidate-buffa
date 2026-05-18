@@ -16,7 +16,6 @@ workspace = true
 
 [dependencies]
 buffa = "0.5"
-buffa-types = "0.5"
 
 [build-dependencies]
 buffa-build = "0.5"
