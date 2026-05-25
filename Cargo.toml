@@ -22,9 +22,3 @@ keywords = ["protobuf", "protovalidate", "buffa", "validation", "codegen"]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
-
-[patch.crates-io]
-buffa = { git = "https://github.com/anthropics/buffa", rev = "4c264ddd6fdd286f237dac0551fd420907b4864c" }
-buffa-codegen = { git = "https://github.com/anthropics/buffa", rev = "4c264ddd6fdd286f237dac0551fd420907b4864c" }
-buffa-build = { git = "https://github.com/anthropics/buffa", rev = "4c264ddd6fdd286f237dac0551fd420907b4864c" }
-buffa-descriptor = { git = "https://github.com/anthropics/buffa", rev = "4c264ddd6fdd286f237dac0551fd420907b4864c" }
