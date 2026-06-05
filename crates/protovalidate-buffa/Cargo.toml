@@ -35,6 +35,6 @@ uuid = "1"
 ulid = "1"
 ipnet = "2"
 fluent-uri = "0.4"
-connectrpc = { version = "0.6", optional = true }
+connectrpc = { version = "0.6", optional = true, default-features = false }
 percent-encoding = "2"
 http = "1"
