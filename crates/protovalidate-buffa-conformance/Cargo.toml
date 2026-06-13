@@ -20,7 +20,7 @@ name = "protovalidate-buffa-conformance"
 path = "src/main.rs"
 
 [dependencies]
-buffa = "0.6"
+buffa = "0.7"
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.4.0", default-features = false, features = ["tz"] }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.4.0" }
 anyhow = "1"
@@ -33,10 +33,10 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
-buffa-build = "0.6"
+buffa-build = "0.7"
 protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.4.0" }
-buffa = "0.6"
-buffa-codegen = "0.6"
+buffa = "0.7"
+buffa-codegen = "0.7"
 anyhow = "1"
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }

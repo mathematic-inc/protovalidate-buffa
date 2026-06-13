@@ -26,7 +26,7 @@ connect = ["dep:connectrpc"]
 tz = ["dep:chrono-tz"]
 
 [dependencies]
-buffa = "0.6"
+buffa = "0.7"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.3.0" }
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -35,6 +35,6 @@ uuid = "1"
 ulid = "1"
 ipnet = "2"
 fluent-uri = "0.4"
-connectrpc = { version = "0.6", optional = true }
+connectrpc = { version = "0.7", optional = true }
 percent-encoding = "2"
 http = "1"
