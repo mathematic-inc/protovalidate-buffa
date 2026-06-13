@@ -75,6 +75,17 @@ pub trait Validate {
     fn validate(&self) -> Result<(), ValidationError>;
 }
 
+/// `google.protobuf.Empty` carries no fields and no rules, so it always
+/// validates. Providing it here (the trait's home crate — downstreams can't,
+/// by the orphan rule) lets `#[connect_impl]` apply uniformly to services
+/// whose handlers take an empty request, which is the common shape for
+/// subscribe / list / no-argument RPCs.
+impl Validate for ::buffa_types::google::protobuf::Empty {
+    fn validate(&self) -> Result<(), ValidationError> {
+        Ok(())
+    }
+}
+
 #[macro_export]
 macro_rules! field_path {
     ( $( $part:expr ),* $(,)? ) => {{

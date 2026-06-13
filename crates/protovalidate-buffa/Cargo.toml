@@ -27,6 +27,7 @@ tz = ["dep:chrono-tz"]
 
 [dependencies]
 buffa = "0.7"
+buffa-types = "0.7"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.3.0" }
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
