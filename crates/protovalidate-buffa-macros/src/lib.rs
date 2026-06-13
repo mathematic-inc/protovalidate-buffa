@@ -1,10 +1,11 @@
 //! `#[connect_impl]` — inserts `req.validate()?` at the top of every Connect
-//! service handler method in an `impl` block whose request parameter is an
-//! `OwnedView<_>`. Single-site safety net: add it once to the service impl
-//! and every present-and-future handler is validated on entry.
+//! service handler method in an `impl` block whose request parameter is a
+//! `ServiceRequest<'_, _>` (connectrpc 0.7) or an `OwnedView<_>` (0.6).
+//! Single-site safety net: add it once to the service impl and every
+//! present-and-future handler is validated on entry.
 //!
 //! Non-handler `async fn`s inside the same `impl` block are left alone
-//! (they lack an `OwnedView<_>` parameter, so the macro skips them).
+//! (they lack such a request parameter, so the macro skips them).
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -26,7 +27,7 @@ pub fn connect_impl(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     for impl_item in &mut item.items {
         if let ImplItem::Fn(f) = impl_item
-            && let Some(arg_ident) = find_owned_view_arg(&f.sig)
+            && let Some(arg_ident) = find_request_arg(&f.sig)
         {
             let pv_ident =
                 proc_macro2::Ident::new("__protovalidate_buffa_req_owned", arg_ident.span());
@@ -47,13 +48,14 @@ pub fn connect_impl(attr: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(quote! { #item })
 }
 
-/// Returns the ident of the first parameter whose type is a path ending in
-/// `OwnedView` (e.g. `OwnedView<pb::CreateFooRequestView<'static>>`).
-/// Non-handler methods that lack such a parameter return `None`.
-fn find_owned_view_arg(sig: &syn::Signature) -> Option<syn::Ident> {
+/// Returns the ident of the first parameter that is a Connect request: a
+/// `ServiceRequest<'_, _>` (connectrpc 0.7) or an `OwnedView<_>` (0.6). Both
+/// expose `to_owned_message()`, which the inserted code calls. Non-handler
+/// methods that lack such a parameter return `None`.
+fn find_request_arg(sig: &syn::Signature) -> Option<syn::Ident> {
     for arg in &sig.inputs {
         if let FnArg::Typed(PatType { pat, ty, .. }) = arg
-            && is_owned_view(ty)
+            && is_request_view(ty)
             && let syn::Pat::Ident(pat_ident) = pat.as_ref()
         {
             return Some(pat_ident.ident.clone());
@@ -62,11 +64,11 @@ fn find_owned_view_arg(sig: &syn::Signature) -> Option<syn::Ident> {
     None
 }
 
-fn is_owned_view(ty: &Type) -> bool {
+fn is_request_view(ty: &Type) -> bool {
     if let Type::Path(TypePath { path, .. }) = ty
         && let Some(last) = path.segments.last()
     {
-        return last.ident == "OwnedView";
+        return last.ident == "ServiceRequest" || last.ident == "OwnedView";
     }
     false
 }
