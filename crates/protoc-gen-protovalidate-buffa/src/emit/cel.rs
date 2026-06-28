@@ -59,7 +59,7 @@ pub fn emit_message_level(
         if is_unsupported_wkt_field_for_cel(&f.field_type) {
             continue;
         }
-        let field_ident = format_ident!("{}", f.field_name);
+        let field_ident = crate::emit::field_ident(&f.field_name);
         let field_name = &f.field_name;
         let fnum = f.field_number;
         // For repeated scalars the CEL rule path uses the element type; for
@@ -134,7 +134,7 @@ pub fn emit_message_level(
             continue;
         }
         let default_family = predef_family_for(&f.field_type);
-        let field_ident = format_ident!("{}", f.field_name);
+        let field_ident = crate::emit::field_ident(&f.field_name);
         let field_name = &f.field_name;
         let fnum = f.field_number;
         for rule in &f.standard.predefined {

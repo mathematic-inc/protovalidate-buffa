@@ -39,7 +39,7 @@ pub fn emit(
         return Ok(quote! {});
     }
 
-    let accessor = safe_ident(&field.field_name);
+    let accessor = crate::emit::field_ident(&field.field_name);
     let name_lit = &field.field_name;
     let mut blocks: Vec<TokenStream> = Vec::new();
 
@@ -4977,14 +4977,6 @@ pub(crate) const fn kind_to_field_type(k: &FieldKind) -> &'static str {
         FieldKind::Enum { .. } => "Enum",
         FieldKind::Message { .. } | FieldKind::Wrapper(_) => "Message",
         FieldKind::Repeated(_) | FieldKind::Map { .. } | FieldKind::Optional(_) => "Message",
-    }
-}
-
-fn safe_ident(name: &str) -> syn::Ident {
-    if syn::parse_str::<syn::Ident>(name).is_ok() {
-        format_ident!("{}", name)
-    } else {
-        syn::Ident::new_raw(name, proc_macro2::Span::call_site())
     }
 }
 

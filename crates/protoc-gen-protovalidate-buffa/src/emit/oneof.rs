@@ -3,7 +3,6 @@
 use anyhow::Result;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::parse_str;
 
 use crate::scan::{FieldKind, FieldValidator, OneofValidator};
 
@@ -16,8 +15,9 @@ use crate::scan::{FieldKind, FieldValidator, OneofValidator};
 ///
 /// # Errors
 ///
-/// Returns an error if the oneof name or a variant field name cannot be parsed
-/// as a valid Rust identifier (e.g. contains characters not allowed in identifiers).
+/// Returns an error if a variant's enum-rule type reference cannot be resolved
+/// to a local Rust path. (Field/oneof names are escaped via
+/// [`crate::emit::field_ident`], which is infallible.)
 pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
     let has_required = v.required;
     // If nothing to emit at all, skip.
@@ -27,11 +27,16 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
         return Ok(quote! {});
     }
 
-    let accessor = parse_str::<syn::Ident>(&v.name)?;
+    let accessor = crate::emit::field_ident(&v.name);
     let name_lit = &v.name;
 
     // The module name buffa generates for a message's oneof is the snake_case of
     // the parent message name, e.g. `CreateGradingRequest` → `create_grading_request`.
+    // These are constant across all variants, so derive them once and pass them
+    // down to the per-variant emitters.
+    let module_ident = crate::emit::field_ident(&to_snake_case(&v.parent_msg_name));
+    let oneof_enum_ident = crate::emit::field_ident(&to_pascal_case(&v.name));
+
     let none_arm = if has_required {
         quote! {
             None => {
@@ -66,14 +71,15 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
         .fields
         .iter()
         .filter(|f| has_field_rules(f))
-        .map(|f| emit_variant_arm(v, f))
+        .map(|f| emit_variant_arm(f, &module_ident, &oneof_enum_ident))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .filter(|ts| !ts.is_empty())
         .collect();
 
     // Compute required_variant_blocks early so they survive all early-return paths.
-    let required_variant_blocks = emit_required_variant_blocks(v)?;
+    let required_variant_blocks =
+        emit_required_variant_blocks(v, &accessor, &module_ident, &oneof_enum_ident);
 
     // If no variant has rules, we only need the None check (already handled above).
     if some_arms.is_empty() && !has_required && !has_required_variants {
@@ -133,9 +139,13 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
     })
 }
 
-fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> {
+fn emit_required_variant_blocks(
+    v: &OneofValidator,
+    accessor: &syn::Ident,
+    module_ident: &syn::Ident,
+    oneof_enum_ident: &syn::Ident,
+) -> Vec<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
-    let accessor = parse_str::<syn::Ident>(&v.name)?;
     for f in &v.fields {
         if !f.required {
             continue;
@@ -143,12 +153,8 @@ fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> 
         if matches!(f.ignore, crate::scan::Ignore::Always) {
             continue;
         }
-        let module_name_str = to_snake_case(&v.parent_msg_name);
-        let module_ident: syn::Ident = parse_str(&module_name_str)?;
-        let oneof_enum_str = to_pascal_case(&v.name);
-        let oneof_enum_ident: syn::Ident = parse_str(&oneof_enum_str)?;
         let variant_name_str = to_pascal_case(&f.field_name);
-        let variant_ident: syn::Ident = parse_str(&variant_name_str)?;
+        let variant_ident = crate::emit::field_ident(&variant_name_str);
         let name_lit = &f.field_name;
         let fnum = f.field_number;
         let field_ty = match f.field_type {
@@ -205,7 +211,7 @@ fn emit_required_variant_blocks(v: &OneofValidator) -> Result<Vec<TokenStream>> 
             }
         });
     }
-    Ok(out)
+    out
 }
 
 /// Returns true if a field has any rules that produce emitted checks.
@@ -231,18 +237,18 @@ fn has_field_rules(f: &FieldValidator) -> bool {
 }
 
 /// Emit a `Some(Variant(v)) => { ... }` match arm for a single oneof field.
-fn emit_variant_arm(v: &OneofValidator, f: &FieldValidator) -> Result<TokenStream> {
+fn emit_variant_arm(
+    f: &FieldValidator,
+    module_ident: &syn::Ident,
+    oneof_enum_ident: &syn::Ident,
+) -> Result<TokenStream> {
     if matches!(f.ignore, crate::scan::Ignore::Always) {
         return Ok(quote! {});
     }
-    let module_name_str = to_snake_case(&v.parent_msg_name);
-    let module_ident = parse_str::<syn::Ident>(&module_name_str)?;
-    let oneof_enum_str = to_pascal_case(&v.name);
-    let oneof_enum_ident = parse_str::<syn::Ident>(&oneof_enum_str)?;
 
     // Buffa's variant name: PascalCase of the field name.
     let variant_name_str = to_pascal_case(&f.field_name);
-    let variant_ident = parse_str::<syn::Ident>(&variant_name_str)?;
+    let variant_ident = crate::emit::field_ident(&variant_name_str);
 
     let name_lit = &f.field_name;
     let val_ident = format_ident!("v");
