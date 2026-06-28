@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.3.0...protovalidate-buffa-macros-v0.3.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* Validate Connect ServiceRequest handlers ([05dd4ad](https://github.com/mathematic-inc/protovalidate-buffa/commit/05dd4ad13ba62fb2ef93afe335f1865b7a8d1751))
+
 ## [0.3.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.2.0...protovalidate-buffa-macros-v0.3.0) (2026-05-18)
 
 
