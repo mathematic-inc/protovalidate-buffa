@@ -31,6 +31,18 @@ pub mod field;
 pub mod oneof;
 pub mod repeated;
 
+/// Build the Rust identifier that accesses a proto field (or oneof) on a
+/// buffa-generated struct.
+///
+/// Delegates to the same function buffa uses to name its struct fields
+/// (`buffa_codegen::idents::make_field_ident`), so accessors emitted here line
+/// up with the generated message types on keyword names (e.g. `type` →
+/// `r#type`, `self` → `self_`). Re-deriving idents with
+/// `format_ident!`/`Ident::new`/`parse_str` instead would panic or mismatch.
+pub(crate) fn field_ident(name: &str) -> proc_macro2::Ident {
+    buffa_codegen::idents::make_field_ident(name)
+}
+
 /// Render one output `.rs` file per source `.proto` file.
 ///
 /// Output path: `"example/v1/foo.proto"` → `"example.v1.foo.rs"`.
@@ -333,7 +345,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
             if implicit_ignore.contains(f.field_name.as_str())
                 && !matches!(f.ignore, crate::scan::Ignore::Always)
             {
-                let accessor = syn::Ident::new(&f.field_name, proc_macro2::Span::call_site());
+                let accessor = field_ident(&f.field_name);
                 let guard: Option<TokenStream> = match &f.field_type {
                     crate::scan::FieldKind::String | crate::scan::FieldKind::Bytes => {
                         Some(quote! { !self.#accessor.is_empty() })
@@ -479,15 +491,13 @@ fn emit_message_oneof(
     msg: &crate::scan::MessageValidators,
     spec: &crate::scan::MessageOneofSpec,
 ) -> TokenStream {
-    use proc_macro2::Span;
-
     use crate::scan::FieldKind;
     let checks: Vec<TokenStream> = spec
         .fields
         .iter()
         .filter_map(|name| {
             let fv = msg.field_rules.iter().find(|f| &f.field_name == name)?;
-            let ident = syn::Ident::new(&fv.field_name, Span::call_site());
+            let ident = field_ident(&fv.field_name);
             // "Set" semantics per protovalidate-go for message.oneof:
             // messages: present; repeated/map: non-empty; proto3 optional: is_some;
             // scalar: always counted as set (we can't distinguish default from unset).
