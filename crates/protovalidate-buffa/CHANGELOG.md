@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.5.0...v0.5.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* Validate Connect ServiceRequest handlers ([05dd4ad](https://github.com/mathematic-inc/protovalidate-buffa/commit/05dd4ad13ba62fb2ef93afe335f1865b7a8d1751))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-macros bumped from 0.3.0 to 0.3.1
+
 ## [0.5.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.4.0...v0.5.0) (2026-06-28)
 
 
