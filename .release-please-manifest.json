@@ -1,7 +1,7 @@
 {
-  "crates/protovalidate-buffa": "0.4.0",
-  "crates/protovalidate-buffa-protos": "0.4.0",
+  "crates/protovalidate-buffa": "0.5.0",
+  "crates/protovalidate-buffa-protos": "0.5.0",
   "crates/protovalidate-buffa-macros": "0.3.0",
-  "crates/protoc-gen-protovalidate-buffa": "0.4.0",
-  "crates/protovalidate-buffa-conformance": "0.0.8"
+  "crates/protoc-gen-protovalidate-buffa": "0.5.0",
+  "crates/protovalidate-buffa-conformance": "0.0.9"
 }

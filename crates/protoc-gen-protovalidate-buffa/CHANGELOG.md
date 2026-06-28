@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.4.0...protoc-gen-protovalidate-buffa-v0.5.0) (2026-06-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* consolidate keyword, connectrpc, and buffa fixes ([#17](https://github.com/mathematic-inc/protovalidate-buffa/issues/17))
+
+### Bug Fixes
+
+* Consolidate keyword, connectrpc, and buffa fixes ([#17](https://github.com/mathematic-inc/protovalidate-buffa/issues/17)) ([61b2485](https://github.com/mathematic-inc/protovalidate-buffa/commit/61b2485d09a99d272e354b04111e1568479b531d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-protos bumped from 0.4.0 to 0.5.0
+
 ## [0.4.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.3.0...protoc-gen-protovalidate-buffa-v0.4.0) (2026-05-25)
 
 
