@@ -2655,7 +2655,7 @@ impl<'a> Compiler<'a> {
             .ok_or_else(|| {
                 FallbackReason::new(format!("opt_select: unknown field {field_name}"))
             })?;
-        let rust_ident = format_ident!("{}", entry.rust_ident);
+        let rust_ident = crate::emit::field_ident(&entry.rust_ident);
         let op_t = operand.tokens;
         // Map `Option<&Message>` through `.map(|m| m.<field>)`. The exact
         // shape depends on the field's CEL type and the binding semantics
@@ -3918,7 +3918,7 @@ fn select_message_field(
         .iter()
         .find(|e| e.proto_name == field)
         .ok_or_else(|| FallbackReason::new(format!("unknown field: {field}")))?;
-    let rust_ident = format_ident!("{}", entry.rust_ident);
+    let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let access = match &entry.kind {
         SchemaFieldKind::StringLike => match &entry.ty {
             CelType::Str { .. } => quote! { (#operand.#rust_ident.as_str()) },
@@ -4026,7 +4026,7 @@ fn has_message_field(
         .iter()
         .find(|e| e.proto_name == field)
         .ok_or_else(|| FallbackReason::new(format!("unknown field for has: {field}")))?;
-    let rust_ident = format_ident!("{}", entry.rust_ident);
+    let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let tokens = match &entry.kind {
         SchemaFieldKind::Scalar => match &entry.ty {
             CelType::Int => {
