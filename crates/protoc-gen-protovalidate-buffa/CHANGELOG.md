@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.5.0...protoc-gen-protovalidate-buffa-v0.5.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* Borrow value in optional string pattern check ([#21](https://github.com/mathematic-inc/protovalidate-buffa/issues/21)) ([5e58b3d](https://github.com/mathematic-inc/protovalidate-buffa/commit/5e58b3d51da60cee6a7f93d65028cf4428cc1e91))
+
 ## [0.5.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.4.0...protoc-gen-protovalidate-buffa-v0.5.0) (2026-06-28)
 
 
