@@ -316,7 +316,7 @@ impl StandardRules {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StringStandard {
     pub min_len: Option<u64>,
     pub max_len: Option<u64>,
