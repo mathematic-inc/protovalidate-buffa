@@ -5831,7 +5831,7 @@ pub(crate) fn emit_string_checks_on(
                     ::protovalidate_buffa::regex::Regex::new(#pat_str)
                         .expect("pattern regex compiled at code-gen time")
                 });
-                if !re.is_match(#v) {
+                if !re.is_match(#v.as_str()) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.pattern"),
