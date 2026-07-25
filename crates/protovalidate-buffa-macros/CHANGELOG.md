@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.3.1...protovalidate-buffa-macros-v0.4.0) (2026-07-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* update dependencies to latest ([#23](https://github.com/mathematic-inc/protovalidate-buffa/issues/23))
+
+### Build System
+
+* Update dependencies to latest ([#23](https://github.com/mathematic-inc/protovalidate-buffa/issues/23)) ([7728378](https://github.com/mathematic-inc/protovalidate-buffa/commit/772837810c129a3acb9166973c40e7696866cdc9))
+
 ## [0.3.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.3.0...protovalidate-buffa-macros-v0.3.1) (2026-06-28)
 
 
