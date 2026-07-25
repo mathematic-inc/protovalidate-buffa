@@ -20,7 +20,7 @@ For what the rules *mean*, the full rule catalogue, CEL semantics, and design do
 
 ## Why a different crate?
 
-Existing Rust implementations of protovalidate (`prost-protovalidate`, `protocheck`, `protify`) all target [prost]. buffa has a different runtime model — zero-copy views, static types, no dynamic-message reflection — so prost-based validators are incompatible. This repo fills that gap.
+Existing Rust implementations of protovalidate (`prost-protovalidate`, `protocheck`, `protify`) all target [prost]. buffa has a different runtime model — two-tier owned/borrowed types with zero-copy views, and static generated types rather than descriptor-driven dynamic messages — so prost-based validators are incompatible. This repo fills that gap.
 
 Compared to reflection-based implementations, the codegen approach has two characteristics:
 
@@ -39,6 +39,14 @@ Compared to reflection-based implementations, the codegen approach has two chara
 | [`protovalidate-buffa-protos`](crates/protovalidate-buffa-protos/) | Compiled Rust for `buf/validate/validate.proto` (vendored under `proto/`). Consumed by the codegen plugin. |
 
 `protovalidate-buffa-conformance` also lives in this workspace but is private (`publish = false`) — see [its README](crates/protovalidate-buffa-conformance/README.md) for the conformance test-run flow.
+
+## Compatibility
+
+This workspace currently targets **buffa 0.8**, **connectrpc 0.8**, and **Rust 1.88+** (edition 2024).
+
+The emitted validators reference buffa's generated-code shape directly (field placement, map and view types), so the plugin and your `buffa-build` output must agree on the buffa minor version. buffa is pre-1.0 and treats **minor bumps as breaking**, so upgrading buffa generally means upgrading this crate in lockstep.
+
+buffa 0.9 is intentionally not adopted yet: `connectrpc` 0.8 still depends on buffa `^0.8`, so moving this workspace to 0.9 would link two incompatible buffa versions and break the default `connect` feature for downstream handlers. This crate will move to buffa 0.9 once connectrpc does.
 
 ## Supported rules
 
