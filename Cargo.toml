@@ -10,7 +10,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
 authors = ["Mathematic Inc"]
 repository = "https://github.com/mathematic-inc/protovalidate-buffa"

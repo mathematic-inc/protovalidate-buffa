@@ -134,6 +134,25 @@ pub fn timestamp_from_secs_nanos(
     s.fixed_offset()
 }
 
+/// Split a duration literal's magnitude from its unit suffix.
+///
+/// Suffixes are tried longest-first so `ns` / `us` / `ms` win over the
+/// bare `s` they end with. `µs` normalizes to `us`.
+fn split_unit(rest: &str) -> Option<(&str, &'static str)> {
+    const SUFFIXES: [(&str, &str); 7] = [
+        ("ns", "ns"),
+        ("us", "us"),
+        ("µs", "us"),
+        ("ms", "ms"),
+        ("s", "s"),
+        ("m", "m"),
+        ("h", "h"),
+    ];
+    SUFFIXES
+        .into_iter()
+        .find_map(|(suffix, unit)| rest.strip_suffix(suffix).map(|stripped| (stripped, unit)))
+}
+
 /// Parse a CEL `duration("…")` string into a `chrono::Duration`.
 ///
 /// Accepts the protobuf duration grammar: an optional sign, a decimal
@@ -159,23 +178,7 @@ pub fn parse_duration(s: &str) -> Option<chrono::Duration> {
         _ => (1i64, s),
     };
     // Find the unit suffix.
-    let (num_str, unit) = if let Some(stripped) = rest.strip_suffix("ns") {
-        (stripped, "ns")
-    } else if let Some(stripped) = rest.strip_suffix("us") {
-        (stripped, "us")
-    } else if let Some(stripped) = rest.strip_suffix("µs") {
-        (stripped, "us")
-    } else if let Some(stripped) = rest.strip_suffix("ms") {
-        (stripped, "ms")
-    } else if let Some(stripped) = rest.strip_suffix('s') {
-        (stripped, "s")
-    } else if let Some(stripped) = rest.strip_suffix('m') {
-        (stripped, "m")
-    } else if let Some(stripped) = rest.strip_suffix('h') {
-        (stripped, "h")
-    } else {
-        return None;
-    };
+    let (num_str, unit) = split_unit(rest)?;
     let value: f64 = num_str.parse().ok()?;
     let nanos_total: f64 = match unit {
         "ns" => value,
