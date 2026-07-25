@@ -22,16 +22,16 @@ name = "protoc-gen-protovalidate-buffa"
 path = "src/main.rs"
 
 [dependencies]
-buffa = "0.7"
-buffa-codegen = "0.7"
+buffa = "0.8"
+buffa-codegen = "0.8"
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.5.0" }
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
-prettyplease = "0.2"
+syn = { version = "3", features = ["full"] }
+prettyplease = "0.3"
 anyhow = "1"
 # Used parse-only — the runtime interpreter, regex pattern matching, and
 # chrono-based timestamp handling all live on the runtime side or get
 # transpiled away at codegen time, so the plugin can opt out of the
 # `regex` and `chrono` default features.
-cel = { version = "0.13", default-features = false }
+cel = { version = "0.14", default-features = false }
