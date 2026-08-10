@@ -1,11 +1,12 @@
 //! Regression test for `optional string` (explicit presence) and oneof string
 //! members carrying a `string.pattern` rule.
 //!
-//! `emit_string_checks_on` is shared between the explicit-presence path (which
-//! binds `v` as an owned `String`) and oneof members (which bind `&String`).
-//! The `pattern` check passes `v` to `Regex::is_match`, which takes `&str`, but
-//! an owned `String` does not coerce in argument position. These tests pin that
-//! the emitted check borrows via `v.as_str()`, so both paths compile. See
+//! `emit_string_checks_on` is shared across binding shapes: the
+//! explicit-presence path binds `v` as an owned `String`, oneof members bind
+//! `&String`, and on borrowed views the same emitters see `&str` / `&&str`.
+//! The `pattern` check passes `v` to `Regex::is_match`, which takes `&str`, and
+//! none of those shapes coerce in argument position. These tests pin that the
+//! emitted check borrows via `&v[..]`, which holds for every shape. See
 //! `emit_string_checks_on` in `src/emit/field.rs` for why this matters.
 
 use protoc_gen_protovalidate_buffa::emit::render;
@@ -62,12 +63,12 @@ fn message(
     }
 }
 
-/// The emitted `pattern` check must borrow the value (`v.as_str()`); passing an
+/// The emitted `pattern` check must borrow the value (`&v[..]`); passing an
 /// owned `String` to `is_match` would fail to compile.
 fn assert_pattern_borrows(src: &str) {
     assert!(
-        src.contains("is_match(v.as_str())"),
-        "pattern check must borrow the value (`v.as_str()`); generated source was:\n{src}"
+        src.contains("is_match(&v[..])"),
+        "pattern check must borrow the value (`&v[..]`); generated source was:\n{src}"
     );
     assert!(
         !src.contains("is_match(v)"),

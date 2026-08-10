@@ -2368,13 +2368,13 @@ impl<'a> Compiler<'a> {
                 let (tokens, ty) = match val_ty {
                     CelType::Str { .. } => (
                         quote! {
-                            ((#op_t).get(#key_lookup).map_or("", |__v| __v.as_str()))
+                            ((#op_t).get(#key_lookup).map_or("", |__v| &__v[..]))
                         },
                         CelType::Str { owned: false },
                     ),
                     CelType::Bytes { .. } => (
                         quote! {
-                            ((#op_t).get(#key_lookup).map_or(&[][..], |__v| __v.as_slice()))
+                            ((#op_t).get(#key_lookup).map_or(&[][..], |__v| &__v[..]))
                         },
                         CelType::Bytes { owned: false },
                     ),
@@ -3832,8 +3832,7 @@ fn bytes_as_slice(c: &Compiled) -> TokenStream {
 /// comprehension iteration variable (a `&T` produced by `.iter()`).
 fn element_binding_expr(var_ident: &syn::Ident, elem_ty: &CelType) -> TokenStream {
     match elem_ty {
-        CelType::Str { .. } => quote! { (#var_ident.as_str()) },
-        CelType::Bytes { .. } => quote! { (#var_ident.as_slice()) },
+        CelType::Str { .. } | CelType::Bytes { .. } => quote! { (&#var_ident[..]) },
         CelType::Int => quote! {
             (::protovalidate_buffa::cel::CelScalar::cel_int(*#var_ident))
         },
@@ -3921,8 +3920,9 @@ fn select_message_field(
     let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let access = match &entry.kind {
         SchemaFieldKind::StringLike => match &entry.ty {
-            CelType::Str { .. } => quote! { (#operand.#rust_ident.as_str()) },
-            CelType::Bytes { .. } => quote! { (#operand.#rust_ident.as_slice()) },
+            CelType::Str { .. } | CelType::Bytes { .. } => {
+                quote! { (&#operand.#rust_ident[..]) }
+            }
             _ => return Err(FallbackReason::new("schema StringLike with wrong CelType")),
         },
         SchemaFieldKind::Scalar => match &entry.ty {
@@ -3964,7 +3964,7 @@ fn select_message_field(
                 }
             }
         }
-        SchemaFieldKind::Repeated => quote! { (#operand.#rust_ident.as_slice()) },
+        SchemaFieldKind::Repeated => quote! { (&#operand.#rust_ident[..]) },
         SchemaFieldKind::Wrapper => match &entry.ty {
             CelType::Int => {
                 quote! { (#operand.#rust_ident.as_option().map_or(0i64, |w| ::protovalidate_buffa::cel::CelScalar::cel_int(w.value))) }
@@ -3979,10 +3979,10 @@ fn select_message_field(
                 quote! { (#operand.#rust_ident.as_option().map_or(false, |w| w.value)) }
             }
             CelType::Str { .. } => {
-                quote! { (#operand.#rust_ident.as_option().map_or("", |w| w.value.as_str())) }
+                quote! { (#operand.#rust_ident.as_option().map_or("", |w| &w.value[..])) }
             }
             CelType::Bytes { .. } => {
-                quote! { (#operand.#rust_ident.as_option().map_or(&[][..], |w| w.value.as_slice())) }
+                quote! { (#operand.#rust_ident.as_option().map_or(&[][..], |w| &w.value[..])) }
             }
             _ => {
                 return Err(FallbackReason::new(

@@ -297,7 +297,7 @@ fn emit_map_kv_checks(
                     out.push(quote! {
                         {
                             const ALLOWED: &[&str] = &[ #( #set ),* ];
-                            if !ALLOWED.iter().any(|c| *c == #elem_ident.as_str()) {
+                            if !ALLOWED.iter().any(|c| *c == &#elem_ident[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #fp, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -947,7 +947,7 @@ fn emit_repeated_items_checks(
                     out.push(quote! {
                         {
                             const ALLOWED: &[&str] = &[ #( #set ),* ];
-                            if !ALLOWED.iter().any(|c| *c == #elem_ident.as_str()) {
+                            if !ALLOWED.iter().any(|c| *c == &#elem_ident[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #fp, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -965,7 +965,7 @@ fn emit_repeated_items_checks(
                     out.push(quote! {
                         {
                             const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                            if DISALLOWED.iter().any(|c| *c == #elem_ident.as_str()) {
+                            if DISALLOWED.iter().any(|c| *c == &#elem_ident[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #fp, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("string.not_in"),
@@ -1527,7 +1527,7 @@ pub fn emit_repeated(
                 out.push(quote! {
                     for (idx, elem) in self.#accessor.iter().enumerate() {
                         const ALLOWED: &[&str] = &[ #( #set ),* ];
-                        if !ALLOWED.iter().any(|s| *s == elem.type_url.as_str()) {
+                        if !ALLOWED.iter().any(|s| *s == &elem.type_url[..]) {
                             violations.push(::protovalidate_buffa::Violation {
                                 field: ::protovalidate_buffa::FieldPath {
                                     elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
@@ -1561,7 +1561,7 @@ pub fn emit_repeated(
                 out.push(quote! {
                     for (idx, elem) in self.#accessor.iter().enumerate() {
                         const DENIED: &[&str] = &[ #( #set ),* ];
-                        if DENIED.iter().any(|s| *s == elem.type_url.as_str()) {
+                        if DENIED.iter().any(|s| *s == &elem.type_url[..]) {
                             violations.push(::protovalidate_buffa::Violation {
                                 field: ::protovalidate_buffa::FieldPath {
                                     elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
@@ -1635,8 +1635,8 @@ pub fn emit_repeated(
             // Element access expression for scalar element kinds. Wrapper
             // elements yield `(*elem).value` which still satisfies CelScalar.
             let elem_access: Option<TokenStream> = match element_kind {
-                FieldKind::String => Some(quote! { elem.as_str() }),
-                FieldKind::Bytes => Some(quote! { elem.as_slice() }),
+                FieldKind::String => Some(quote! { (&elem[..]) }),
+                FieldKind::Bytes => Some(quote! { (&elem[..]) }),
                 FieldKind::Bool => Some(quote! { (*elem) }),
                 FieldKind::Float
                 | FieldKind::Double
@@ -1652,10 +1652,10 @@ pub fn emit_repeated(
                 | FieldKind::Fixed64
                 | FieldKind::Enum { .. } => Some(quote! { (*elem) }),
                 FieldKind::Message { full_name } if full_name == "google.protobuf.StringValue" => {
-                    Some(quote! { elem.value.as_str() })
+                    Some(quote! { (&elem.value[..]) })
                 }
                 FieldKind::Message { full_name } if full_name == "google.protobuf.BytesValue" => {
-                    Some(quote! { elem.value.as_slice() })
+                    Some(quote! { (&elem.value[..]) })
                 }
                 FieldKind::Message { full_name }
                     if full_name.starts_with("google.protobuf.")
@@ -1801,8 +1801,8 @@ pub fn emit_repeated(
             };
             // Native path: bind `this` to the element value and transpile.
             let elem_access = match element_kind {
-                FieldKind::String => Some(quote! { elem.as_str() }),
-                FieldKind::Bytes => Some(quote! { elem.as_slice() }),
+                FieldKind::String => Some(quote! { (&elem[..]) }),
+                FieldKind::Bytes => Some(quote! { (&elem[..]) }),
                 FieldKind::Bool => Some(quote! { (*elem) }),
                 FieldKind::Float
                 | FieldKind::Double
@@ -2104,8 +2104,8 @@ pub fn emit_map(
                 }
             };
             let access = match target_kind {
-                FieldKind::String => Some(quote! { #value_ident.as_str() }),
-                FieldKind::Bytes => Some(quote! { #value_ident.as_slice() }),
+                FieldKind::String => Some(quote! { (&#value_ident[..]) }),
+                FieldKind::Bytes => Some(quote! { (&#value_ident[..]) }),
                 FieldKind::Bool => Some(quote! { (*#value_ident) }),
                 FieldKind::Float
                 | FieldKind::Double
@@ -2220,7 +2220,7 @@ fn emit_scalar_checks(
                     out.push(quote! {
                         {
                             const ALLOWED: &[&str] = &[ #( #set ),* ];
-                            if !ALLOWED.iter().any(|c| *c == #elem_ident.as_str()) {
+                            if !ALLOWED.iter().any(|c| *c == &#elem_ident[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: ::protovalidate_buffa::field_path!(#field_name_lit),
                                     rule: ::protovalidate_buffa::field_path!("string", "in"),
@@ -2237,7 +2237,7 @@ fn emit_scalar_checks(
                     out.push(quote! {
                         {
                             const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                            if DISALLOWED.iter().any(|c| *c == #elem_ident.as_str()) {
+                            if DISALLOWED.iter().any(|c| *c == &#elem_ident[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: ::protovalidate_buffa::field_path!(#field_name_lit),
                                     rule: ::protovalidate_buffa::field_path!("string", "not_in"),

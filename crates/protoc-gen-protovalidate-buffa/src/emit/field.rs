@@ -376,7 +376,7 @@ pub fn emit(
                     blocks.push(quote! {
                             if let Some(inner) = self.#accessor.as_option() {
                                 const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
-                                let actual: ::std::vec::Vec<&str> = inner.paths.iter().map(|s| s.as_str()).collect();
+                                let actual: ::std::vec::Vec<&str> = inner.paths.iter().map(|s| &s[..]).collect();
                                 let eq = actual.len() == EXPECTED.len()
                                     && actual.iter().zip(EXPECTED.iter()).all(|(a, b)| a == b);
                                 if !eq {
@@ -398,7 +398,7 @@ pub fn emit(
                             if let Some(inner) = self.#accessor.as_option() {
                                 const ALLOWED: &[&str] = &[ #( #allowed ),* ];
                                 let ok = inner.paths.iter().all(|p| {
-                                    ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str()))
+                                    ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, &p[..]))
                                 });
                                 if !ok {
                                     violations.push(::protovalidate_buffa::Violation {
@@ -419,8 +419,8 @@ pub fn emit(
                             if let Some(inner) = self.#accessor.as_option() {
                                 const DENIED: &[&str] = &[ #( #denied ),* ];
                                 let bad = inner.paths.iter().any(|p| {
-                                    DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str())
-                                        || ::protovalidate_buffa::rules::string::fieldmask_covers(p.as_str(), c))
+                                    DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, &p[..])
+                                        || ::protovalidate_buffa::rules::string::fieldmask_covers(&p[..], c))
                                 });
                                 if bad {
                                     violations.push(::protovalidate_buffa::Violation {
@@ -445,7 +445,7 @@ pub fn emit(
                     blocks.push(quote! {
                         if let Some(inner) = self.#accessor.as_option() {
                             const ALLOWED: &[&str] = &[ #( #set ),* ];
-                            if !ALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                            if !ALLOWED.iter().any(|s| *s == &inner.type_url[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #field_path, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("any.in"),
@@ -463,7 +463,7 @@ pub fn emit(
                     blocks.push(quote! {
                         if let Some(inner) = self.#accessor.as_option() {
                             const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                            if DISALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                            if DISALLOWED.iter().any(|s| *s == &inner.type_url[..]) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #field_path2, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
@@ -1759,7 +1759,7 @@ fn emit_string(
         out.push(quote! {
             {
                 const ALLOWED: &[&str] = &[ #( #set ),* ];
-                if !ALLOWED.iter().any(|candidate| *candidate == self.#accessor.as_str()) {
+                if !ALLOWED.iter().any(|candidate| *candidate == &self.#accessor[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -1780,7 +1780,7 @@ fn emit_string(
         out.push(quote! {
             {
                 const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                if DISALLOWED.iter().any(|candidate| *candidate == self.#accessor.as_str()) {
+                if DISALLOWED.iter().any(|candidate| *candidate == &self.#accessor[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.not_in"),
@@ -1988,7 +1988,7 @@ fn emit_bytes_value(
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || bytes_field_path(name_lit, field_number);
     let value_len = quote! { #value.len() };
-    let value_slice = quote! { #value.as_slice() };
+    let value_slice = quote! { (&#value[..]) };
 
     // bytes.ip = 4 or 16 bytes; bytes.ipv4 = 4 bytes; bytes.ipv6 = 16 bytes.
     if b.ip == Some(true) {
@@ -4011,7 +4011,7 @@ pub(crate) fn emit_wrapper_inner(
                             1,
                             "String",
                             "string.const",
-                            quote! { &#v != #c },
+                            quote! { &#v[..] != #c },
                         );
                     }
                     if let Some(n) = s.min_len {
@@ -5690,7 +5690,7 @@ pub(crate) fn emit_string_checks_on(
             1,
             "String",
             "string.const",
-            quote! { #v != #c },
+            quote! { &#v[..] != #c },
         );
     }
     if let Some(n) = s.min_len {
@@ -5784,7 +5784,7 @@ pub(crate) fn emit_string_checks_on(
         out.push(quote! {
             {
                 const ALLOWED: &[&str] = &[ #( #set ),* ];
-                if !ALLOWED.iter().any(|c| *c == #v.as_str()) {
+                if !ALLOWED.iter().any(|c| *c == &#v[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -5802,7 +5802,7 @@ pub(crate) fn emit_string_checks_on(
         out.push(quote! {
             {
                 const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                if DISALLOWED.iter().any(|c| *c == #v.as_str()) {
+                if DISALLOWED.iter().any(|c| *c == &#v[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.not_in"),
@@ -5831,7 +5831,7 @@ pub(crate) fn emit_string_checks_on(
                     ::protovalidate_buffa::regex::Regex::new(#pat_str)
                         .expect("pattern regex compiled at code-gen time")
                 });
-                if !re.is_match(#v.as_str()) {
+                if !re.is_match(&#v[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.pattern"),
