@@ -29,6 +29,7 @@ use crate::scan::{
 pub fn emit(
     field: &FieldValidator,
     schemas: &crate::emit::cel::SchemaIndex,
+    shape: crate::emit::Shape,
 ) -> Result<TokenStream> {
     if matches!(field.ignore, Ignore::Always) {
         return Ok(quote! {});
@@ -271,6 +272,7 @@ pub fn emit(
                     key,
                     value,
                     schemas,
+                    shape,
                 )?);
             } else if let FieldKind::Message { full_name } = value.as_ref() {
                 // Map<K, Message> with no map-level rules — still recurse
@@ -283,8 +285,15 @@ pub fn emit(
                     if let Some(key_subscript) =
                         crate::emit::repeated::kind_variant_to_subscript(kind_to_field_type(key))
                     {
+                        let crate::emit::MapAccess {
+                            preamble,
+                            skip_stale,
+                            ..
+                        } = shape.map_access(&accessor);
                         blocks.push(quote! {
-                            for (key, value) in self.#accessor.iter() {
+                            #preamble
+                            for (__pv_i, (key, value)) in self.#accessor.iter().enumerate() {
+                                #skip_stale
                                 if let Err(sub) = value.validate() {
                                     violations.extend(sub.violations.into_iter().map(|mut v| {
                                         v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {

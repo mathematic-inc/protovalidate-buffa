@@ -31,6 +31,89 @@ pub mod field;
 pub mod oneof;
 pub mod repeated;
 
+/// Which of buffa's two generated representations a validator body targets.
+///
+/// buffa emits an owned struct (`Foo`) and a zero-copy borrowed view
+/// (`__buffa::view::FooView<'a>`) for every message. The rule checks are the
+/// same either way — emitted expressions are written so they hold for both
+/// `String`/`&str`, `Vec<u8>`/`&[u8]`, `Vec<T>`/`RepeatedView<T>` — so only the
+/// three cases below actually branch on this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// The owned message struct.
+    Owned,
+    /// The borrowed zero-copy view.
+    View,
+}
+
+impl Shape {
+    /// Scaffolding that makes a map field read as the message protobuf says it
+    /// decodes to, for either shape. See [`MapAccess`].
+    pub(crate) fn map_access(self, accessor: &proc_macro2::Ident) -> MapAccess {
+        match self {
+            // An owned `HashMap` is already the canonical map: the decoder
+            // applied last-wins while building it.
+            Self::Owned => MapAccess {
+                preamble: TokenStream::new(),
+                pairs: quote! { self.#accessor.len() },
+                skip_stale: TokenStream::new(),
+            },
+            // A `MapView` is the raw wire entry list — it has not had the
+            // map-building step applied, so repeats of a key are still present.
+            // Index each key to its last occurrence once, in O(n), and drive
+            // both the pair count and the entry loops off that.
+            Self::View => MapAccess {
+                preamble: quote! {
+                    let mut __pv_last: ::std::collections::HashMap<_, usize> =
+                        ::std::collections::HashMap::with_capacity(self.#accessor.len());
+                    for (__pv_i, (__pv_k, _)) in self.#accessor.iter().enumerate() {
+                        __pv_last.insert(__pv_k, __pv_i);
+                    }
+                },
+                pairs: quote! { __pv_last.len() },
+                skip_stale: quote! {
+                    if __pv_last.get(key) != ::core::option::Option::Some(&__pv_i) {
+                        continue;
+                    }
+                },
+            },
+        }
+    }
+
+    /// Module path holding this shape's oneof enums, relative to the package
+    /// root that the emitted file's `use super::*;` brings into scope.
+    pub(crate) fn oneof_prefix(self) -> TokenStream {
+        match self {
+            Self::Owned => quote! { __buffa::oneof },
+            Self::View => quote! { __buffa::view::oneof },
+        }
+    }
+}
+
+/// How a validator body reads one map field so that it sees the map protobuf
+/// says the payload decodes to.
+///
+/// Duplicate map keys are legal on the wire and their resolution is specified:
+/// "if there are duplicate map keys the last key seen is used". An owned
+/// `HashMap` gets that for free from the decoder. A `MapView` does not — it is
+/// the undeduplicated entry list — so the view body reconstructs it. Without
+/// that, a padded payload clears `map.min_pairs` on the view and then fails on
+/// the owned message the handler converts to, and per-key rules fire against
+/// values that were overwritten and are not part of the message.
+///
+/// Iteration order is deliberately not normalised: protobuf leaves map
+/// ordering undefined, so the two shapes may report the same violations in
+/// different orders and neither is wrong.
+pub(crate) struct MapAccess {
+    /// Statements to run before any check on this field; empty when owned.
+    pub(crate) preamble: TokenStream,
+    /// Expression yielding the number of distinct keys.
+    pub(crate) pairs: TokenStream,
+    /// Guard placed at the top of each entry loop, skipping entries a
+    /// canonical decode would have dropped; empty when owned.
+    pub(crate) skip_stale: TokenStream,
+}
+
 /// Build the Rust identifier that accesses a proto field (or oneof) on a
 /// buffa-generated struct.
 ///
@@ -268,7 +351,7 @@ fn render_package_node(
 fn render_file(msgs: &[&MessageValidators], schemas: &cel::SchemaIndex) -> Result<TokenStream> {
     let impls: Vec<TokenStream> = msgs
         .iter()
-        .map(|m| render_message(m, schemas))
+        .map(|m| render_message(m, schemas, Shape::Owned))
         .collect::<Result<_>>()?;
     Ok(quote! {
         use super::*;
@@ -298,7 +381,11 @@ pub(crate) fn gen_allows() -> TokenStream {
     }
 }
 
-fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result<TokenStream> {
+fn render_message(
+    msg: &MessageValidators,
+    schemas: &cel::SchemaIndex,
+    shape: Shape,
+) -> Result<TokenStream> {
     use std::collections::HashSet;
     // Use only the message name relative to the package — the generated file
     // is included inside the package module, so `use super::*;` brings the
@@ -326,8 +413,24 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
             }
         })
         .collect();
-    let rust_path_str = rust_segs.join("::");
-    let rust_path = syn::parse_str::<syn::Path>(&rust_path_str)?;
+    // The type this `impl Validate` block attaches to. The owned struct sits
+    // at the package root; its view counterpart lives under
+    // `__buffa::view::` with a `View` suffix and a borrow lifetime, so
+    // `example.v1.Outer.Inner` gives `outer::Inner` owned and
+    // `__buffa::view::outer::InnerView<'_>` borrowed.
+    let rust_path: TokenStream = match shape {
+        Shape::Owned => {
+            let path = syn::parse_str::<syn::Path>(&rust_segs.join("::"))?;
+            quote! { #path }
+        }
+        Shape::View => {
+            let mut view_segs = rust_segs;
+            let last = view_segs.last_mut().expect("proto name has ≥1 segment");
+            last.push_str("View");
+            let path = syn::parse_str::<syn::Path>(&view_segs.join("::"))?;
+            quote! { __buffa::view::#path<'_> }
+        }
+    };
 
     // Fields listed in a `(buf.validate.message).oneof` get implicit
     // IGNORE_IF_ZERO_VALUE semantics: their rule checks only fire when the
@@ -341,7 +444,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .field_rules
         .iter()
         .map(|f| {
-            let inner = field::emit(f, schemas)?;
+            let inner = field::emit(f, schemas, shape)?;
             if implicit_ignore.contains(f.field_name.as_str())
                 && !matches!(f.ignore, crate::scan::Ignore::Always)
             {
@@ -391,7 +494,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
-        .map(oneof::emit)
+        .map(|o| oneof::emit(o, shape))
         .collect::<Result<_>>()?;
 
     // `(buf.validate.message).oneof` — fields where at most one may be set.

@@ -1893,6 +1893,10 @@ pub fn emit_repeated(
 /// Panics if `min_pairs` or `max_pairs` cannot be converted to `usize`. In
 /// practice proto size bounds are small non-negative integers, so this
 /// invariant always holds.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "map emission needs accessor, name, field_number, rules, both key/value kinds, the CEL schema index, and the target shape — bundling into a struct would fragment the signature without aiding readers"
+)]
 pub fn emit_map(
     accessor: &syn::Ident,
     name_lit: &str,
@@ -1901,22 +1905,28 @@ pub fn emit_map(
     key_kind: &FieldKind,
     value_kind: &FieldKind,
     schemas: &crate::emit::cel::SchemaIndex,
+    shape: crate::emit::Shape,
 ) -> Result<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || map_field_path(name_lit, field_number);
+    let crate::emit::MapAccess {
+        preamble,
+        pairs,
+        skip_stale,
+    } = shape.map_access(accessor);
 
     if let Some(min) = spec.min_pairs {
         let min_usize = usize::try_from(min).expect("proto length bound fits in usize");
         let field = fp();
         let rule = map_rule_path("min_pairs", 1);
         out.push(quote! {
-            if self.#accessor.len() < #min_usize {
+            if #pairs < #min_usize {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("map.min_pairs"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
                         "map must contain at least {} pairs (got {})",
-                        #min_usize, self.#accessor.len()
+                        #min_usize, #pairs
                     )),
                     for_key: false,
                 });
@@ -1929,13 +1939,13 @@ pub fn emit_map(
         let field = fp();
         let rule = map_rule_path("max_pairs", 2);
         out.push(quote! {
-            if self.#accessor.len() > #max_usize {
+            if #pairs > #max_usize {
                 violations.push(::protovalidate_buffa::Violation {
                     field: #field, rule: #rule,
                     rule_id: ::std::borrow::Cow::Borrowed("map.max_pairs"),
                     message: ::std::borrow::Cow::Owned(::std::format!(
                         "map must contain at most {} pairs (got {})",
-                        #max_usize, self.#accessor.len()
+                        #max_usize, #pairs
                     )),
                     for_key: false,
                 });
@@ -2051,7 +2061,7 @@ pub fn emit_map(
             |g| quote! { if #g { #( #val_checks )* } },
         );
         out.push(quote! {
-            for (key, value) in self.#accessor.iter() {
+            for (__pv_i, (key, value)) in self.#accessor.iter().enumerate() { #skip_stale
                 #key_block
                 #val_block
             }
@@ -2132,7 +2142,7 @@ pub fn emit_map(
             });
             if let Some(check) = native {
                 out.push(quote! {
-                    for (key, value) in self.#accessor.iter() {
+                    for (__pv_i, (key, value)) in self.#accessor.iter().enumerate() { #skip_stale
                         #check
                     }
                 });
@@ -2167,7 +2177,7 @@ pub fn emit_map(
             let kt = format_ident!("{}", crate::emit::field::kind_to_field_type(key_kind));
             let vt = format_ident!("{}", crate::emit::field::kind_to_field_type(value_kind));
             out.push(quote! {
-                for (key, value) in self.#accessor.iter() {
+                for (__pv_i, (key, value)) in self.#accessor.iter().enumerate() { #skip_stale
                     if let Err(sub) = value.validate() {
                         violations.extend(sub.violations.into_iter().map(|mut v| {
                             v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
@@ -2186,7 +2196,12 @@ pub fn emit_map(
         }
     }
 
-    Ok(quote! { #( #out )* })
+    Ok(quote! {
+        {
+            #preamble
+            #( #out )*
+        }
+    })
 }
 
 // ─── scalar per-element checks ────────────────────────────────────────────────
