@@ -343,9 +343,10 @@ fn emit_variant_arm(f: &FieldValidator, oneof_path: &TokenStream) -> Result<Toke
             let inner_checks =
                 crate::emit::field::emit_wrapper_inner(name_lit, f.field_number, inner, f);
             if !inner_checks.is_empty() {
+                let bind = crate::emit::field::wrapper_value_binding(inner, &quote! { v });
                 checks.push(quote! {
                     {
-                        let v = v.value.clone();
+                        #bind
                         #( #inner_checks )*
                     }
                 });

@@ -360,7 +360,7 @@ pub(crate) fn kind_variant_to_subscript(kind_variant: &str) -> Option<TokenStrea
         }
         "Uint64" | "Fixed64" => Some(quote! { ::protovalidate_buffa::Subscript::UintKey(*key) }),
         "String" => Some(
-            quote! { ::protovalidate_buffa::Subscript::StringKey(::std::borrow::Cow::Owned(key.clone())) },
+            quote! { ::protovalidate_buffa::Subscript::StringKey(::std::borrow::Cow::Owned(::std::string::String::from(&key[..]))) },
         ),
         _ => None,
     }

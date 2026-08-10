@@ -55,10 +55,22 @@ fn parse_opts(parameter: &str) -> emit::Options {
         if part.is_empty() {
             continue;
         }
-        if let Some((k, v)) = part.split_once('=')
-            && k.trim() == "proto_module"
-        {
-            opts.proto_module = v.trim().to_string();
+        if let Some((k, v)) = part.split_once('=') {
+            let v = v.trim();
+            match k.trim() {
+                "proto_module" => opts.proto_module = v.to_string(),
+                // `views=true` (default) | `views=false` |
+                // `views=feature:<name>` to match a message crate built with
+                // `gate_impls_on_crate_features`.
+                "views" => {
+                    opts.views = match v.strip_prefix("feature:") {
+                        Some(feature) => emit::ViewImpls::Gated(feature.trim().to_string()),
+                        None if v == "false" => emit::ViewImpls::Never,
+                        None => emit::ViewImpls::Always,
+                    }
+                }
+                _ => {}
+            }
         }
     }
     opts

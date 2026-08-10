@@ -15,12 +15,49 @@ pub struct Options {
     /// the `mod.rs` packaging file emits `use <proto_module>::<pkg>::*;`
     /// inside each leaf package so unqualified type names resolve.
     pub proto_module: String,
+    /// How to emit `impl Validate` for each message's borrowed view type, so
+    /// handlers can validate a decoded `FooView<'_>` without first paying for
+    /// `to_owned_message()`.
+    pub views: ViewImpls,
+}
+
+/// Whether — and under what `cfg` — the view validators are emitted.
+///
+/// Mirrors the two buffa-build knobs that decide whether `__buffa::view`
+/// exists in the message crate: `generate_views` (default on) and
+/// `gate_impls_on_crate_features` (default off, and when on it wraps the whole
+/// view module in `#[cfg(feature = "views")]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViewImpls {
+    /// Emit unconditionally. The default, matching buffa's own defaults —
+    /// views generated, ungated.
+    Always,
+    /// Emit behind `#[cfg(feature = "<name>")]`, for a message crate built with
+    /// `gate_impls_on_crate_features(true)`. Use the same feature name that
+    /// crate passed to `views_feature_name` (buffa's default is `"views"`), so
+    /// the validators appear exactly when the types they name do.
+    Gated(String),
+    /// Do not emit view validators at all — for a message crate built with
+    /// `generate_views(false)`, where the types do not exist in any
+    /// configuration.
+    Never,
+}
+
+impl ViewImpls {
+    /// The attribute to stamp on each emitted view item, empty when ungated.
+    fn cfg_attr(&self) -> TokenStream {
+        match self {
+            Self::Gated(feature) => quote! { #[cfg(feature = #feature)] },
+            Self::Always | Self::Never => TokenStream::new(),
+        }
+    }
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
             proto_module: "crate::proto".to_string(),
+            views: ViewImpls::Always,
         }
     }
 }
@@ -165,7 +202,7 @@ pub fn render_with_options(messages: &[MessageValidators], opts: &Options) -> Re
     // file under the right `pub mod` nesting.
     let mut by_package: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (source_file, msgs) in by_file {
-        let body = render_file(&msgs, &schemas)?;
+        let body = render_file(&msgs, &schemas, opts)?;
         let stem = source_file.trim_end_matches(".proto").replace('/', ".");
         let path = format!("{stem}.rs");
         let body_str = body.to_string();
@@ -348,10 +385,29 @@ fn render_package_node(
     }
 }
 
-fn render_file(msgs: &[&MessageValidators], schemas: &cel::SchemaIndex) -> Result<TokenStream> {
+fn render_file(
+    msgs: &[&MessageValidators],
+    schemas: &cel::SchemaIndex,
+    opts: &Options,
+) -> Result<TokenStream> {
+    let shapes: &[Shape] = if opts.views == ViewImpls::Never {
+        &[Shape::Owned]
+    } else {
+        &[Shape::Owned, Shape::View]
+    };
+    // Owned validators are always unconditional; view validators inherit
+    // whatever `cfg` the message crate put on its view module.
+    let view_cfg = opts.views.cfg_attr();
     let impls: Vec<TokenStream> = msgs
         .iter()
-        .map(|m| render_message(m, schemas, Shape::Owned))
+        .flat_map(|m| shapes.iter().map(move |&shape| (m, shape)))
+        .map(|(m, shape)| {
+            let cfg = match shape {
+                Shape::Owned => TokenStream::new(),
+                Shape::View => view_cfg.clone(),
+            };
+            render_message(m, schemas, shape, &cfg)
+        })
         .collect::<Result<_>>()?;
     Ok(quote! {
         use super::*;
@@ -385,6 +441,7 @@ fn render_message(
     msg: &MessageValidators,
     schemas: &cel::SchemaIndex,
     shape: Shape,
+    cfg: &TokenStream,
 ) -> Result<TokenStream> {
     use std::collections::HashSet;
     // Use only the message name relative to the package — the generated file
@@ -509,6 +566,7 @@ fn render_message(
     let allows = gen_allows();
     if let Some(reason) = &msg.compile_error {
         return Ok(quote! {
+            #cfg
             #allows
             impl ::protovalidate_buffa::Validate for #rust_path {
                 fn validate(
@@ -527,10 +585,11 @@ fn render_message(
     // Wrap each static + impl in the same outer allow set.
     let statics_with_allows: Vec<TokenStream> = cel_statics
         .into_iter()
-        .map(|s| quote! { #allows #s })
+        .map(|s| quote! { #cfg #allows #s })
         .collect();
     Ok(quote! {
         #( #statics_with_allows )*
+        #cfg
         #allows
         impl ::protovalidate_buffa::Validate for #rust_path {
             fn validate(

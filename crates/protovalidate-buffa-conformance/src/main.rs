@@ -179,3 +179,65 @@ const fn field_type_to_proto(
         F::Sint64 => T::TYPE_SINT64,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use buffa::{Message, MessageView};
+    use protovalidate_buffa::Validate;
+
+    use super::generated::buf::validate::conformance::cases as c;
+
+    /// One `MapMin.val` entry on the wire: field 1, length-delimited, holding
+    /// a varint key (field 1) and a fixed32 value (field 2).
+    fn map_entry(key: u8, value: f32) -> Vec<u8> {
+        let mut inner = vec![0x08, key, 0x15];
+        inner.extend_from_slice(&value.to_le_bytes());
+        let mut out = vec![
+            0x0a,
+            u8::try_from(inner.len()).expect("entry fits in one byte"),
+        ];
+        out.extend_from_slice(&inner);
+        out
+    }
+
+    /// A payload padded with a repeated map key must not clear `min_pairs` on
+    /// the view when it would fail on the owned message.
+    ///
+    /// `MapMin` is `map<int32, float> val = 1 [min_pairs = 2]`. Two entries
+    /// share key `1`, so protobuf's last-wins rule leaves one pair and both
+    /// shapes must reject. The conformance corpus has no duplicate-key case,
+    /// so nothing else covers this.
+    #[test]
+    fn duplicate_map_keys_reject_on_both_shapes() {
+        let mut buf = map_entry(1, 1.0);
+        buf.extend(map_entry(1, 2.0));
+
+        let owned = c::MapMin::decode_from_slice(&buf).expect("owned decode");
+        let view = c::__buffa::view::MapMinView::decode_view(&buf).expect("view decode");
+
+        assert_eq!(owned.val.len(), 1, "owned decode applies last-wins");
+        assert_eq!(view.val.len(), 2, "view keeps both wire entries");
+
+        assert!(
+            owned.validate().is_err(),
+            "one pair does not meet min_pairs"
+        );
+        assert!(
+            view.validate().is_err(),
+            "view must see the same single pair the owned message has"
+        );
+    }
+
+    /// Distinct keys still pass, so the dedup is not simply rejecting maps.
+    #[test]
+    fn distinct_map_keys_pass_on_both_shapes() {
+        let mut buf = map_entry(1, 1.0);
+        buf.extend(map_entry(2, 2.0));
+
+        let owned = c::MapMin::decode_from_slice(&buf).expect("owned decode");
+        let view = c::__buffa::view::MapMinView::decode_view(&buf).expect("view decode");
+
+        assert!(owned.validate().is_ok());
+        assert!(view.validate().is_ok());
+    }
+}
