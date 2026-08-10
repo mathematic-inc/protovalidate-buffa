@@ -18,7 +18,7 @@ For what the rules *mean*, the full rule catalogue, CEL semantics, and design do
 
 ## Status
 
-**Conformance: 2872 / 2872 (100%)** against the upstream [`protovalidate-conformance`](https://github.com/bufbuild/protovalidate/tree/main/tools/protovalidate-conformance) harness, covering proto2, proto3, and editions 2023.
+**Conformance: 2872 / 2872 (100%)** against the upstream [`protovalidate-conformance`](https://github.com/bufbuild/protovalidate/tree/main/tools/protovalidate-conformance) harness, covering proto2, proto3, and editions 2023. Every case runs through both the owned and the view validator, and the two verdicts must agree — see [conformance testing](#conformance-testing).
 
 ## Why a different crate?
 
@@ -129,7 +129,7 @@ view.validate()?;                    // rejects without building the owned messa
 let owned = view.to_owned_message(); // only once the request is known good
 ```
 
-The win is skipping the owned decode, not faster checking — the rule checks themselves cost the same on either shape. A view still allocates for repeated, map, and nested-message fields; only strings and bytes borrow.
+The win is skipping the owned decode, not faster checking — the rule checks themselves cost the same on either shape. A view still allocates for repeated, map, and nested-message fields; only strings and bytes borrow. Both impls run the same rules, and the conformance suite holds them to identical verdicts.
 
 Two map notes, both following from the protobuf spec:
 
@@ -152,7 +152,9 @@ Match on the typed fields rather than stringly-typed rule-id prefixes. `Violatio
 
 ## Conformance testing
 
-See [`crates/protovalidate-buffa-conformance/README.md`](crates/protovalidate-buffa-conformance/README.md) for how to build the dispatch binary and drive the upstream harness locally. CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on every push; conformance is currently a local-only / pre-release check.
+See [`crates/protovalidate-buffa-conformance/README.md`](crates/protovalidate-buffa-conformance/README.md) for how to build the dispatch binary and drive the upstream harness locally. Each case is validated twice — once through the owned message, once through its view — and a disagreement between them fails the case on its own, so a green run means both spec conformance and owned/view parity.
+
+CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on every push; conformance is currently a local-only / pre-release check. The workspace build does compile every emitted view validator across the whole cases corpus, so CI still catches view codegen that doesn't type-check.
 
 ## License
 
