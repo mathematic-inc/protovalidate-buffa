@@ -4,6 +4,8 @@ Static-codegen [protovalidate] for the [buffa] Rust protobuf runtime.
 
 Annotate your `.proto` messages with `(buf.validate.*)` rules; a codegen plugin emits pure-Rust `impl Validate` blocks per message. Handlers call `req.validate()?` at entry (or use the `#[connect_impl]` macro to do it automatically on every handler in a service impl).
 
+Validators are emitted for both of buffa's representations — the owned struct and its zero-copy borrowed view — so a decoded `FooView<'_>` can be validated in place, without a `to_owned_message()` copy first.
+
 For what the rules *mean*, the full rule catalogue, CEL semantics, and design docs, read the upstream project — this crate intentionally does not duplicate that material:
 
 - **Docs:** <https://buf.build/docs/protovalidate/>
@@ -69,6 +71,21 @@ Add to your `buf.gen.yaml`:
   strategy: all
 ```
 
+Plugin options, passed as a comma-separated `opt:` list:
+
+| Option | Default | Effect |
+|---|---|---|
+| `proto_module` | `crate::proto` | Module path the generated `mod.rs` imports message types from. |
+| `views` | `true` | Emit `impl Validate` for view types as well as owned. Must match how the message crate was generated — see below. |
+
+The `views` option tracks buffa's two view knobs:
+
+| `opt:` value | Use when the message crate was built with |
+|---|---|
+| `views=true` (default) | buffa's defaults — `generate_views(true)`, ungated. |
+| `views=feature:<name>` | `gate_impls_on_crate_features(true)`, which wraps the whole `__buffa::view` module in `#[cfg(feature = "<name>")]`. Pass the same name (buffa's default is `views`) and the validators get the identical `cfg`, so they exist exactly when the types do. |
+| `views=false` | `generate_views(false)` — no view types in any configuration. |
+
 Annotate a proto (see upstream for the full rule vocabulary):
 
 ```protobuf
@@ -98,6 +115,26 @@ impl UserService for UserServiceImpl {
     }
 }
 ```
+
+## Validating views
+
+buffa generates a borrowed `FooView<'a>` alongside every owned `Foo`, and the plugin emits an `impl Validate` for both. A handler that only needs to reject bad input can validate the view and skip the owned conversion entirely:
+
+```rust
+use protovalidate_buffa::Validate;
+use buffa::MessageView;
+
+let view = pb::CreateUserRequestView::decode_view(&bytes)?;
+view.validate()?;                    // rejects without building the owned message
+let owned = view.to_owned_message(); // only once the request is known good
+```
+
+The win is skipping the owned decode, not faster checking — the rule checks themselves cost the same on either shape. A view still allocates for repeated, map, and nested-message fields; only strings and bytes borrow.
+
+Two map notes, both following from the protobuf spec:
+
+- **Duplicate keys.** Protobuf specifies that "if there are duplicate map keys the last key seen is used", and an owned `HashMap` gets that from the decoder. A `MapView` is the raw wire entry list and has not had that step applied, so the view validator reconstructs it — one linear pass indexing each key to its last occurrence — before counting pairs or walking entries. Skipping this would let a payload padded with duplicate keys clear `map.min_pairs` on the view and then fail on the owned message the handler converts to.
+- **Ordering.** Map iteration order is undefined, and the two shapes differ (hash order vs wire order; the owned order is not stable between decodes). Both are valid. Don't depend on the order of violations reported for a map field.
 
 ## Error model
 

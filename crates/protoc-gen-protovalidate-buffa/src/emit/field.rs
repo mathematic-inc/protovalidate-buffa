@@ -202,20 +202,20 @@ pub fn emit(
             // EXPLICIT-presence scalar: buffa generates `Option<T>`.
             // Emit all rules inside a guard that binds `v` without moving out
             // of `self`. For Copy types we dereference; for String/Bytes we
-            // clone the inner so the downstream emitters that expect owned `v`
-            // continue to compile.
+            // reborrow the inner as a slice so the downstream emitters read the
+            // same `&str` / `&[u8]` whether the field is owned or a view.
             let inner_blocks = emit_optional_inner(&accessor, name_lit, inner, field);
             if !inner_blocks.is_empty() {
                 match inner.as_ref() {
                     FieldKind::String => blocks.push(quote! {
                         if let Some(v) = self.#accessor.as_ref() {
-                            let v: ::std::string::String = v.clone();
+                            let v = &v[..];
                             #( #inner_blocks )*
                         }
                     }),
                     FieldKind::Bytes => blocks.push(quote! {
                         if let Some(v) = self.#accessor.as_ref() {
-                            let v: ::std::vec::Vec<u8> = v.clone();
+                            let v = &v[..];
                             #( #inner_blocks )*
                         }
                     }),
@@ -498,9 +498,10 @@ pub fn emit(
             // not the inner scalar — so use a Message-typed field path.
             let inner_blocks = emit_wrapper_inner(name_lit, field.field_number, inner, field);
             if !inner_blocks.is_empty() {
+                let bind = wrapper_value_binding(inner, &quote! { __wrapper_inner });
                 blocks.push(quote! {
                     if let Some(__wrapper_inner) = self.#accessor.as_option() {
-                        let v = __wrapper_inner.value.clone();
+                        #bind
                         #( #inner_blocks )*
                     }
                 });
@@ -1710,20 +1711,16 @@ fn emit_string(
         // header_value allows empty strings.
         let (fn_path, rule_id, empty_rule_id): (TokenStream, &str, Option<&str>) = match wkr {
             1 => (
-                quote! { |v: &::std::string::String| ::protovalidate_buffa::rules::string::is_header_name(v, #strict) },
+                quote! { |v: &str| ::protovalidate_buffa::rules::string::is_header_name(v, #strict) },
                 "string.well_known_regex.header_name",
                 Some("string.well_known_regex.header_name_empty"),
             ),
             2 => (
-                quote! { |v: &::std::string::String| ::protovalidate_buffa::rules::string::is_header_value(v, #strict) },
+                quote! { |v: &str| ::protovalidate_buffa::rules::string::is_header_value(v, #strict) },
                 "string.well_known_regex.header_value",
                 None,
             ),
-            _ => (
-                quote! { |_v: &::std::string::String| true },
-                "string.well_known_regex",
-                None,
-            ),
+            _ => (quote! { |_v: &str| true }, "string.well_known_regex", None),
         };
         let rid = rule_id.to_string();
         if let Some(re) = empty_rule_id {
@@ -1736,7 +1733,7 @@ fn emit_string(
                         message: ::std::borrow::Cow::Borrowed(""),
                         for_key: false,
                     });
-                } else if !(#fn_path)(&self.#accessor) {
+                } else if !(#fn_path)(&self.#accessor[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field_b, rule: #rule_b,
                         rule_id: ::std::borrow::Cow::Borrowed(#rid),
@@ -1749,7 +1746,7 @@ fn emit_string(
             let _ = field_a;
             let _ = rule_a;
             out.push(quote! {
-                if !self.#accessor.is_empty() && !(#fn_path)(&self.#accessor) {
+                if !self.#accessor.is_empty() && !(#fn_path)(&self.#accessor[..]) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field_b, rule: #rule_b,
                         rule_id: ::std::borrow::Cow::Borrowed(#rid),
@@ -3657,6 +3654,19 @@ fn to_snake_case(s: &str) -> String {
 /// entries where the inner scalar type is known.
 /// Wrapper-specific: the outer field (in the rule path) is TYPE_MESSAGE
 /// (the wrapper), not the inner scalar.
+/// Bind `v` to a wrapper's inner value in the form the scalar rule emitters
+/// expect, for either shape.
+///
+/// String/bytes wrappers reborrow as a slice — the owned wrapper holds
+/// `String`/`Vec<u8>` while its view holds `&str`/`&[u8]`, and a slice is the
+/// common ground. Every other inner type is `Copy`, so it binds by value.
+pub(crate) fn wrapper_value_binding(inner: &FieldKind, src: &TokenStream) -> TokenStream {
+    match inner {
+        FieldKind::String | FieldKind::Bytes => quote! { let v = &#src.value[..]; },
+        _ => quote! { let v = #src.value; },
+    }
+}
+
 pub(crate) fn emit_wrapper_inner(
     name_lit: &str,
     field_number: i32,
