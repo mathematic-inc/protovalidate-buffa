@@ -18,7 +18,7 @@ use crate::scan::{FieldKind, FieldValidator, OneofValidator};
 /// Returns an error if a variant's enum-rule type reference cannot be resolved
 /// to a local Rust path. (Field/oneof names are escaped via
 /// [`crate::emit::field_ident`], which is infallible.)
-pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
+pub fn emit(v: &OneofValidator, shape: crate::emit::Shape) -> Result<TokenStream> {
     let has_required = v.required;
     // If nothing to emit at all, skip.
     let has_variant_rules = v.fields.iter().any(has_field_rules);
@@ -36,6 +36,12 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
     // down to the per-variant emitters.
     let module_ident = crate::emit::field_ident(&to_snake_case(&v.parent_msg_name));
     let oneof_enum_ident = crate::emit::field_ident(&to_pascal_case(&v.name));
+    // Path to this oneof's enum. Owned and view enums share the variant names
+    // and only differ in which `__buffa::` subtree they live under.
+    let oneof_path = {
+        let prefix = shape.oneof_prefix();
+        quote! { #prefix::#module_ident::#oneof_enum_ident }
+    };
 
     let none_arm = if has_required {
         quote! {
@@ -71,15 +77,14 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
         .fields
         .iter()
         .filter(|f| has_field_rules(f))
-        .map(|f| emit_variant_arm(f, &module_ident, &oneof_enum_ident))
+        .map(|f| emit_variant_arm(f, &oneof_path))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .filter(|ts| !ts.is_empty())
         .collect();
 
     // Compute required_variant_blocks early so they survive all early-return paths.
-    let required_variant_blocks =
-        emit_required_variant_blocks(v, &accessor, &module_ident, &oneof_enum_ident);
+    let required_variant_blocks = emit_required_variant_blocks(v, &accessor, &oneof_path);
 
     // If no variant has rules, we only need the None check (already handled above).
     if some_arms.is_empty() && !has_required && !has_required_variants {
@@ -142,8 +147,7 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
 fn emit_required_variant_blocks(
     v: &OneofValidator,
     accessor: &syn::Ident,
-    module_ident: &syn::Ident,
-    oneof_enum_ident: &syn::Ident,
+    oneof_path: &TokenStream,
 ) -> Vec<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     for f in &v.fields {
@@ -178,7 +182,7 @@ fn emit_required_variant_blocks(
             _ => quote!(Message),
         };
         out.push(quote! {
-            if !matches!(&self.#accessor, Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(_))) {
+            if !matches!(&self.#accessor, Some(#oneof_path::#variant_ident(_))) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath {
                         elements: ::std::vec![
@@ -237,11 +241,7 @@ fn has_field_rules(f: &FieldValidator) -> bool {
 }
 
 /// Emit a `Some(Variant(v)) => { ... }` match arm for a single oneof field.
-fn emit_variant_arm(
-    f: &FieldValidator,
-    module_ident: &syn::Ident,
-    oneof_enum_ident: &syn::Ident,
-) -> Result<TokenStream> {
+fn emit_variant_arm(f: &FieldValidator, oneof_path: &TokenStream) -> Result<TokenStream> {
     if matches!(f.ignore, crate::scan::Ignore::Always) {
         return Ok(quote! {});
     }
@@ -383,14 +383,14 @@ fn emit_variant_arm(
     );
     if needs_copy_deref {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
+            Some(#oneof_path::#variant_ident(__oneof_val)) => {
                 let #val_ident = *__oneof_val;
                 #( #checks )*
             }
         })
     } else {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(#val_ident)) => {
+            Some(#oneof_path::#variant_ident(#val_ident)) => {
                 #( #checks )*
             }
         })
