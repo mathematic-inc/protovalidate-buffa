@@ -453,7 +453,7 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const ALLOWED: &[&str] = &[ #( #set ),* ];
-                    if !ALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                    if !ALLOWED.iter().any(|s| *s == &#val_ident.type_url[..]) {
                         violations.push(::protovalidate_buffa::Violation {
                             field: #field,
                             rule: #rule,
@@ -472,7 +472,7 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                    if DISALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                    if DISALLOWED.iter().any(|s| *s == &#val_ident.type_url[..]) {
                         violations.push(::protovalidate_buffa::Violation {
                             field: #field,
                             rule: #rule,
@@ -497,7 +497,7 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
-                    let actual: ::std::vec::Vec<&str> = #val_ident.paths.iter().map(|s| s.as_str()).collect();
+                    let actual: ::std::vec::Vec<&str> = #val_ident.paths.iter().map(|s| &s[..]).collect();
                     let eq = actual.len() == EXPECTED.len()
                         && actual.iter().zip(EXPECTED.iter()).all(|(a, b)| a == b);
                     if !eq {
@@ -520,7 +520,7 @@ fn emit_oneof_wkt_checks(
                 {
                     const ALLOWED: &[&str] = &[ #( #allowed ),* ];
                     let ok = #val_ident.paths.iter().all(|p| {
-                        ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str()))
+                        ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, &p[..]))
                     });
                     if !ok {
                         violations.push(::protovalidate_buffa::Violation {
@@ -542,8 +542,8 @@ fn emit_oneof_wkt_checks(
                 {
                     const DENIED: &[&str] = &[ #( #denied ),* ];
                     let bad = #val_ident.paths.iter().any(|p| {
-                        DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str())
-                            || ::protovalidate_buffa::rules::string::fieldmask_covers(p.as_str(), c))
+                        DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, &p[..])
+                            || ::protovalidate_buffa::rules::string::fieldmask_covers(&p[..], c))
                     });
                     if bad {
                         violations.push(::protovalidate_buffa::Violation {

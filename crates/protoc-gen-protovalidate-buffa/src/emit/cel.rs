@@ -602,8 +602,8 @@ fn field_this_access(
 ) -> Option<TokenStream> {
     match &f.field_type {
         FieldKind::Optional(inner) => Some(match (cel_ty, inner.as_ref()) {
-            (CelType::Str { .. }, _) => quote! { __cel_inner.as_str() },
-            (CelType::Bytes { .. }, _) => quote! { __cel_inner.as_slice() },
+            (CelType::Str { .. }, _) => quote! { (&__cel_inner[..]) },
+            (CelType::Bytes { .. }, _) => quote! { (&__cel_inner[..]) },
             (CelType::Int, FieldKind::Enum { .. }) => quote! {
                 ({
                     use ::buffa::Enumeration as _;
@@ -617,8 +617,8 @@ fn field_this_access(
             _ => return None,
         }),
         FieldKind::Wrapper(_) => Some(match cel_ty {
-            CelType::Str { .. } => quote! { __cel_inner.value.as_str() },
-            CelType::Bytes { .. } => quote! { __cel_inner.value.as_slice() },
+            CelType::Str { .. } => quote! { (&__cel_inner.value[..]) },
+            CelType::Bytes { .. } => quote! { (&__cel_inner.value[..]) },
             CelType::Int => quote! { (__cel_inner.value as i64) },
             CelType::UInt => quote! { (__cel_inner.value as u64) },
             CelType::Double => quote! { (__cel_inner.value as f64) },
@@ -631,9 +631,9 @@ fn field_this_access(
                 self.#field_ident.to_i32() as i64
             })
         }),
-        FieldKind::String => Some(quote! { self.#field_ident.as_str() }),
-        FieldKind::Bytes => Some(quote! { self.#field_ident.as_slice() }),
-        FieldKind::Repeated(_) => Some(quote! { self.#field_ident.as_slice() }),
+        FieldKind::String | FieldKind::Bytes | FieldKind::Repeated(_) => {
+            Some(quote! { (&self.#field_ident[..]) })
+        }
         FieldKind::Map { .. } => Some(quote! { (&self.#field_ident) }),
         FieldKind::Float
         | FieldKind::Double
