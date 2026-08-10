@@ -34,11 +34,17 @@ Useful harness flags:
 4. Hands that `CodeGeneratorRequest` to `protoc_gen_protovalidate_buffa::{scan, emit}` in-process — no out-of-process plugin round-trip for validators — and writes each emitted `impl Validate` file into `$OUT_DIR`.
 5. Runs `buffa-build` over the same descriptor set to produce message types for the harness and cases.
 6. Stitches the two outputs together in `_include.rs` so generated validators sit in the same module as the messages they validate.
-7. Writes `dispatch.rs` — a big `match` on `type_url` that decodes + validates, keyed off every message the harness cares about.
+7. Writes `dispatch.rs` — two `match`es on `type_url`, keyed off every message the harness cares about: `dispatch_known` decodes and validates the owned message, `dispatch_known_view` does the same through `decode_view` and the message's `FooView<'_>` validator.
 
 ## Binary flow
 
-`src/main.rs::main` decodes `TestConformanceRequest`, walks `request.cases`, and dispatches each case via `registry::dispatch`:
+`src/main.rs::main` decodes `TestConformanceRequest`, walks `request.cases`, and dispatches each case via `registry::dispatch`.
+
+Every case runs through both validators. The owned verdict is what gets reported, but the view verdict must match it — if they disagree, the case fails with a `RuntimeError` naming the message type and both outcomes. A green run therefore asserts owned/view parity across all 2872 cases on top of spec conformance.
+
+Violations are compared as a set. Protobuf leaves map iteration order undefined and the two shapes take it up differently — an owned map follows its hasher (not stable between decodes), a view follows wire order — so comparing positions would report a divergence where the verdicts match.
+
+Verdict mapping:
 
 ```text
 Validate::validate                             │ TestResult variant
