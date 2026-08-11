@@ -34,14 +34,21 @@ pub(crate) fn dispatch(fqn: &str, bytes: &[u8]) -> CaseOutcome {
     let Some(owned) = dispatch_known(fqn, bytes) else {
         return CaseOutcome::Unsupported;
     };
-    if let Some(view) = dispatch_known_view(fqn, bytes) {
-        let (owned_summary, view_summary) = (summarize(&owned), summarize(&view));
-        if owned_summary != view_summary {
-            return CaseOutcome::RuntimeError(format!(
-                "owned/view validation diverged for {fqn}: \
-                 owned={owned_summary}, view={view_summary}"
-            ));
-        }
+    // A message in the owned table but not the view one means the two tables
+    // drifted apart. Report it rather than passing the case on the owned
+    // verdict alone, which would quietly shrink what the run covers.
+    let Some(view) = dispatch_known_view(fqn, bytes) else {
+        return CaseOutcome::RuntimeError(format!(
+            "{fqn} has an owned validator but no view validator — \
+             the dispatch tables are out of sync"
+        ));
+    };
+    let (owned_summary, view_summary) = (summarize(&owned), summarize(&view));
+    if owned_summary != view_summary {
+        return CaseOutcome::RuntimeError(format!(
+            "owned/view validation diverged for {fqn}: \
+             owned={owned_summary}, view={view_summary}"
+        ));
     }
     owned
 }
