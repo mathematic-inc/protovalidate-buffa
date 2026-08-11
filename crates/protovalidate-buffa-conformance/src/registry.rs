@@ -4,7 +4,7 @@
 
 use crate::pb_validate;
 
-pub(crate) enum CaseOutcome {
+pub enum CaseOutcome {
     Valid,
     Invalid(pb_validate::Violations),
     RuntimeError(String),
@@ -30,7 +30,8 @@ use dispatch_impl::{dispatch_known, dispatch_known_view};
 /// against the borrowed view — and the two verdicts must match. A divergence
 /// is reported as a failure in its own right, so the suite measures
 /// owned/view agreement on top of spec conformance.
-pub(crate) fn dispatch(fqn: &str, bytes: &[u8]) -> CaseOutcome {
+#[must_use]
+pub fn dispatch(fqn: &str, bytes: &[u8]) -> CaseOutcome {
     let Some(owned) = dispatch_known(fqn, bytes) else {
         return CaseOutcome::Unsupported;
     };

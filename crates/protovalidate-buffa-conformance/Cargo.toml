@@ -15,9 +15,17 @@ publish = false
 [lints]
 workspace = true
 
+[lib]
+name = "protovalidate_buffa_conformance"
+path = "src/lib.rs"
+
 [[bin]]
 name = "protovalidate-buffa-conformance"
 path = "src/main.rs"
+
+[[bench]]
+name = "map_bench"
+harness = false
 
 [dependencies]
 buffa = "0.8"
@@ -31,6 +39,7 @@ regex = "1"
 # Duration / Timestamp typing in transpiler outputs. Runtime crate
 # already depends on chrono via protovalidate-buffa.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 
 [build-dependencies]
 buffa-build = "0.8"
