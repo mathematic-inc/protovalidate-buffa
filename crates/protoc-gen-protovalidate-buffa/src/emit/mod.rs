@@ -98,11 +98,16 @@ impl Shape {
             // A `MapView` is the raw wire entry list — it has not had the
             // map-building step applied, so repeats of a key are still present.
             // Index each key to its last occurrence once, in O(n), and drive
-            // both the pair count and the entry loops off that.
+            // both the pair count and the entry loops off that. Keyed on the
+            // same hasher buffa builds its owned maps with, so both shapes make
+            // the same tradeoff over the same untrusted keys.
             Self::View => MapAccess {
                 preamble: quote! {
-                    let mut __pv_last: ::std::collections::HashMap<_, usize> =
-                        ::std::collections::HashMap::with_capacity(self.#accessor.len());
+                    let mut __pv_last: ::buffa::__private::HashMap<_, usize> =
+                        ::buffa::__private::HashMap::with_capacity_and_hasher(
+                            self.#accessor.len(),
+                            ::core::default::Default::default(),
+                        );
                     for (__pv_i, (__pv_k, _)) in self.#accessor.iter().enumerate() {
                         __pv_last.insert(__pv_k, __pv_i);
                     }
