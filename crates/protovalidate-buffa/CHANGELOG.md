@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.6.0...v0.7.0) (2026-08-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* update dependencies to latest ([#23](https://github.com/mathematic-inc/protovalidate-buffa/issues/23))
+* consolidate keyword, connectrpc, and buffa fixes ([#17](https://github.com/mathematic-inc/protovalidate-buffa/issues/17))
+* update buffa to 0.6 and connectrpc to 0.6.
+* compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10))
+* requires Rust 1.95+ and edition 2024; depends on buffa 0.5 (was 0.4) and connectrpc 0.4 (was 0.3).
+
+### Features
+
+* Compile-time expansion of CEL rules; drop runtime interpreter ([#10](https://github.com/mathematic-inc/protovalidate-buffa/issues/10)) ([929766a](https://github.com/mathematic-inc/protovalidate-buffa/commit/929766a92e0d642f8fc624ae1f05508affbba350))
+* Complete protovalidate coverage ([c18b413](https://github.com/mathematic-inc/protovalidate-buffa/commit/c18b413393dc24fe64e0fbc911d3a93ad007453a))
+* Initial commit ([7fedb7d](https://github.com/mathematic-inc/protovalidate-buffa/commit/7fedb7d9cf5f3bb0586e190be565f400fe442edc))
+
+
+### Bug Fixes
+
+* Bump buffa to 0.5.2, update edition to 2024, all deps to latest ([#4](https://github.com/mathematic-inc/protovalidate-buffa/issues/4)) ([03de1bb](https://github.com/mathematic-inc/protovalidate-buffa/commit/03de1bbb3821d8bf88b57e76efe198d54ceca93e))
+* Consolidate keyword, connectrpc, and buffa fixes ([#17](https://github.com/mathematic-inc/protovalidate-buffa/issues/17)) ([4881a4f](https://github.com/mathematic-inc/protovalidate-buffa/commit/4881a4fa07f24be153fb7157fd3cbd37c76c6110))
+* Impl AsCelValue for FieldMask, Timestamp, Duration WKTs ([#6](https://github.com/mathematic-inc/protovalidate-buffa/issues/6)) ([aec6dbf](https://github.com/mathematic-inc/protovalidate-buffa/commit/aec6dbf6e7bff17e32f234fa856d1204475a4ddd))
+* Validate Connect ServiceRequest handlers ([2e496a3](https://github.com/mathematic-inc/protovalidate-buffa/commit/2e496a3195cd3ff5344b7d81718b9d0ecd29d589))
+
+
+### Build System
+
+* Update dependencies to latest ([2a35114](https://github.com/mathematic-inc/protovalidate-buffa/commit/2a351141874dcac50437b8e1017fa47eb8f840c0))
+* Update dependencies to latest ([#23](https://github.com/mathematic-inc/protovalidate-buffa/issues/23)) ([52b7333](https://github.com/mathematic-inc/protovalidate-buffa/commit/52b733378bc8b71f96b5dba30483c69c0949a4fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-macros bumped from 0.4.0 to 0.5.0
+
 ## [0.6.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.5.1...v0.6.0) (2026-07-25)
 
 
