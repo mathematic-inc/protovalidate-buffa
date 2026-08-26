@@ -8,4 +8,4 @@ Mathematic uses AI agents to maintain this repository and implement changes. Rev
 2. Wait for a Mathematic maintainer to review the proposal.
 3. If we accept it, a Mathematic maintainer or agent will implement the change and open a pull request.
 
-Only Mathematic organization members, repository collaborators, and approved maintenance bots (`renovate[bot]` and `dependabot[bot]`) may open pull requests. We close all other pull requests automatically. We still welcome your ideas; Discussions are where we review them.
+GitHub restricts pull request creation to Mathematic maintainers and repository collaborators with write, maintain, or admin access, plus authorized maintenance agents. If you do not have that access, use Discussions. We still welcome your ideas there.

@@ -119,7 +119,7 @@ See [`crates/protovalidate-buffa-conformance/README.md`](crates/protovalidate-bu
 
 ## Contributing
 
-Please [start a Discussion](../../discussions/new) before proposing a change. If we accept the proposal, a Mathematic maintainer or AI agent will implement it and open a pull request. Only Mathematic organization members, repository collaborators, and approved maintenance bots (`renovate[bot]` and `dependabot[bot]`) may open pull requests; we close all others automatically. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full process.
+Please [start a Discussion](../../discussions/new) before proposing a change. If we accept the proposal, a Mathematic maintainer or AI agent will implement it and open a pull request. GitHub restricts pull request creation to Mathematic maintainers and repository collaborators with write, maintain, or admin access, plus authorized maintenance agents. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full process.
 
 ## License
 
