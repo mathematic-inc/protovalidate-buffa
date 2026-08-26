@@ -15,7 +15,7 @@ keywords.workspace = true
 workspace = true
 
 [dependencies]
-buffa = "0.8"
+buffa = "0.9.1"
 
 [build-dependencies]
-buffa-build = "0.8"
+buffa-build = "0.9.1"
