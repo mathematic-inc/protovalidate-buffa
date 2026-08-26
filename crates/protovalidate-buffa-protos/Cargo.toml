@@ -1,21 +1,23 @@
 [package]
 name = "protovalidate-buffa-protos"
-description = "Compiled Rust types for buf/validate/validate.proto (for buffa), consumed by protoc-gen-protovalidate-buffa."
 version = "0.6.0"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+description = "Compiled Rust types for buf/validate/validate.proto (for buffa), consumed by protoc-gen-protovalidate-buffa."
 homepage.workspace = true
-categories.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
-
-[lints]
-workspace = true
+categories.workspace = true
 
 [dependencies]
 buffa = "0.9.1"
+buffa-descriptor = "0.9.1"
+buffa-types = "0.9.1"
 
 [build-dependencies]
 buffa-build = "0.9.1"
+
+[lints]
+workspace = true

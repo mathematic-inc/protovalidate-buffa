@@ -1,18 +1,29 @@
 [package]
 name = "protovalidate-buffa"
-description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."
 version = "0.6.0"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."
 homepage.workspace = true
-categories.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
+categories.workspace = true
 
-[lints]
-workspace = true
+[dependencies]
+buffa = "0.9.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = { version = "0.10", optional = true }
+connectrpc = { version = "0.9", default-features = false, optional = true }
+fluent-uri = "0.4"
+http = "1"
+ipnet = "2"
+percent-encoding = "2"
+protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.0" }
+regex = "1"
+ulid = "3"
+uuid = "1"
 
 [features]
 default = ["connect"]
@@ -25,16 +36,5 @@ connect = ["dep:connectrpc"]
 # compile with a clear "chrono_tz" missing-module error.
 tz = ["dep:chrono-tz"]
 
-[dependencies]
-buffa = "0.9.1"
-protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.0" }
-regex = "1"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-chrono-tz = { version = "0.10", optional = true }
-uuid = "1"
-ulid = "3"
-ipnet = "2"
-fluent-uri = "0.4"
-connectrpc = { version = "0.9", default-features = false, optional = true }
-percent-encoding = "2"
-http = "1"
+[lints]
+workspace = true

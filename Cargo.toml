@@ -9,16 +9,16 @@ members = [
 ]
 
 [workspace.package]
+authors = ["Mathematic Inc"]
 edition = "2024"
 rust-version = "1.88"
-license = "Apache-2.0 OR MIT"
-authors = ["Mathematic Inc"]
-repository = "https://github.com/mathematic-inc/protovalidate-buffa"
 homepage = "https://github.com/mathematic-inc/protovalidate-buffa"
+repository = "https://github.com/mathematic-inc/protovalidate-buffa"
+license = "Apache-2.0 OR MIT"
+keywords = ["buffa", "codegen", "protobuf", "protovalidate", "validation"]
 categories = ["development-tools", "network-programming"]
-keywords = ["protobuf", "protovalidate", "buffa", "validation", "codegen"]
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

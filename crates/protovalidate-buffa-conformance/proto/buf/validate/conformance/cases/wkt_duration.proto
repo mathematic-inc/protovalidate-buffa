@@ -37,13 +37,15 @@ message DurationIn {
   google.protobuf.Duration val = 1 [(buf.validate.field).duration = {
     in: [
       {seconds: 1},
-      {nanos: 1000}]
+      {nanos: 1000}
+    ]
   }];
 }
 message DurationNotIn {
   google.protobuf.Duration val = 1 [(buf.validate.field).duration = {
     not_in: [
-      {}]
+      {}
+    ]
   }];
 }
 

@@ -1773,7 +1773,7 @@ fn parse_standard(
             });
         }
         field_rules::Type::Duration(r) => {
-            use protovalidate_buffa_protos::google::protobuf::Duration;
+            use buffa_types::google::protobuf::Duration;
             let dur_pair = |d: &Duration| -> (i64, i32) { (d.seconds, d.nanos) };
             let mut ds = DurationStandard::default();
             if let Some(c) = r.r#const.as_option() {
@@ -1796,7 +1796,7 @@ fn parse_standard(
             out.duration = Some(ds);
         }
         field_rules::Type::Timestamp(r) => {
-            use protovalidate_buffa_protos::google::protobuf::{Duration, Timestamp};
+            use buffa_types::google::protobuf::{Duration, Timestamp};
             let ts_pair = |t: &Timestamp| -> (i64, i32) { (t.seconds, t.nanos) };
             let dur_pair = |d: &Duration| -> (i64, i32) { (d.seconds, d.nanos) };
             let mut ts = TimestampStandard::default();

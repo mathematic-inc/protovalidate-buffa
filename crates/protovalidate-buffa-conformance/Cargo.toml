@@ -1,29 +1,28 @@
 [package]
 name = "protovalidate-buffa-conformance"
-description = "Conformance executor for the upstream protovalidate-conformance harness."
 version = "0.0.12"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+description = "Conformance executor for the upstream protovalidate-conformance harness."
 homepage.workspace = true
-categories.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
+categories.workspace = true
 publish = false
-
-[lints]
-workspace = true
 
 [[bin]]
 name = "protovalidate-buffa-conformance"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 buffa = "0.9.1"
+buffa-descriptor = "0.9.1"
+buffa-types = "0.9.1"
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.6.0", default-features = false, features = ["tz"] }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.6.0" }
-anyhow = "1"
 regex = "1"
 
 [dev-dependencies]
@@ -33,12 +32,15 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
-buffa-build = "0.9.1"
-protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.6.0" }
-buffa = "0.9.1"
-buffa-codegen = "0.9.1"
 anyhow = "1"
+buffa = "0.9.1"
+buffa-build = "0.9.1"
+buffa-codegen = "0.9.1"
 prettyplease = "0.3"
-syn = { version = "3", features = ["full"] }
-quote = "1"
 proc-macro2 = "1"
+protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.6.0" }
+quote = "1"
+syn = { version = "3", features = ["full"] }
+
+[lints]
+workspace = true

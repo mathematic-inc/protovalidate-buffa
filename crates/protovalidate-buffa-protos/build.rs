@@ -28,26 +28,13 @@ fn main() {
     }
     let includes_str: Vec<&str> = includes.iter().map(String::as_str).collect();
 
-    // validate.proto transitively uses FieldDescriptorProto.Type, so compile
-    // all required google.protobuf WKTs locally alongside it.
-    let mut files = vec![validate_proto.to_str().expect("utf-8 path").to_string()];
-    if let Some(ref inc) = protoc_include {
-        for wkt in &[
-            "google/protobuf/descriptor.proto",
-            "google/protobuf/duration.proto",
-            "google/protobuf/field_mask.proto",
-            "google/protobuf/timestamp.proto",
-        ] {
-            let p = inc.join(wkt);
-            if p.exists() {
-                files.push(p.to_str().expect("utf-8 path").to_string());
-            }
-        }
-    }
-    let files_str: Vec<&str> = files.iter().map(String::as_str).collect();
+    // buffa-build maps imported google.protobuf types to buffa-types and
+    // buffa-descriptor. Compiling those imports again would create distinct
+    // Rust types when protoc's include directory is available.
+    let files = [validate_proto.to_str().expect("utf-8 path")];
 
     buffa_build::Config::new()
-        .files(&files_str)
+        .files(&files)
         .includes(&includes_str)
         .include_file("_include.rs")
         .compile()
