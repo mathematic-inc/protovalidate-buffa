@@ -1,11 +1,10 @@
 //! Regression test for `optional string` (explicit presence) and oneof string
 //! members carrying a `string.pattern` rule.
 //!
-//! `emit_string_checks_on` is shared between the explicit-presence path (which
-//! binds `v` as an owned `String`) and oneof members (which bind `&String`).
-//! The `pattern` check passes `v` to `Regex::is_match`, which takes `&str`, but
-//! an owned `String` does not coerce in argument position. These tests pin that
-//! the emitted check borrows via `v.as_str()`, so both paths compile. See
+//! `emit_string_checks_on` is shared between owned messages and borrowed views.
+//! The `pattern` check passes `v` to `Regex::is_match`, which takes `&str`.
+//! These tests pin that the emitted check borrows via `AsRef`, so both
+//! representations compile without cloning. See
 //! `emit_string_checks_on` in `src/emit/field.rs` for why this matters.
 
 use protoc_gen_protovalidate_buffa::emit::render;
@@ -62,20 +61,15 @@ fn message(
     }
 }
 
-/// The emitted `pattern` check must borrow the value (`v.as_str()`); passing an
-/// owned `String` to `is_match` would fail to compile.
+/// The emitted `pattern` check must borrow the value through `AsRef`.
 fn assert_pattern_borrows(src: &str) {
     assert!(
-        src.contains("is_match(v.as_str())"),
-        "pattern check must borrow the value (`v.as_str()`); generated source was:\n{src}"
-    );
-    assert!(
-        !src.contains("is_match(v)"),
-        "pattern check must not pass an owned `String` to `is_match`; generated source was:\n{src}"
+        src.contains("is_match(::core::convert::AsRef::<str>::as_ref(v))"),
+        "pattern check must borrow the value through `AsRef`; generated source was:\n{src}"
     );
 }
 
-/// An `optional string` field binds `v` as an owned `String`.
+/// An `optional string` field borrows its inner value.
 #[test]
 fn optional_string_pattern_borrows_value() {
     let f = string_field_with_pattern(FieldKind::Optional(Box::new(FieldKind::String)));
@@ -83,8 +77,7 @@ fn optional_string_pattern_borrows_value() {
     assert_pattern_borrows(&src);
 }
 
-/// A oneof string member binds `v` as a `&String`; the same `as_str()` borrow
-/// must keep this path compiling.
+/// A oneof string member uses the same representation-neutral borrow.
 #[test]
 fn oneof_string_pattern_borrows_value() {
     let mut member = string_field_with_pattern(FieldKind::String);
