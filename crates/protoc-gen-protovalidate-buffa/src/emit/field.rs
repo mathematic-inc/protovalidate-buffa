@@ -26,9 +26,10 @@ use crate::scan::{
     clippy::too_many_lines,
     reason = "codegen helper — one branch per FieldKind; splitting hurts readability"
 )]
-pub fn emit(
+pub(crate) fn emit(
     field: &FieldValidator,
     schemas: &crate::emit::cel::SchemaIndex,
+    shape: crate::emit::Shape,
 ) -> Result<TokenStream> {
     if matches!(field.ignore, Ignore::Always) {
         return Ok(quote! {});
@@ -207,14 +208,12 @@ pub fn emit(
             if !inner_blocks.is_empty() {
                 match inner.as_ref() {
                     FieldKind::String => blocks.push(quote! {
-                        if let Some(v) = self.#accessor.as_ref() {
-                            let v: ::std::string::String = v.clone();
+                        if let Some(v) = self.#accessor.as_deref() {
                             #( #inner_blocks )*
                         }
                     }),
                     FieldKind::Bytes => blocks.push(quote! {
-                        if let Some(v) = self.#accessor.as_ref() {
-                            let v: ::std::vec::Vec<u8> = v.clone();
+                        if let Some(v) = self.#accessor.as_deref() {
                             #( #inner_blocks )*
                         }
                     }),
@@ -262,9 +261,10 @@ pub fn emit(
             }
         }
         FieldKind::Map { key, value } => {
+            let map = shape.map_access(&accessor, field.field_number);
             if let Some(m) = &field.standard.map {
                 blocks.push(crate::emit::repeated::emit_map(
-                    &accessor,
+                    &map,
                     name_lit,
                     field.field_number,
                     m,
@@ -284,7 +284,7 @@ pub fn emit(
                         crate::emit::repeated::kind_variant_to_subscript(kind_to_field_type(key))
                     {
                         blocks.push(quote! {
-                            for (key, value) in self.#accessor.iter() {
+                            for (key, value) in (#map).iter() {
                                 if let Err(sub) = value.validate() {
                                     violations.extend(sub.violations.into_iter().map(|mut v| {
                                         v.field.elements.insert(0, ::protovalidate_buffa::FieldPathElement {
@@ -374,21 +374,24 @@ pub fn emit(
                     let expected_lits = expected.iter().map(String::as_str);
                     let msg_str = format!("must equal paths [{}]", expected.join(", "));
                     blocks.push(quote! {
-                            if let Some(inner) = self.#accessor.as_option() {
-                                const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
-                                let actual: ::std::vec::Vec<&str> = inner.paths.iter().map(|s| s.as_str()).collect();
-                                let eq = actual.len() == EXPECTED.len()
-                                    && actual.iter().zip(EXPECTED.iter()).all(|(a, b)| a == b);
-                                if !eq {
-                                    violations.push(::protovalidate_buffa::Violation {
-                                        field: #fp_c, rule: #rule,
-                                        rule_id: ::std::borrow::Cow::Borrowed("field_mask.const"),
-                                        message: ::std::borrow::Cow::Borrowed(#msg_str),
-                                        for_key: false,
-                                    });
-                                }
+                        if let Some(inner) = self.#accessor.as_option() {
+                            const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
+                            let eq = inner.paths.len() == EXPECTED.len()
+                                && inner.paths.iter().zip(EXPECTED.iter().copied()).all(
+                                    |(actual, expected)| {
+                                        ::core::convert::AsRef::<str>::as_ref(actual) == expected
+                                    },
+                                );
+                            if !eq {
+                                violations.push(::protovalidate_buffa::Violation {
+                                    field: #fp_c, rule: #rule,
+                                    rule_id: ::std::borrow::Cow::Borrowed("field_mask.const"),
+                                    message: ::std::borrow::Cow::Borrowed(#msg_str),
+                                    for_key: false,
+                                });
                             }
-                        });
+                        }
+                    });
                 }
                 if !fm.in_set.is_empty() {
                     let fp_i = &fp_msg;
@@ -398,7 +401,7 @@ pub fn emit(
                             if let Some(inner) = self.#accessor.as_option() {
                                 const ALLOWED: &[&str] = &[ #( #allowed ),* ];
                                 let ok = inner.paths.iter().all(|p| {
-                                    ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str()))
+                                    ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, ::core::convert::AsRef::<str>::as_ref(p)))
                                 });
                                 if !ok {
                                     violations.push(::protovalidate_buffa::Violation {
@@ -419,8 +422,9 @@ pub fn emit(
                             if let Some(inner) = self.#accessor.as_option() {
                                 const DENIED: &[&str] = &[ #( #denied ),* ];
                                 let bad = inner.paths.iter().any(|p| {
-                                    DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str())
-                                        || ::protovalidate_buffa::rules::string::fieldmask_covers(p.as_str(), c))
+                                    let p = ::core::convert::AsRef::<str>::as_ref(p);
+                                    DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p)
+                                        || ::protovalidate_buffa::rules::string::fieldmask_covers(p, c))
                                 });
                                 if bad {
                                     violations.push(::protovalidate_buffa::Violation {
@@ -445,7 +449,7 @@ pub fn emit(
                     blocks.push(quote! {
                         if let Some(inner) = self.#accessor.as_option() {
                             const ALLOWED: &[&str] = &[ #( #set ),* ];
-                            if !ALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                            if !ALLOWED.iter().any(|s| *s == ::core::convert::AsRef::<str>::as_ref(&inner.type_url)) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #field_path, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("any.in"),
@@ -463,7 +467,7 @@ pub fn emit(
                     blocks.push(quote! {
                         if let Some(inner) = self.#accessor.as_option() {
                             const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                            if DISALLOWED.iter().any(|s| *s == inner.type_url.as_str()) {
+                            if DISALLOWED.iter().any(|s| *s == ::core::convert::AsRef::<str>::as_ref(&inner.type_url)) {
                                 violations.push(::protovalidate_buffa::Violation {
                                     field: #field_path2, rule: #rule,
                                     rule_id: ::std::borrow::Cow::Borrowed("any.not_in"),
@@ -489,9 +493,18 @@ pub fn emit(
             // not the inner scalar — so use a Message-typed field path.
             let inner_blocks = emit_wrapper_inner(name_lit, field.field_number, inner, field);
             if !inner_blocks.is_empty() {
+                let binding = match inner.as_ref() {
+                    FieldKind::String => quote! {
+                        let v = ::core::convert::AsRef::<str>::as_ref(&__wrapper_inner.value);
+                    },
+                    FieldKind::Bytes => quote! {
+                        let v = ::core::convert::AsRef::<[u8]>::as_ref(&__wrapper_inner.value);
+                    },
+                    _ => quote! { let v = __wrapper_inner.value.clone(); },
+                };
                 blocks.push(quote! {
                     if let Some(__wrapper_inner) = self.#accessor.as_option() {
-                        let v = __wrapper_inner.value.clone();
+                        #binding
                         #( #inner_blocks )*
                     }
                 });
@@ -1701,20 +1714,16 @@ fn emit_string(
         // header_value allows empty strings.
         let (fn_path, rule_id, empty_rule_id): (TokenStream, &str, Option<&str>) = match wkr {
             1 => (
-                quote! { |v: &::std::string::String| ::protovalidate_buffa::rules::string::is_header_name(v, #strict) },
+                quote! { |v: &str| ::protovalidate_buffa::rules::string::is_header_name(v, #strict) },
                 "string.well_known_regex.header_name",
                 Some("string.well_known_regex.header_name_empty"),
             ),
             2 => (
-                quote! { |v: &::std::string::String| ::protovalidate_buffa::rules::string::is_header_value(v, #strict) },
+                quote! { |v: &str| ::protovalidate_buffa::rules::string::is_header_value(v, #strict) },
                 "string.well_known_regex.header_value",
                 None,
             ),
-            _ => (
-                quote! { |_v: &::std::string::String| true },
-                "string.well_known_regex",
-                None,
-            ),
+            _ => (quote! { |_v: &str| true }, "string.well_known_regex", None),
         };
         let rid = rule_id.to_string();
         if let Some(re) = empty_rule_id {
@@ -1727,7 +1736,7 @@ fn emit_string(
                         message: ::std::borrow::Cow::Borrowed(""),
                         for_key: false,
                     });
-                } else if !(#fn_path)(&self.#accessor) {
+                } else if !(#fn_path)(::core::convert::AsRef::<str>::as_ref(&self.#accessor)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field_b, rule: #rule_b,
                         rule_id: ::std::borrow::Cow::Borrowed(#rid),
@@ -1740,7 +1749,9 @@ fn emit_string(
             let _ = field_a;
             let _ = rule_a;
             out.push(quote! {
-                if !self.#accessor.is_empty() && !(#fn_path)(&self.#accessor) {
+                if !self.#accessor.is_empty()
+                    && !(#fn_path)(::core::convert::AsRef::<str>::as_ref(&self.#accessor))
+                {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field_b, rule: #rule_b,
                         rule_id: ::std::borrow::Cow::Borrowed(#rid),
@@ -1759,7 +1770,7 @@ fn emit_string(
         out.push(quote! {
             {
                 const ALLOWED: &[&str] = &[ #( #set ),* ];
-                if !ALLOWED.iter().any(|candidate| *candidate == self.#accessor.as_str()) {
+                if !ALLOWED.iter().any(|candidate| *candidate == ::core::convert::AsRef::<str>::as_ref(&self.#accessor)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -1780,7 +1791,7 @@ fn emit_string(
         out.push(quote! {
             {
                 const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                if DISALLOWED.iter().any(|candidate| *candidate == self.#accessor.as_str()) {
+                if DISALLOWED.iter().any(|candidate| *candidate == ::core::convert::AsRef::<str>::as_ref(&self.#accessor)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.not_in"),
@@ -1988,7 +1999,7 @@ fn emit_bytes_value(
     let mut out: Vec<TokenStream> = Vec::new();
     let fp = || bytes_field_path(name_lit, field_number);
     let value_len = quote! { #value.len() };
-    let value_slice = quote! { #value.as_slice() };
+    let value_slice = quote! { ::core::convert::AsRef::<[u8]>::as_ref(&(#value)) };
 
     // bytes.ip = 4 or 16 bytes; bytes.ipv4 = 4 bytes; bytes.ipv6 = 16 bytes.
     if b.ip == Some(true) {
@@ -4011,7 +4022,7 @@ pub(crate) fn emit_wrapper_inner(
                             1,
                             "String",
                             "string.const",
-                            quote! { &#v != #c },
+                            quote! { #v != #c },
                         );
                     }
                     if let Some(n) = s.min_len {
@@ -4085,7 +4096,7 @@ pub(crate) fn emit_wrapper_inner(
                             22,
                             "Bool",
                             "string.uuid",
-                            quote! { !::protovalidate_buffa::rules::string::is_uuid(&#v) },
+                            quote! { !::protovalidate_buffa::rules::string::is_uuid(#v) },
                         );
                     }
                 }
@@ -5784,7 +5795,7 @@ pub(crate) fn emit_string_checks_on(
         out.push(quote! {
             {
                 const ALLOWED: &[&str] = &[ #( #set ),* ];
-                if !ALLOWED.iter().any(|c| *c == #v.as_str()) {
+                if !ALLOWED.iter().any(|c| *c == ::core::convert::AsRef::<str>::as_ref(#v)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.in"),
@@ -5802,7 +5813,7 @@ pub(crate) fn emit_string_checks_on(
         out.push(quote! {
             {
                 const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                if DISALLOWED.iter().any(|c| *c == #v.as_str()) {
+                if DISALLOWED.iter().any(|c| *c == ::core::convert::AsRef::<str>::as_ref(#v)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.not_in"),
@@ -5831,7 +5842,7 @@ pub(crate) fn emit_string_checks_on(
                     ::protovalidate_buffa::regex::Regex::new(#pat_str)
                         .expect("pattern regex compiled at code-gen time")
                 });
-                if !re.is_match(#v.as_str()) {
+                if !re.is_match(::core::convert::AsRef::<str>::as_ref(#v)) {
                     violations.push(::protovalidate_buffa::Violation {
                         field: #field, rule: #rule,
                         rule_id: ::std::borrow::Cow::Borrowed("string.pattern"),

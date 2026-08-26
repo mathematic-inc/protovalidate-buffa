@@ -25,9 +25,10 @@ use crate::{
 /// Returns `(statics, calls)` — statics go outside the impl block, calls go
 /// inside the `validate` body after field/oneof blocks.
 #[must_use]
-pub fn emit_message_level(
+pub(crate) fn emit_message_level(
     msg: &MessageValidators,
     schemas: &SchemaIndex,
+    shape: crate::emit::Shape,
 ) -> (Vec<TokenStream>, Vec<TokenStream>) {
     let statics = Vec::new();
     let mut calls = Vec::new();
@@ -111,7 +112,7 @@ pub fn emit_message_level(
             // runtime-error marker so the unsupported rule surfaces
             // clearly at validate-time.
             if let Some(native_call) =
-                try_emit_native_field_cel(f, rule, &fp, idx_lit, &field_ident, schemas)
+                try_emit_native_field_cel(f, rule, &fp, idx_lit, &field_ident, schemas, shape)
             {
                 calls.push(native_call);
                 continue;
@@ -200,6 +201,7 @@ pub fn emit_message_level(
                 &field_ident,
                 &predef_field_path,
                 &predef_rule_path,
+                shape,
             ) {
                 calls.push(native_call);
                 continue;
@@ -389,6 +391,7 @@ pub(crate) fn try_emit_native_field_cel(
     idx_lit: u64,
     field_ident: &syn::Ident,
     schemas: &SchemaIndex,
+    shape: crate::emit::Shape,
 ) -> Option<TokenStream> {
     // First, try the message-typed `this` binding for fields whose type is
     // a known sub-message (e.g., `optional Inner val = 1` with a CEL rule
@@ -398,7 +401,7 @@ pub(crate) fn try_emit_native_field_cel(
         return Some(out);
     }
     let this_ty = scalar_this_for_with(&f.field_type, Some(schemas))?;
-    let access = field_this_access(f, field_ident, &this_ty)?;
+    let access = field_this_access(f, field_ident, &this_ty, shape)?;
     let mut compiler = Compiler::new();
     compiler.bind(
         "this",
@@ -599,11 +602,16 @@ fn field_this_access(
     f: &FieldValidator,
     field_ident: &syn::Ident,
     cel_ty: &CelType,
+    shape: crate::emit::Shape,
 ) -> Option<TokenStream> {
     match &f.field_type {
         FieldKind::Optional(inner) => Some(match (cel_ty, inner.as_ref()) {
-            (CelType::Str { .. }, _) => quote! { __cel_inner.as_str() },
-            (CelType::Bytes { .. }, _) => quote! { __cel_inner.as_slice() },
+            (CelType::Str { .. }, _) => {
+                quote! { ::core::convert::AsRef::<str>::as_ref(__cel_inner) }
+            }
+            (CelType::Bytes { .. }, _) => {
+                quote! { ::core::convert::AsRef::<[u8]>::as_ref(__cel_inner) }
+            }
             (CelType::Int, FieldKind::Enum { .. }) => quote! {
                 ({
                     use ::buffa::Enumeration as _;
@@ -617,8 +625,12 @@ fn field_this_access(
             _ => return None,
         }),
         FieldKind::Wrapper(_) => Some(match cel_ty {
-            CelType::Str { .. } => quote! { __cel_inner.value.as_str() },
-            CelType::Bytes { .. } => quote! { __cel_inner.value.as_slice() },
+            CelType::Str { .. } => {
+                quote! { ::core::convert::AsRef::<str>::as_ref(&__cel_inner.value) }
+            }
+            CelType::Bytes { .. } => {
+                quote! { ::core::convert::AsRef::<[u8]>::as_ref(&__cel_inner.value) }
+            }
             CelType::Int => quote! { (__cel_inner.value as i64) },
             CelType::UInt => quote! { (__cel_inner.value as u64) },
             CelType::Double => quote! { (__cel_inner.value as f64) },
@@ -631,10 +643,14 @@ fn field_this_access(
                 self.#field_ident.to_i32() as i64
             })
         }),
-        FieldKind::String => Some(quote! { self.#field_ident.as_str() }),
-        FieldKind::Bytes => Some(quote! { self.#field_ident.as_slice() }),
-        FieldKind::Repeated(_) => Some(quote! { self.#field_ident.as_slice() }),
-        FieldKind::Map { .. } => Some(quote! { (&self.#field_ident) }),
+        FieldKind::String => {
+            Some(quote! { ::core::convert::AsRef::<str>::as_ref(&self.#field_ident) })
+        }
+        FieldKind::Bytes => {
+            Some(quote! { ::core::convert::AsRef::<[u8]>::as_ref(&self.#field_ident) })
+        }
+        FieldKind::Repeated(_) => Some(quote! { (&self.#field_ident) }),
+        FieldKind::Map { .. } => Some(shape.map_access(field_ident, f.field_number)),
         FieldKind::Float
         | FieldKind::Double
         | FieldKind::Int32
@@ -1144,10 +1160,11 @@ pub(crate) fn try_emit_native_predefined(
     field_ident: &syn::Ident,
     field_path: &TokenStream,
     rule_path: &TokenStream,
+    shape: crate::emit::Shape,
 ) -> Option<TokenStream> {
     let rule_const = rule.rule_const.as_ref()?;
     let this_ty = scalar_this_for(&f.field_type)?;
-    let access = field_this_access(f, field_ident, &this_ty)?;
+    let access = field_this_access(f, field_ident, &this_ty, shape)?;
     let mut compiler = Compiler::new();
     compiler.bind(
         "this",

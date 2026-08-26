@@ -31,6 +31,70 @@ pub mod field;
 pub mod oneof;
 pub mod repeated;
 
+/// Generated message representation targeted by a validation body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shape {
+    Owned,
+    View,
+}
+
+impl Shape {
+    /// Expression exposing protobuf's canonical map semantics for this shape.
+    pub(crate) fn map_access(
+        self,
+        accessor: &proc_macro2::Ident,
+        field_number: i32,
+    ) -> TokenStream {
+        match self {
+            Self::Owned => quote! { (&self.#accessor) },
+            Self::View => {
+                let binding = canonical_map_ident(field_number);
+                quote! { (&#binding) }
+            }
+        }
+    }
+}
+
+fn canonical_map_ident(field_number: i32) -> proc_macro2::Ident {
+    quote::format_ident!("__pv_map_{field_number}")
+}
+
+fn needs_canonical_map(field: &crate::scan::FieldValidator) -> bool {
+    use crate::scan::{FieldKind, Ignore};
+
+    if matches!(field.ignore, Ignore::Always) {
+        return false;
+    }
+    let FieldKind::Map { value, .. } = &field.field_type else {
+        return false;
+    };
+    field.standard.map.is_some()
+        || !field.cel.is_empty()
+        || !field.standard.predefined.is_empty()
+        || matches!(
+            value.as_ref(),
+            FieldKind::Message { full_name } if !full_name.starts_with("google.protobuf.")
+        )
+}
+
+fn canonical_map_bindings(msg: &MessageValidators, shape: Shape) -> Vec<TokenStream> {
+    if shape == Shape::Owned {
+        return Vec::new();
+    }
+    msg.field_rules
+        .iter()
+        .filter(|field| needs_canonical_map(field))
+        .map(|field| {
+            let accessor = field_ident(&field.field_name);
+            let binding = canonical_map_ident(field.field_number);
+            quote! {
+                let #binding =
+                    ::protovalidate_buffa::__private::CanonicalMap::from_view(&self.#accessor);
+            }
+        })
+        .collect()
+}
+
 /// Build the Rust identifier that accesses a proto field (or oneof) on a
 /// buffa-generated struct.
 ///
@@ -327,7 +391,9 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         })
         .collect();
     let rust_path_str = rust_segs.join("::");
-    let rust_path = syn::parse_str::<syn::Path>(&rust_path_str)?;
+    let rust_path = syn::parse_str::<syn::Type>(&rust_path_str)?;
+    let view_path =
+        syn::parse_str::<syn::Type>(&format!("__buffa::view::{rust_path_str}View<'_>"))?;
 
     // Fields listed in a `(buf.validate.message).oneof` get implicit
     // IGNORE_IF_ZERO_VALUE semantics: their rule checks only fire when the
@@ -337,61 +403,75 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .iter()
         .flat_map(|o| o.fields.iter().map(String::as_str))
         .collect();
-    let field_blocks: Vec<TokenStream> = msg
-        .field_rules
-        .iter()
-        .map(|f| {
-            let inner = field::emit(f, schemas)?;
-            if implicit_ignore.contains(f.field_name.as_str())
-                && !matches!(f.ignore, crate::scan::Ignore::Always)
-            {
-                let accessor = field_ident(&f.field_name);
-                let guard: Option<TokenStream> = match &f.field_type {
-                    crate::scan::FieldKind::String | crate::scan::FieldKind::Bytes => {
-                        Some(quote! { !self.#accessor.is_empty() })
+    let render_field_blocks = |shape| {
+        msg.field_rules
+            .iter()
+            .map(|f| {
+                let inner = field::emit(f, schemas, shape)?;
+                if implicit_ignore.contains(f.field_name.as_str())
+                    && !matches!(f.ignore, crate::scan::Ignore::Always)
+                {
+                    let accessor = field_ident(&f.field_name);
+                    let guard: Option<TokenStream> = match &f.field_type {
+                        crate::scan::FieldKind::String | crate::scan::FieldKind::Bytes => {
+                            Some(quote! { !self.#accessor.is_empty() })
+                        }
+                        crate::scan::FieldKind::Repeated(_)
+                        | crate::scan::FieldKind::Map { .. } => {
+                            Some(quote! { !self.#accessor.is_empty() })
+                        }
+                        crate::scan::FieldKind::Int32
+                        | crate::scan::FieldKind::Sint32
+                        | crate::scan::FieldKind::Sfixed32 => {
+                            Some(quote! { self.#accessor != 0i32 })
+                        }
+                        crate::scan::FieldKind::Int64
+                        | crate::scan::FieldKind::Sint64
+                        | crate::scan::FieldKind::Sfixed64 => {
+                            Some(quote! { self.#accessor != 0i64 })
+                        }
+                        crate::scan::FieldKind::Uint32 | crate::scan::FieldKind::Fixed32 => {
+                            Some(quote! { self.#accessor != 0u32 })
+                        }
+                        crate::scan::FieldKind::Uint64 | crate::scan::FieldKind::Fixed64 => {
+                            Some(quote! { self.#accessor != 0u64 })
+                        }
+                        crate::scan::FieldKind::Float => Some(quote! { self.#accessor != 0f32 }),
+                        crate::scan::FieldKind::Double => Some(quote! { self.#accessor != 0f64 }),
+                        crate::scan::FieldKind::Bool => Some(quote! { self.#accessor }),
+                        crate::scan::FieldKind::Enum { .. } => {
+                            Some(quote! { (self.#accessor as i32) != 0i32 })
+                        }
+                        crate::scan::FieldKind::Message { .. }
+                        | crate::scan::FieldKind::Wrapper(_) => {
+                            Some(quote! { self.#accessor.is_set() })
+                        }
+                        crate::scan::FieldKind::Optional(_) => {
+                            Some(quote! { self.#accessor.is_some() })
+                        }
+                    };
+                    if let Some(g) = guard {
+                        Ok(quote! { if #g { #inner } })
+                    } else {
+                        Ok(inner)
                     }
-                    crate::scan::FieldKind::Repeated(_) | crate::scan::FieldKind::Map { .. } => {
-                        Some(quote! { !self.#accessor.is_empty() })
-                    }
-                    crate::scan::FieldKind::Int32
-                    | crate::scan::FieldKind::Sint32
-                    | crate::scan::FieldKind::Sfixed32 => Some(quote! { self.#accessor != 0i32 }),
-                    crate::scan::FieldKind::Int64
-                    | crate::scan::FieldKind::Sint64
-                    | crate::scan::FieldKind::Sfixed64 => Some(quote! { self.#accessor != 0i64 }),
-                    crate::scan::FieldKind::Uint32 | crate::scan::FieldKind::Fixed32 => {
-                        Some(quote! { self.#accessor != 0u32 })
-                    }
-                    crate::scan::FieldKind::Uint64 | crate::scan::FieldKind::Fixed64 => {
-                        Some(quote! { self.#accessor != 0u64 })
-                    }
-                    crate::scan::FieldKind::Float => Some(quote! { self.#accessor != 0f32 }),
-                    crate::scan::FieldKind::Double => Some(quote! { self.#accessor != 0f64 }),
-                    crate::scan::FieldKind::Bool => Some(quote! { self.#accessor }),
-                    crate::scan::FieldKind::Enum { .. } => {
-                        Some(quote! { (self.#accessor as i32) != 0i32 })
-                    }
-                    crate::scan::FieldKind::Message { .. } | crate::scan::FieldKind::Wrapper(_) => {
-                        Some(quote! { self.#accessor.is_set() })
-                    }
-                    crate::scan::FieldKind::Optional(_) => {
-                        Some(quote! { self.#accessor.is_some() })
-                    }
-                };
-                if let Some(g) = guard {
-                    Ok(quote! { if #g { #inner } })
                 } else {
                     Ok(inner)
                 }
-            } else {
-                Ok(inner)
-            }
-        })
-        .collect::<Result<_>>()?;
+            })
+            .collect::<Result<Vec<TokenStream>>>()
+    };
+    let owned_field_blocks = render_field_blocks(Shape::Owned)?;
+    let view_field_blocks = render_field_blocks(Shape::View)?;
     let oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
         .map(oneof::emit)
+        .collect::<Result<_>>()?;
+    let view_oneof_blocks: Vec<TokenStream> = msg
+        .oneof_rules
+        .iter()
+        .map(oneof::emit_view)
         .collect::<Result<_>>()?;
 
     // `(buf.validate.message).oneof` — fields where at most one may be set.
@@ -401,24 +481,32 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .map(|spec| emit_message_oneof(msg, spec))
         .collect();
 
-    let (cel_statics, cel_calls) = cel::emit_message_level(msg, schemas);
+    let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, schemas, Shape::Owned);
+    let (_, view_cel_calls) = cel::emit_message_level(msg, schemas, Shape::View);
+    let owned_map_bindings = canonical_map_bindings(msg, Shape::Owned);
+    let view_map_bindings = canonical_map_bindings(msg, Shape::View);
 
     let allows = gen_allows();
     if let Some(reason) = &msg.compile_error {
-        return Ok(quote! {
-            #allows
-            impl ::protovalidate_buffa::Validate for #rust_path {
-                fn validate(
-                    &self,
-                ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
-                    Err(::protovalidate_buffa::ValidationError {
-                        compile_error: ::core::option::Option::Some(
-                            ::std::string::String::from(#reason),
-                        ),
-                        ..::core::default::Default::default()
-                    })
+        let impls = [&rust_path, &view_path].map(|rust_path| {
+            quote! {
+                #allows
+                impl ::protovalidate_buffa::Validate for #rust_path {
+                    fn validate(
+                        &self,
+                    ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
+                        Err(::protovalidate_buffa::ValidationError {
+                            compile_error: ::core::option::Option::Some(
+                                ::std::string::String::from(#reason),
+                            ),
+                            ..::core::default::Default::default()
+                        })
+                    }
                 }
             }
+        });
+        return Ok(quote! {
+            #( #impls )*
         });
     }
     // Wrap each static + impl in the same outer allow set.
@@ -426,55 +514,70 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .into_iter()
         .map(|s| quote! { #allows #s })
         .collect();
-    Ok(quote! {
-        #( #statics_with_allows )*
-        #allows
-        impl ::protovalidate_buffa::Validate for #rust_path {
-            fn validate(
-                &self,
-            ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
-                let mut violations: ::std::vec::Vec<::protovalidate_buffa::Violation> =
-                    ::std::vec::Vec::new();
-                #( #field_blocks )*
-                #( #oneof_blocks )*
-                #( #message_oneof_blocks )*
-                #( #cel_calls )*
-                // Lift any `__cel_runtime_error__` marker violations to the
-                // typed `runtime_error` field so callers can pattern-match
-                // instead of sniffing `rule_id` strings.
-                let (rt_violation, violations): (
-                    ::std::option::Option<::protovalidate_buffa::Violation>,
-                    ::std::vec::Vec<::protovalidate_buffa::Violation>,
-                ) = {
-                    let mut rt = None;
-                    let mut rest = ::std::vec::Vec::with_capacity(violations.len());
-                    for v in violations {
-                        if rt.is_none() && v.rule_id == "__cel_runtime_error__" {
-                            rt = Some(v);
-                        } else {
-                            rest.push(v);
-                        }
+    let render_impl = |rust_path: &syn::Type,
+                       map_bindings: &[TokenStream],
+                       field_blocks: &[TokenStream],
+                       oneof_blocks: &[TokenStream],
+                       cel_calls: &[TokenStream]| {
+        quote! {
+            #allows
+            impl ::protovalidate_buffa::Validate for #rust_path {
+                fn validate(
+                    &self,
+                ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
+                    #( #map_bindings )*
+                    let mut violations: ::std::vec::Vec<::protovalidate_buffa::Violation> =
+                        ::std::vec::Vec::new();
+                    #( #field_blocks )*
+                    #( #oneof_blocks )*
+                    #( #message_oneof_blocks )*
+                    #( #cel_calls )*
+                    // Lift any `__cel_runtime_error__` marker violation to the
+                    // typed `runtime_error` field so callers can pattern-match
+                    // instead of sniffing `rule_id` strings.
+                    if let Some(index) = violations
+                        .iter()
+                        .position(|v| v.rule_id == "__cel_runtime_error__")
+                    {
+                        let v = violations.swap_remove(index);
+                        return ::core::result::Result::Err(
+                            ::protovalidate_buffa::ValidationError {
+                                runtime_error: ::core::option::Option::Some(v.message.into_owned()),
+                                ..::core::default::Default::default()
+                            },
+                        );
                     }
-                    (rt, rest)
-                };
-                if let Some(v) = rt_violation {
-                    return ::core::result::Result::Err(
-                        ::protovalidate_buffa::ValidationError {
-                            runtime_error: ::core::option::Option::Some(v.message.into_owned()),
+                    if violations.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(::protovalidate_buffa::ValidationError {
+                            violations,
                             ..::core::default::Default::default()
-                        },
-                    );
-                }
-                if violations.is_empty() {
-                    Ok(())
-                } else {
-                    Err(::protovalidate_buffa::ValidationError {
-                        violations,
-                        ..::core::default::Default::default()
-                    })
+                        })
+                    }
                 }
             }
         }
+    };
+    let impls = [
+        render_impl(
+            &rust_path,
+            &owned_map_bindings,
+            &owned_field_blocks,
+            &oneof_blocks,
+            &owned_cel_calls,
+        ),
+        render_impl(
+            &view_path,
+            &view_map_bindings,
+            &view_field_blocks,
+            &view_oneof_blocks,
+            &view_cel_calls,
+        ),
+    ];
+    Ok(quote! {
+        #( #statics_with_allows )*
+        #( #impls )*
     })
 }
 

@@ -12,8 +12,9 @@
 //! There is **no CEL interpreter at runtime**: the paired
 //! `protoc-gen-protovalidate-buffa` plugin transpiles every CEL rule
 //! to native Rust at codegen time. Generated `validate()` methods are
-//! direct field-access checks with zero per-call `Value` / `HashMap`
-//! allocations.
+//! direct field-access checks without per-call dynamic CEL `Value`
+//! materialization. Rules that need scratch state, such as repeated-value
+//! uniqueness, allocate it directly.
 //!
 //! [`ValidationError`] carries three orthogonal signals:
 //!
@@ -30,6 +31,8 @@
 //! covering proto2, proto3, and editions 2023) passes against code
 //! emitted by the paired plugin.
 
+#[doc(hidden)]
+pub mod __private;
 pub mod cel;
 mod error;
 pub mod rules;

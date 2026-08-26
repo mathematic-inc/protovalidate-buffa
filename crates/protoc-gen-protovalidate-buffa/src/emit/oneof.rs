@@ -6,6 +6,12 @@ use quote::{format_ident, quote};
 
 use crate::scan::{FieldKind, FieldValidator, OneofValidator};
 
+#[derive(Clone, Copy)]
+enum Representation {
+    Owned,
+    View,
+}
+
 /// Emit the validation snippet for a single oneof.
 ///
 /// Generates a `match &self.<oneof>` block that:
@@ -19,6 +25,14 @@ use crate::scan::{FieldKind, FieldValidator, OneofValidator};
 /// to a local Rust path. (Field/oneof names are escaped via
 /// [`crate::emit::field_ident`], which is infallible.)
 pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
+    emit_for(v, Representation::Owned)
+}
+
+pub(crate) fn emit_view(v: &OneofValidator) -> Result<TokenStream> {
+    emit_for(v, Representation::View)
+}
+
+fn emit_for(v: &OneofValidator, representation: Representation) -> Result<TokenStream> {
     let has_required = v.required;
     // If nothing to emit at all, skip.
     let has_variant_rules = v.fields.iter().any(has_field_rules);
@@ -36,6 +50,10 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
     // down to the per-variant emitters.
     let module_ident = crate::emit::field_ident(&to_snake_case(&v.parent_msg_name));
     let oneof_enum_ident = crate::emit::field_ident(&to_pascal_case(&v.name));
+    let oneof_root = match representation {
+        Representation::Owned => quote! { __buffa::oneof },
+        Representation::View => quote! { __buffa::view::oneof },
+    };
 
     let none_arm = if has_required {
         quote! {
@@ -71,7 +89,7 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
         .fields
         .iter()
         .filter(|f| has_field_rules(f))
-        .map(|f| emit_variant_arm(f, &module_ident, &oneof_enum_ident))
+        .map(|f| emit_variant_arm(f, &oneof_root, &module_ident, &oneof_enum_ident))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .filter(|ts| !ts.is_empty())
@@ -79,7 +97,7 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
 
     // Compute required_variant_blocks early so they survive all early-return paths.
     let required_variant_blocks =
-        emit_required_variant_blocks(v, &accessor, &module_ident, &oneof_enum_ident);
+        emit_required_variant_blocks(v, &accessor, &oneof_root, &module_ident, &oneof_enum_ident);
 
     // If no variant has rules, we only need the None check (already handled above).
     if some_arms.is_empty() && !has_required && !has_required_variants {
@@ -142,6 +160,7 @@ pub fn emit(v: &OneofValidator) -> Result<TokenStream> {
 fn emit_required_variant_blocks(
     v: &OneofValidator,
     accessor: &syn::Ident,
+    oneof_root: &TokenStream,
     module_ident: &syn::Ident,
     oneof_enum_ident: &syn::Ident,
 ) -> Vec<TokenStream> {
@@ -178,7 +197,7 @@ fn emit_required_variant_blocks(
             _ => quote!(Message),
         };
         out.push(quote! {
-            if !matches!(&self.#accessor, Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(_))) {
+            if !matches!(&self.#accessor, Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(_))) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath {
                         elements: ::std::vec![
@@ -239,6 +258,7 @@ fn has_field_rules(f: &FieldValidator) -> bool {
 /// Emit a `Some(Variant(v)) => { ... }` match arm for a single oneof field.
 fn emit_variant_arm(
     f: &FieldValidator,
+    oneof_root: &TokenStream,
     module_ident: &syn::Ident,
     oneof_enum_ident: &syn::Ident,
 ) -> Result<TokenStream> {
@@ -343,9 +363,18 @@ fn emit_variant_arm(
             let inner_checks =
                 crate::emit::field::emit_wrapper_inner(name_lit, f.field_number, inner, f);
             if !inner_checks.is_empty() {
+                let binding = match inner.as_ref() {
+                    FieldKind::String => quote! {
+                        let v = ::core::convert::AsRef::<str>::as_ref(&v.value);
+                    },
+                    FieldKind::Bytes => quote! {
+                        let v = ::core::convert::AsRef::<[u8]>::as_ref(&v.value);
+                    },
+                    _ => quote! { let v = v.value.clone(); },
+                };
                 checks.push(quote! {
                     {
-                        let v = v.value.clone();
+                        #binding
                         #( #inner_checks )*
                     }
                 });
@@ -383,14 +412,14 @@ fn emit_variant_arm(
     );
     if needs_copy_deref {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
+            Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
                 let #val_ident = *__oneof_val;
                 #( #checks )*
             }
         })
     } else {
         Ok(quote! {
-            Some(__buffa::oneof::#module_ident::#oneof_enum_ident::#variant_ident(#val_ident)) => {
+            Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(#val_ident)) => {
                 #( #checks )*
             }
         })
@@ -453,7 +482,7 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const ALLOWED: &[&str] = &[ #( #set ),* ];
-                    if !ALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                    if !ALLOWED.iter().any(|s| *s == ::core::convert::AsRef::<str>::as_ref(&#val_ident.type_url)) {
                         violations.push(::protovalidate_buffa::Violation {
                             field: #field,
                             rule: #rule,
@@ -472,7 +501,7 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const DISALLOWED: &[&str] = &[ #( #set ),* ];
-                    if DISALLOWED.iter().any(|s| *s == #val_ident.type_url.as_str()) {
+                    if DISALLOWED.iter().any(|s| *s == ::core::convert::AsRef::<str>::as_ref(&#val_ident.type_url)) {
                         violations.push(::protovalidate_buffa::Violation {
                             field: #field,
                             rule: #rule,
@@ -497,9 +526,12 @@ fn emit_oneof_wkt_checks(
             out.push(quote! {
                 {
                     const EXPECTED: &[&str] = &[ #( #expected_lits ),* ];
-                    let actual: ::std::vec::Vec<&str> = #val_ident.paths.iter().map(|s| s.as_str()).collect();
-                    let eq = actual.len() == EXPECTED.len()
-                        && actual.iter().zip(EXPECTED.iter()).all(|(a, b)| a == b);
+                    let eq = #val_ident.paths.len() == EXPECTED.len()
+                        && #val_ident.paths.iter().zip(EXPECTED.iter().copied()).all(
+                            |(actual, expected)| {
+                                ::core::convert::AsRef::<str>::as_ref(actual) == expected
+                            },
+                        );
                     if !eq {
                         violations.push(::protovalidate_buffa::Violation {
                             field: #field,
@@ -520,7 +552,7 @@ fn emit_oneof_wkt_checks(
                 {
                     const ALLOWED: &[&str] = &[ #( #allowed ),* ];
                     let ok = #val_ident.paths.iter().all(|p| {
-                        ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str()))
+                        ALLOWED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, ::core::convert::AsRef::<str>::as_ref(p)))
                     });
                     if !ok {
                         violations.push(::protovalidate_buffa::Violation {
@@ -542,8 +574,9 @@ fn emit_oneof_wkt_checks(
                 {
                     const DENIED: &[&str] = &[ #( #denied ),* ];
                     let bad = #val_ident.paths.iter().any(|p| {
-                        DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p.as_str())
-                            || ::protovalidate_buffa::rules::string::fieldmask_covers(p.as_str(), c))
+                        let p = ::core::convert::AsRef::<str>::as_ref(p);
+                        DENIED.iter().any(|c| ::protovalidate_buffa::rules::string::fieldmask_covers(c, p)
+                            || ::protovalidate_buffa::rules::string::fieldmask_covers(p, c))
                     });
                     if bad {
                         violations.push(::protovalidate_buffa::Violation {
