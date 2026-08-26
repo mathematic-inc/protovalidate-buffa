@@ -1,8 +1,12 @@
 # protovalidate-buffa-conformance
 
-Private (`publish = false`) dispatch binary that plugs into the upstream [`protovalidate-conformance`](https://github.com/bufbuild/protovalidate/tree/main/tools/protovalidate-conformance) harness.
+Private (`publish = false`) dispatch binary that plugs into the upstream
+[`protovalidate-conformance`] harness.
 
-The harness forks this binary once per test batch, sends a `TestConformanceRequest` proto on stdin, and reads a `TestConformanceResponse` back on stdout. This crate is not part of the published release surface — it's a CI / pre-release coverage tool.
+The harness forks this binary once per test batch, sends a
+`TestConformanceRequest` proto on standard input, and reads a
+`TestConformanceResponse` back on standard output. This crate is not part of the
+published release surface. It is a CI and pre-release coverage tool.
 
 ## Running
 
@@ -29,16 +33,25 @@ Useful harness flags:
 ## What `build.rs` does
 
 1. Resolves `protoc` and its bundled well-known-types include directory.
-2. Enumerates the cases proto set — the list in `enabled_case_files()` mirrors every `.proto` under `proto/buf/validate/conformance/cases/` that we've taught the codegen to handle (proto2, proto3, editions 2023).
-3. Runs `protoc` once to produce a serialized `FileDescriptorSet`, feeding the harness protos plus `buf.validate.*` extension definitions alongside our cases.
-4. Hands that `CodeGeneratorRequest` to `protoc_gen_protovalidate_buffa::{scan, emit}` in-process — no out-of-process plugin round-trip for validators — and writes each emitted `impl Validate` file into `$OUT_DIR`.
-5. Runs `buffa-build` over the same descriptor set to produce message types for the harness and cases.
-6. Stitches the two outputs together in `_include.rs` so generated validators sit in the same module as the messages they validate.
-7. Writes `dispatch.rs` — a big `match` on `type_url` that decodes + validates, keyed off every message the harness cares about.
+2. Enumerates the cases proto set. The list in `enabled_case_files()` mirrors every
+   `.proto` under `proto/buf/validate/conformance/cases/` that the codegen handles
+   (proto2, proto3, and editions 2023).
+3. Runs `protoc` once to produce a serialized `FileDescriptorSet`, feeding the
+   harness protos plus `buf.validate.*` extension definitions alongside our cases.
+4. Hands that `CodeGeneratorRequest` to
+   `protoc_gen_protovalidate_buffa::{scan, emit}` in-process and writes each
+   emitted `impl Validate` file into `$OUT_DIR`.
+5. Runs `buffa-build` over the same descriptor set to produce message types for
+   the harness and cases.
+6. Stitches the two outputs together in `_include.rs` so generated validators sit
+   in the same module as the messages they validate.
+7. Writes `dispatch.rs`, a big `match` on `type_url` that decodes and validates,
+   keyed off every message the harness cares about.
 
 ## Binary flow
 
-`src/main.rs::main` decodes `TestConformanceRequest`, walks `request.cases`, and dispatches each case via `registry::dispatch`:
+`src/main.rs::main` decodes `TestConformanceRequest`, walks `request.cases`, and
+dispatches each case via `registry::dispatch`:
 
 ```text
 Validate::validate                             │ TestResult variant
@@ -47,14 +60,20 @@ Ok(())                                         │ Success(true)
 Err { compile_error: Some(reason), .. }        │ CompilationError(reason)
 Err { runtime_error: Some(reason), .. }        │ RuntimeError(reason)
 Err { violations, .. }                         │ ValidationError(Violations)
-unknown `type_url`                             │ UnexpectedError("unsupported message type: …")
+unknown `type_url`                             │ UnexpectedError("unsupported")
 ```
 
 Bare `google.protobuf.*` inputs (no user validator) short-circuit to `Success(true)`.
 
-`to_harness_violations` converts our `Violation` / `FieldPath` types back to the harness's own `pb_validate::Violations` for the wire response.
+`to_harness_violations` converts our `Violation` and `FieldPath` types back to the
+harness's own `pb_validate::Violations` for the wire response.
 
 ## Extending
 
-- To enable a new cases `.proto`: add it to `enabled_case_files()` in `build.rs`, rebuild, run the harness, and fix anything that fails.
-- To inspect emitted validators for debugging: look under `target/release/build/protovalidate-buffa-conformance-*/out/pv_buf.validate.conformance.cases.*.rs`.
+- To enable a new cases `.proto`, add it to `enabled_case_files()` in `build.rs`,
+  rebuild, run the harness, and fix anything that fails.
+- To inspect emitted validators for debugging, look under
+  `target/release/build/protovalidate-buffa-conformance-*/out/` for the
+  `pv_buf.validate.conformance.cases.*.rs` files.
+
+[`protovalidate-conformance`]: https://github.com/bufbuild/protovalidate/tree/main/tools/protovalidate-conformance

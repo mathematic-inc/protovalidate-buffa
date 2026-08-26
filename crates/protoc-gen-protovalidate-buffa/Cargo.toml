@@ -1,18 +1,15 @@
 [package]
 name = "protoc-gen-protovalidate-buffa"
-description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages. CEL expressions are transpiled to native Rust at codegen time — no runtime interpreter."
 version = "0.6.0"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages. CEL expressions are transpiled to native Rust at codegen time — no runtime interpreter."
 homepage.workspace = true
-categories.workspace = true
+repository.workspace = true
+license.workspace = true
 keywords.workspace = true
-
-[lints]
-workspace = true
+categories.workspace = true
 
 [lib]
 path = "src/lib.rs"
@@ -22,16 +19,20 @@ name = "protoc-gen-protovalidate-buffa"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 buffa = "0.9.1"
 buffa-codegen = "0.9.1"
-protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.6.0" }
-proc-macro2 = "1"
-quote = "1"
-syn = { version = "3", features = ["full"] }
-prettyplease = "0.3"
-anyhow = "1"
+buffa-types = "0.9.1"
 # Used parse-only — the runtime interpreter, regex pattern matching, and
 # chrono-based timestamp handling all live on the runtime side or get
 # transpiled away at codegen time, so the plugin can opt out of the
 # `regex` and `chrono` default features.
 cel = { version = "0.14", default-features = false }
+prettyplease = "0.3"
+proc-macro2 = "1"
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.6.0" }
+quote = "1"
+syn = { version = "3", features = ["full"] }
+
+[lints]
+workspace = true
