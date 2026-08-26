@@ -1,0 +1,25 @@
+name: Restrict pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close-external-pull-request:
+    if: >-
+      ${{
+        !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
+        !contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.pull_request.user.login)
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          DISCUSSIONS_URL: ${{ github.server_url }}/${{ github.repository }}/discussions/new
+          CONTRIBUTING_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/CONTRIBUTING.md
+        run: gh pr close "$PR_URL" --comment "Thanks for proposing a change. This repository accepts pull requests only from Mathematic organization members, repository collaborators, and approved maintenance bots. Please [start a Discussion]($DISCUSSIONS_URL) so we can review the idea first. If we accept it, a maintainer or agent will implement it and open a pull request. See [CONTRIBUTING.md]($CONTRIBUTING_URL) for details."
