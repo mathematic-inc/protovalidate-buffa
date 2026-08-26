@@ -22,8 +22,8 @@ name = "protoc-gen-protovalidate-buffa"
 path = "src/main.rs"
 
 [dependencies]
-buffa = "0.8"
-buffa-codegen = "0.8"
+buffa = "0.9.1"
+buffa-codegen = "0.9.1"
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.6.0" }
 proc-macro2 = "1"
 quote = "1"

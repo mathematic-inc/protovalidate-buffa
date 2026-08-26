@@ -42,11 +42,11 @@ Compared to reflection-based implementations, the codegen approach has two chara
 
 ## Compatibility
 
-This workspace currently targets **buffa 0.8**, **connectrpc 0.8**, and **Rust 1.88+** (edition 2024).
+This workspace currently targets **buffa 0.9.1**, **connectrpc 0.9**, and **Rust 1.88+** (edition 2024).
 
 The emitted validators reference buffa's generated-code shape directly (field placement, map and view types), so the plugin and your `buffa-build` output must agree on the buffa minor version. buffa is pre-1.0 and treats **minor bumps as breaking**, so upgrading buffa generally means upgrading this crate in lockstep.
 
-buffa 0.9 is intentionally not adopted yet: `connectrpc` 0.8 still depends on buffa `^0.8`, so moving this workspace to 0.9 would link two incompatible buffa versions and break the default `connect` feature for downstream handlers. This crate will move to buffa 0.9 once connectrpc does.
+The `connect` feature links `connectrpc`, which itself depends on buffa `^0.9.1` — so the buffa version here has to stay in step with connectrpc's, otherwise two incompatible buffa versions get linked and the default `connect` feature breaks for downstream handlers.
 
 ## Supported rules
 
