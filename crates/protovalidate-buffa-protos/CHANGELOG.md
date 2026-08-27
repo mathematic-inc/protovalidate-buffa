@@ -2,7 +2,6 @@
 
 ## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-protos-v0.6.0...protovalidate-buffa-protos-v0.7.0) (2026-08-27)
 
-
 ### ⚠ BREAKING CHANGES
 
 * update buffa to 0.9.1 and connectrpc to 0.9.0 ([#29](https://github.com/mathematic-inc/protovalidate-buffa/issues/29))

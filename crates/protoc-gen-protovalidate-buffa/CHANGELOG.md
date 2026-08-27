@@ -2,7 +2,6 @@
 
 ## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.6.0...protoc-gen-protovalidate-buffa-v0.7.0) (2026-08-27)
 
-
 ### ⚠ BREAKING CHANGES
 
 * update buffa to 0.9.1 and connectrpc to 0.9.0 ([#29](https://github.com/mathematic-inc/protovalidate-buffa/issues/29))
@@ -11,11 +10,9 @@
 
 * Validate buffa view types ([#34](https://github.com/mathematic-inc/protovalidate-buffa/issues/34)) ([bccef64](https://github.com/mathematic-inc/protovalidate-buffa/commit/bccef64f99e22586a4f9a89b6eb87b5ce914784f))
 
-
 ### Build System
 
 * Update buffa to 0.9.1 and connectrpc to 0.9.0 ([#29](https://github.com/mathematic-inc/protovalidate-buffa/issues/29)) ([f973190](https://github.com/mathematic-inc/protovalidate-buffa/commit/f97319002367b9fe42c77422434b796f664c2123))
-
 
 ### Dependencies
 
