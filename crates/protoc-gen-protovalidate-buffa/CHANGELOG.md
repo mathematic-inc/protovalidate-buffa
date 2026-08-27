@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.0...protoc-gen-protovalidate-buffa-v0.7.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **generator:** Use generic package examples ([#40](https://github.com/mathematic-inc/protovalidate-buffa/issues/40)) ([32f5ae1](https://github.com/mathematic-inc/protovalidate-buffa/commit/32f5ae16d7da9ccbce7b210e3e12389683599b25))
+
 ## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.6.0...protoc-gen-protovalidate-buffa-v0.7.0) (2026-08-27)
 
 ### ⚠ BREAKING CHANGES
