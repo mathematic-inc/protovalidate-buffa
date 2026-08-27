@@ -16,7 +16,7 @@ lychee = "0.24.2"
 pinact = "4.1.1"
 protoc = "36.0"
 python = "3.14.7"
-rumdl = "0.2.60"
+rumdl = "0.2.61"
 rust = { version = "1.98.0", profile = "minimal", components = [
   "clippy",
   "rustfmt",
