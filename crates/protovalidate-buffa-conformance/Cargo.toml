@@ -1,6 +1,6 @@
 [package]
 name = "protovalidate-buffa-conformance"
-version = "0.0.13"
+version = "0.0.14"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -38,7 +38,7 @@ buffa-build = "0.9.1"
 buffa-codegen = "0.9.1"
 prettyplease = "0.3"
 proc-macro2 = "1"
-protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.7.0" }
+protoc-gen-protovalidate-buffa = { path = "../protoc-gen-protovalidate-buffa", version = "0.7.1" }
 quote = "1"
 syn = { version = "3", features = ["full"] }
 
