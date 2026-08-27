@@ -141,7 +141,7 @@ pub fn render_with_options(messages: &[MessageValidators], opts: &Options) -> Re
     }
 
     let mut files = Vec::new();
-    // Map proto package (e.g. "sloper.v1alpha1") → list of emitted
+    // Map proto package (e.g. "example.v1alpha1") → list of emitted
     // filenames, so the packaging file can `include!()` each per-package
     // file under the right `pub mod` nesting.
     let mut by_package: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -154,7 +154,7 @@ pub fn render_with_options(messages: &[MessageValidators], opts: &Options) -> Re
             anyhow::anyhow!("syn parse failed for {source_file}: {e}\n--- BEGIN TOKENS ---\n{body_str}\n--- END TOKENS ---")
         })?;
         // The package is everything before the trailing file stem in the
-        // dotted form ("sloper.v1alpha1.style" → package "sloper.v1alpha1").
+        // dotted form ("example.v1alpha1.style" → package "example.v1alpha1").
         let package = match stem.rsplit_once('.') {
             Some((p, _)) => p.to_string(),
             None => stem.clone(),
@@ -243,10 +243,10 @@ struct PackageNode {
 ///
 /// ```text
 /// mod.rs
-///   pub mod sloper {
+///   pub mod example {
 ///       pub mod v1alpha1 {
-///           use crate::proto::sloper::v1alpha1::*;
-///           include!("sloper.v1alpha1.mod.rs");
+///           use crate::proto::example::v1alpha1::*;
+///           include!("example.v1alpha1.mod.rs");
 ///       }
 ///   }
 /// ```
