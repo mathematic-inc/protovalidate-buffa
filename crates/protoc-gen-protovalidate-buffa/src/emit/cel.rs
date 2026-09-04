@@ -13,7 +13,7 @@ use quote::{format_ident, quote};
 use crate::{
     emit::cel_compile::{
         Binding, CelType, CompileOutput, Compiler, FallbackKind, MapTy, MessageFieldEntry,
-        MessageSchema, RustScalar, SchemaFieldKind,
+        MessageSchema, RustScalar, SchemaFieldKind, wkt_value,
     },
     scan::{FieldKind, FieldValidator, MessageValidators},
 };
@@ -402,7 +402,7 @@ pub(crate) fn try_emit_native_field_cel(
     }
     let this_ty = scalar_this_for_with(&f.field_type, Some(schemas))?;
     let access = field_this_access(f, field_ident, &this_ty, shape)?;
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new().with_schemas(schemas);
     compiler.bind(
         "this",
         Binding {
@@ -480,7 +480,10 @@ pub(crate) fn try_emit_native_field_cel(
     let body = quote! {
         let __cel_this = #access;
         #now_prelude
-        #check
+        let _ = (|| -> ::core::option::Option<()> {
+            #check
+            ::core::option::Option::Some(())
+        })();
     };
     Some(match &f.field_type {
         FieldKind::Optional(_) => quote! {
@@ -670,24 +673,7 @@ fn field_this_access(
             CelType::Bool => quote! { self.#field_ident },
             _ => return None,
         }),
-        FieldKind::Message { full_name } if full_name == "google.protobuf.Duration" => {
-            // Caller wraps in `if let Some(__cel_inner) = self.x.as_option()`.
-            Some(quote! {
-                ::protovalidate_buffa::cel::duration_from_secs_nanos(
-                    __cel_inner.seconds,
-                    __cel_inner.nanos,
-                )
-            })
-        }
-        FieldKind::Message { full_name } if full_name == "google.protobuf.Timestamp" => {
-            Some(quote! {
-                ::protovalidate_buffa::cel::timestamp_from_secs_nanos(
-                    __cel_inner.seconds,
-                    __cel_inner.nanos,
-                )
-            })
-        }
-        FieldKind::Message { .. } => None,
+        FieldKind::Message { .. } => wkt_value(cel_ty, &quote! { __cel_inner }),
     }
 }
 
@@ -727,7 +713,7 @@ fn try_emit_native_field_cel_message(
         return None;
     }
     let inner_schema = schemas.get(&inner_full_name)?.clone();
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new().with_schemas(schemas);
     compiler.bind(
         "this",
         Binding {
@@ -785,7 +771,10 @@ fn try_emit_native_field_cel_message(
     };
     let body = quote! {
         #now_prelude
-        #check
+        let _ = (|| -> ::core::option::Option<()> {
+            #check
+            ::core::option::Option::Some(())
+        })();
     };
     // For `Message`-typed fields buffa exposes `MessageField<T>`; for
     // proto2/editions `optional Msg` it's also `MessageField<T>` (via
@@ -842,8 +831,9 @@ pub(crate) fn try_compile_cel_check(
     field_path: &TokenStream,
     rule_path: &TokenStream,
     for_key: bool,
+    schemas: &SchemaIndex,
 ) -> Option<TokenStream> {
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new().with_schemas(schemas);
     compiler.bind(
         "this",
         Binding {
@@ -923,7 +913,10 @@ pub(crate) fn try_compile_cel_check(
     };
     Some(quote! {
         #now_prelude
-        #check
+        let _ = (|| -> ::core::option::Option<()> {
+            #check
+            ::core::option::Option::Some(())
+        })();
     })
 }
 
@@ -948,6 +941,11 @@ pub(crate) fn this_binding_for_kind_with(
     operand: &TokenStream,
     schemas: Option<&SchemaIndex>,
 ) -> Option<(TokenStream, CelType)> {
+    if let Some(ty) = scalar_this_for(kind)
+        && let Some(value) = wkt_value(&ty, operand)
+    {
+        return Some((value, ty));
+    }
     if let FieldKind::Message { full_name } = kind
         && let Some(s) = schemas
         && let Some(schema) = s.get(full_name).cloned()
@@ -1025,11 +1023,10 @@ fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
             let elem = scalar_this_for(inner)?;
             (CelType::List(Box::new(elem)), SchemaFieldKind::Repeated)
         }
-        // Sub-messages and maps: marked as Message kind so `has()` works
-        // but field-selection on them isn't yet supported (the transpiler
-        // falls back when descending into them).
+        // Preserve message presence for `has()`, including WKTs whose CEL
+        // values are timestamps or durations rather than message references.
         FieldKind::Message { full_name } => (
-            CelType::Dyn,
+            scalar_this_for(&f.field_type).unwrap_or(CelType::Dyn),
             SchemaFieldKind::Message {
                 proto_fqn: Some(full_name.clone()),
             },

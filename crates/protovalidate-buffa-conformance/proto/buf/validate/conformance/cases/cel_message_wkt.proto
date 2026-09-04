@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Regression for https://github.com/mathematic-inc/protovalidate-buffa/discussions/44.
+message CelTimestampRange {
+  option (buf.validate.message).cel = {
+    id: "timestamp_range.ordered"
+    expression: "!has(this.start) || !has(this.end) || this.start < this.end"
+  };
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+message CelDurationRange {
+  option (buf.validate.message).cel = {
+    id: "duration_range.ordered"
+    expression: "!has(this.start) || !has(this.end) || this.start < this.end"
+  };
+  google.protobuf.Duration start = 1;
+  google.protobuf.Duration end = 2;
+}
+
+message CelWktElements {
+  repeated google.protobuf.Timestamp timestamps = 1 [(buf.validate.field).repeated.items.cel = {
+    id: "timestamp.after_epoch"
+    expression: "this > timestamp('1970-01-01T00:00:00Z')"
+  }];
+  map<string, google.protobuf.Duration> durations = 2 [(buf.validate.field).map.values.cel = {
+    id: "duration.positive"
+    expression: "this > duration('0s')"
+  }];
+}
+
+message CelTimestampFields {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+message CelTimestampEnvelope {
+  CelTimestampFields range = 1;
+}
+
+message CelNestedTimestampRange {
+  CelTimestampEnvelope envelope = 1 [(buf.validate.field).cel = {
+    id: "nested_timestamp_range.ordered"
+    expression: "!has(this.range) || !has(this.range.start) || !has(this.range.end) || this.range.start < this.range.end"
+  }];
+}

@@ -741,10 +741,10 @@ impl<'a> Compiler<'a> {
             return Ok(Compiled {
                 tokens: quote! {
                     ({
-                        static __TS: ::std::sync::OnceLock<::chrono::DateTime<::chrono::FixedOffset>> =
+                        static __TS: ::std::sync::OnceLock<::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset>> =
                             ::std::sync::OnceLock::new();
                         *__TS.get_or_init(|| {
-                            ::chrono::DateTime::parse_from_rfc3339(#s_lit)
+                            ::protovalidate_buffa::chrono::DateTime::parse_from_rfc3339(#s_lit)
                                 .expect("CEL timestamp() literal parse")
                         })
                     })
@@ -2060,7 +2060,7 @@ impl<'a> Compiler<'a> {
             || match &target.ty {
                 CelType::Timestamp => (
                     t.clone(),
-                    quote! { ::chrono::DateTime<::chrono::FixedOffset> },
+                    quote! { ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset> },
                 ),
                 _ => (t.clone(), quote! {}),
             },
@@ -2075,7 +2075,7 @@ impl<'a> Compiler<'a> {
                 };
                 (
                     converted,
-                    quote! { ::chrono::DateTime<::protovalidate_buffa::chrono_tz::Tz> },
+                    quote! { ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono_tz::Tz> },
                 )
             },
         );
@@ -2088,37 +2088,37 @@ impl<'a> Compiler<'a> {
             // --- Timestamp ---
             // Date components.
             ("getFullYear", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::chrono::Datelike>::year(&(#ts_expr))))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::year(&(#ts_expr))))
             },
             ("getMonth", CelType::Timestamp) => quote! {
                 // CEL `getMonth` is 0-based; chrono's `month()` is 1-based.
-                (i64::from(<#ts_ty_path as ::chrono::Datelike>::month(&(#ts_expr))) - 1)
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::month(&(#ts_expr))) - 1)
             },
             ("getDate" | "getDayOfMonth", CelType::Timestamp) => quote! {
                 // CEL is 0-based per cel-go; chrono's `day()` is 1-based.
-                (i64::from(<#ts_ty_path as ::chrono::Datelike>::day(&(#ts_expr))) - 1)
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::day(&(#ts_expr))) - 1)
             },
             ("getDayOfWeek", CelType::Timestamp) => quote! {
                 // CEL: Sunday = 0.
-                (i64::from(<#ts_ty_path as ::chrono::Datelike>::weekday(&(#ts_expr)).num_days_from_sunday()))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::weekday(&(#ts_expr)).num_days_from_sunday()))
             },
             ("getDayOfYear", CelType::Timestamp) => quote! {
                 // CEL is 0-based; chrono's `ordinal()` is 1-based.
-                (i64::from(<#ts_ty_path as ::chrono::Datelike>::ordinal(&(#ts_expr))) - 1)
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::ordinal(&(#ts_expr))) - 1)
             },
             // Time components.
             ("getHours", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::chrono::Timelike>::hour(&(#ts_expr))))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::hour(&(#ts_expr))))
             },
             ("getMinutes", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::chrono::Timelike>::minute(&(#ts_expr))))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::minute(&(#ts_expr))))
             },
             ("getSeconds", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::chrono::Timelike>::second(&(#ts_expr))))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::second(&(#ts_expr))))
             },
             ("getMilliseconds", CelType::Timestamp) => quote! {
                 // chrono `nanosecond()` is sub-second nanos; convert to ms.
-                (i64::from(<#ts_ty_path as ::chrono::Timelike>::nanosecond(&(#ts_expr)) / 1_000_000))
+                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::nanosecond(&(#ts_expr)) / 1_000_000))
             },
             _ => return Err(FallbackReason::new(format!("{name} on {:?}", target.ty))),
         };
@@ -3908,6 +3908,19 @@ fn cast_to_rust_scalar(expr: &TokenStream, cel: &CelType, rust: RustScalar) -> T
     }
 }
 
+/// Convert a protobuf Timestamp or Duration into its native CEL value.
+pub(crate) fn wkt_value(ty: &CelType, operand: &TokenStream) -> Option<TokenStream> {
+    let constructor = match ty {
+        CelType::Timestamp => quote! { timestamp_from_secs_nanos },
+        CelType::Duration => quote! { duration_from_secs_nanos },
+        _ => return None,
+    };
+    Some(quote! {{
+        let __cel_wkt = #operand;
+        ::protovalidate_buffa::cel::#constructor(__cel_wkt.seconds, __cel_wkt.nanos)
+    }})
+}
+
 /// Emit a typed Rust field access for `<operand>.<field>` when the operand
 /// is a known message type.
 fn select_message_field(
@@ -3997,6 +4010,15 @@ fn select_message_field(
             }
         },
         SchemaFieldKind::Message { proto_fqn } => {
+            if let Some(tokens) =
+                wkt_value(&entry.ty, &quote! { #operand.#rust_ident.as_option()? })
+            {
+                return Ok(Compiled {
+                    tokens,
+                    ty: entry.ty.clone(),
+                    constant: None,
+                });
+            }
             // Nested sub-message access (`this.e.a == this.f.a`). The
             // generated code wraps the whole expression in a closure that
             // uses `?` to short-circuit when a sub-message is unset (which

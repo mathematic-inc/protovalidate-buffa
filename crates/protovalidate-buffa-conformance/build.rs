@@ -206,6 +206,7 @@ fn enabled_case_files() -> Vec<String> {
         "wkt_timestamp.proto",
         "wkt_field_mask.proto",
         "wkt_nested.proto",
+        "cel_message_wkt.proto",
         "ignore_proto2.proto",
         "ignore_empty_proto2.proto",
         "required_field_proto2.proto",
