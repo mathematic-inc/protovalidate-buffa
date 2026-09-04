@@ -1745,6 +1745,7 @@ pub fn emit_repeated(
                     &fp_quote,
                     &rp_quote,
                     false,
+                    schemas,
                 )
             });
             if let Some(check) = native {
@@ -1826,7 +1827,7 @@ pub fn emit_repeated(
                     Some(schemas),
                 )?;
                 crate::emit::cel::try_compile_cel_check(
-                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, false,
+                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, false, schemas,
                 )
             });
             if let Some(check) = native {
@@ -2130,7 +2131,7 @@ pub fn emit_map(
                 let (this_expr, this_ty) =
                     crate::emit::cel::this_binding_for_kind_with(target_kind, &a, Some(schemas))?;
                 crate::emit::cel::try_compile_cel_check(
-                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, for_key,
+                    expr, id, msg, this_expr, this_ty, None, &fp_quote, &rp_quote, for_key, schemas,
                 )
             });
             if let Some(check) = native {

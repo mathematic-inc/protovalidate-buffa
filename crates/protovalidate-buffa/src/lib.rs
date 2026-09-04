@@ -46,6 +46,8 @@ mod connect;
 // `::buffa::` path directly; downstream crates already depend on buffa for
 // their message types.
 pub use buffa;
+/// Date/time types and traits used by generated CEL timestamp expressions.
+pub use chrono;
 /// IANA timezone database, re-exported so generated code can reference
 /// `::protovalidate_buffa::chrono_tz::Tz` when a CEL rule uses the
 /// timezone-argument form of a timestamp accessor
