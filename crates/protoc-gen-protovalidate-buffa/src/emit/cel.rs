@@ -480,10 +480,7 @@ pub(crate) fn try_emit_native_field_cel(
     let body = quote! {
         let __cel_this = #access;
         #now_prelude
-        let _ = (|| -> ::core::option::Option<()> {
-            #check
-            ::core::option::Option::Some(())
-        })();
+        #check
     };
     Some(match &f.field_type {
         FieldKind::Optional(_) => quote! {
@@ -771,10 +768,7 @@ fn try_emit_native_field_cel_message(
     };
     let body = quote! {
         #now_prelude
-        let _ = (|| -> ::core::option::Option<()> {
-            #check
-            ::core::option::Option::Some(())
-        })();
+        #check
     };
     // For `Message`-typed fields buffa exposes `MessageField<T>`; for
     // proto2/editions `optional Msg` it's also `MessageField<T>` (via
@@ -913,10 +907,7 @@ pub(crate) fn try_compile_cel_check(
     };
     Some(quote! {
         #now_prelude
-        let _ = (|| -> ::core::option::Option<()> {
-            #check
-            ::core::option::Option::Some(())
-        })();
+        #check
     })
 }
 
@@ -1073,15 +1064,9 @@ fn try_emit_native_message_cel(
     };
     let id_lit = &rule.id;
     let msg_lit = &rule.message;
-    // Wrap the body in a closure that returns `Option<T>` so nested
-    // sub-message accesses (`this.e.a == this.f.a`) can short-circuit via
-    // `?` when a sub-message is unset. Mirrors protovalidate's
-    // `NoSuchKey => skip` semantics for `(message).cel` rules.
     let check = match ty {
         CelType::Bool => quote! {
-            let __cel_result: ::core::option::Option<bool> =
-                (|| -> ::core::option::Option<bool> { ::core::option::Option::Some(#tokens) })();
-            if ::core::matches!(__cel_result, ::core::option::Option::Some(false)) {
+            if !(#tokens) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath::default(),
                     rule: ::protovalidate_buffa::FieldPath::default(),
@@ -1092,33 +1077,23 @@ fn try_emit_native_message_cel(
             }
         },
         CelType::Str { owned: true } => quote! {
-            let __cel_result: ::core::option::Option<::std::string::String> =
-                (|| -> ::core::option::Option<::std::string::String> {
-                    ::core::option::Option::Some((#tokens))
-                })();
-            if let ::core::option::Option::Some(__cel_s) = __cel_result {
-                if !__cel_s.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_s)
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: ::protovalidate_buffa::FieldPath::default(),
-                        rule: ::protovalidate_buffa::FieldPath::default(),
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
+            let __cel_s: ::std::string::String = (#tokens);
+            if !__cel_s.is_empty() {
+                let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
+                    ::std::borrow::Cow::Owned(__cel_s)
+                } else {
+                    ::std::borrow::Cow::Borrowed(#msg_lit)
+                };
+                violations.push(::protovalidate_buffa::Violation {
+                    field: ::protovalidate_buffa::FieldPath::default(),
+                    rule: ::protovalidate_buffa::FieldPath::default(),
+                    rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
+                    message: __msg,
+                    for_key: false,
+                });
             }
         },
         CelType::Str { owned: false } => quote! {
-            // Borrowed-string result captures `self` so it can't escape a
-            // closure without lifetime gymnastics. Inline the check
-            // directly — borrowed-string results never reference sub-
-            // messages that might be unset (only literals + receiver
-            // access), so no `?` short-circuit is needed.
             {
                 let __cel_result: &str = (#tokens);
                 if !__cel_result.is_empty() {

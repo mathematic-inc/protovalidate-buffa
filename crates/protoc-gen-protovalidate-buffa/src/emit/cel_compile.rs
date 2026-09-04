@@ -4010,28 +4010,22 @@ fn select_message_field(
             }
         },
         SchemaFieldKind::Message { proto_fqn } => {
-            if let Some(tokens) =
-                wkt_value(&entry.ty, &quote! { #operand.#rust_ident.as_option()? })
-            {
+            if let Some(tokens) = wkt_value(&entry.ty, &quote! { &*#operand.#rust_ident }) {
                 return Ok(Compiled {
                     tokens,
                     ty: entry.ty.clone(),
                     constant: None,
                 });
             }
-            // Nested sub-message access (`this.e.a == this.f.a`). The
-            // generated code wraps the whole expression in a closure that
-            // uses `?` to short-circuit when a sub-message is unset (which
-            // matches protovalidate's NoSuchKey-as-skip semantics for
-            // `(message).cel`). Emit a `MessageField::as_option()?` so the
-            // closure short-circuits.
+            // CEL reads protobuf defaults for unset sub-messages. Buffa's
+            // Deref provides the default instance without changing presence.
             let Some(fqn) = proto_fqn else {
                 return Err(FallbackReason::new(format!(
                     "message field {field} has no proto FQN"
                 )));
             };
             return Ok(Compiled {
-                tokens: quote! { (#operand.#rust_ident.as_option()?) },
+                tokens: quote! { (&*#operand.#rust_ident) },
                 ty: CelType::MessageRef(fqn.clone()),
                 constant: None,
             });
@@ -4924,11 +4918,14 @@ mod tests {
         let out = c.compile("this.b.c.x > 0").expect("compile");
         assert_eq!(out.ty, CelType::Bool);
         let r = rendered(&out.tokens);
-        // Both intermediate hops emit as_option()? — the closure
-        // short-circuits if any link is unset.
+        assert_eq!(
+            r.matches("& *").count(),
+            2,
+            "expected default-value reads: {r}"
+        );
         assert!(
-            r.matches("as_option").count() >= 2,
-            "expected ≥2 as_option(): {r}"
+            !r.contains("as_option"),
+            "field access must not skip unset messages: {r}"
         );
     }
 
@@ -6082,15 +6079,11 @@ mod tests {
         let out = c.compile("this.e.a > 0").expect("compile");
         assert_eq!(out.ty, CelType::Bool);
         let s = out.tokens.to_string();
-        // The `?` short-circuit on the sub-message lookup must be emitted
-        // so the validate body skips the rule when `e` is unset.
+        assert!(s.contains("& *"), "expected default-value read: {s}");
+        assert!(s.contains(". a"), "expected nested .a access: {s}");
         assert!(
-            s.contains("as_option ()"),
-            "expected as_option() on sub-message: {s}"
-        );
-        assert!(
-            s.contains("? )") || s.contains("? . a") || s.contains(". a"),
-            "expected nested .a access: {s}"
+            !s.contains("as_option"),
+            "field access must not skip unset messages: {s}"
         );
     }
 }
