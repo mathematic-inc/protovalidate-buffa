@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.0...v0.7.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **cel:** Preserve timestamp and duration values across bindings ([#45](https://github.com/mathematic-inc/protovalidate-buffa/issues/45)) ([94037da](https://github.com/mathematic-inc/protovalidate-buffa/commit/94037dafc3016f0c21eb13f68240d57011991614))
+
 ## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.6.0...v0.7.0) (2026-08-27)
 
 ### ⚠ BREAKING CHANGES

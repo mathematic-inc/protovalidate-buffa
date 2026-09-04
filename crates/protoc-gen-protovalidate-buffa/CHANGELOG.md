@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.1...protoc-gen-protovalidate-buffa-v0.7.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **cel:** Preserve timestamp and duration values across bindings ([#45](https://github.com/mathematic-inc/protovalidate-buffa/issues/45)) ([94037da](https://github.com/mathematic-inc/protovalidate-buffa/commit/94037dafc3016f0c21eb13f68240d57011991614))
+* **cel:** Read protobuf defaults for unset message fields ([#47](https://github.com/mathematic-inc/protovalidate-buffa/issues/47)) ([32742d4](https://github.com/mathematic-inc/protovalidate-buffa/commit/32742d49bda94fde507bc27fe8bed2d7fa578b1d))
+
 ## [0.7.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.0...protoc-gen-protovalidate-buffa-v0.7.1) (2026-08-27)
 
 
