@@ -96,15 +96,14 @@ fn wkt_item_and_map_value_rules_use_cel_values() {
                 nanos,
                 ..Default::default()
             }],
-            durations: [(
+            durations: std::iter::once((
                 "value".to_string(),
                 Duration {
                     seconds,
                     nanos,
                     ..Default::default()
                 },
-            )]
-            .into_iter()
+            ))
             .collect(),
             ..Default::default()
         };
