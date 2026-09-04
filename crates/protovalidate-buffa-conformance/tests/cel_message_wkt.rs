@@ -20,16 +20,19 @@ mod generated {
 }
 
 macro_rules! range_test {
-    ($name:ident, $owned:ident, $view:ident, $wkt:ident, $rule:literal) => {
+    ($name:ident, $owned:ident, $view:ident, $wkt:ident, $rule:literal, $guarded:literal) => {
         // https://github.com/mathematic-inc/protovalidate-buffa/discussions/44
         #[test]
         fn $name() {
             use generated::buf::validate::conformance::cases::{__buffa::view::$view, $owned};
 
             for (start, end, valid) in [
-                (None, None, true),
-                (Some((0, 0)), None, true),
-                (None, Some((0, 0)), true),
+                (None, None, $guarded),
+                (Some((0, 0)), None, $guarded),
+                (None, Some((0, 0)), $guarded),
+                (None, Some((0, 1)), true),
+                (Some((-1, 0)), None, true),
+                (None, Some((-1, 0)), $guarded),
                 (Some((0, 0)), Some((0, 0)), false),
                 (Some((0, 0)), Some((0, 1)), true),
                 (Some((0, 1)), Some((0, 0)), false),
@@ -71,14 +74,16 @@ range_test!(
     CelTimestampRange,
     CelTimestampRangeView,
     Timestamp,
-    "timestamp_range.ordered"
+    "timestamp_range.ordered",
+    true
 );
 range_test!(
     duration_ordering_preserves_presence,
     CelDurationRange,
     CelDurationRangeView,
     Duration,
-    "duration_range.ordered"
+    "duration_range.ordered",
+    true
 );
 
 // https://github.com/mathematic-inc/protovalidate-buffa/discussions/44
@@ -178,6 +183,77 @@ fn nested_field_rules_preserve_presence() {
                 assert_eq!(
                     error.violations[0].rule_id,
                     "nested_timestamp_range.ordered"
+                );
+            }
+        }
+    }
+}
+
+// Expected values verified against protovalidate-go at
+// 573e8070aa030baf4d4f574293364b998a133a52 using these descriptors.
+range_test!(
+    unset_timestamps_read_as_epoch,
+    CelTimestampDefaults,
+    CelTimestampDefaultsView,
+    Timestamp,
+    "timestamp_defaults.ordered",
+    false
+);
+range_test!(
+    unset_durations_read_as_zero,
+    CelDurationDefaults,
+    CelDurationDefaultsView,
+    Duration,
+    "duration_defaults.ordered",
+    false
+);
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/44
+// Upstream skips rules on an absent envelope; reads inside a present envelope
+// use defaults for absent nested messages and temporal fields.
+#[test]
+fn nested_reads_use_defaults_but_absent_field_rules_are_skipped() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelNestedTimestampDefaultsView, CelNestedTimestampDefaults,
+        CelTimestampEnvelope, CelTimestampFields,
+    };
+    use generated::google::protobuf::Timestamp;
+
+    for (envelope, valid) in [
+        (None, true),
+        (Some(CelTimestampEnvelope::default()), false),
+        (
+            Some(CelTimestampEnvelope {
+                range: CelTimestampFields {
+                    end: Timestamp {
+                        nanos: 1,
+                        ..Default::default()
+                    }
+                    .into(),
+                    ..Default::default()
+                }
+                .into(),
+                ..Default::default()
+            }),
+            true,
+        ),
+    ] {
+        let owned = CelNestedTimestampDefaults {
+            envelope: envelope.into(),
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let view = CelNestedTimestampDefaultsView::decode_view(&bytes)
+            .expect("nested defaults must decode");
+        for result in [owned.validate(), view.validate()] {
+            assert_eq!(result.is_ok(), valid, "{result:?}");
+            if let Err(error) = result {
+                assert!(error.compile_error.is_none(), "{error:?}");
+                assert!(error.runtime_error.is_none(), "{error:?}");
+                assert_eq!(error.violations.len(), 1);
+                assert_eq!(
+                    error.violations[0].rule_id,
+                    "nested_timestamp_defaults.ordered"
                 );
             }
         }

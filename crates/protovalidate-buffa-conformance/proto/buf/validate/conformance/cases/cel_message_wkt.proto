@@ -51,3 +51,29 @@ message CelNestedTimestampRange {
     expression: "!has(this.range) || !has(this.range.start) || !has(this.range.end) || this.range.start < this.range.end"
   }];
 }
+
+// Unguarded access reads protobuf defaults, even when has() is false.
+message CelTimestampDefaults {
+  option (buf.validate.message).cel = {
+    id: "timestamp_defaults.ordered"
+    expression: "this.start < this.end"
+  };
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+message CelDurationDefaults {
+  option (buf.validate.message).cel = {
+    id: "duration_defaults.ordered"
+    expression: "this.start < this.end"
+  };
+  google.protobuf.Duration start = 1;
+  google.protobuf.Duration end = 2;
+}
+
+message CelNestedTimestampDefaults {
+  CelTimestampEnvelope envelope = 1 [(buf.validate.field).cel = {
+    id: "nested_timestamp_defaults.ordered"
+    expression: "this.range.start < this.range.end"
+  }];
+}
