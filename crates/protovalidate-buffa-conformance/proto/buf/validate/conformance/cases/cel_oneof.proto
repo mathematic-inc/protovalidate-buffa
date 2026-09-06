@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+message CelOneofPresence {
+  option (buf.validate.message).cel = {
+    id: "oneof.presence"
+    expression: "has(this.number) == (this.selected == 1) && has(this.text) == (this.selected == 2) && has(this.child) == (this.selected == 3) && has(this.stamp) == (this.selected == 4)"
+  };
+
+  int32 selected = 1;
+  oneof choice {
+    int32 number = 2;
+    string text = 3;
+    CelOneofChild child = 4;
+    google.protobuf.Timestamp stamp = 5;
+  }
+}
+
+message CelOneofChild {
+  string id = 1;
+}
+
+message CelOneofContainer {
+  option (buf.validate.message).cel = {
+    id: "oneof.message_list"
+    expression: "this.many.all(v, has(v.number))"
+  };
+
+  CelOneofPresence single = 1 [(buf.validate.field).cel = {
+    id: "oneof.field"
+    expression: "has(this.number)"
+  }];
+  repeated CelOneofPresence many = 2 [(buf.validate.field).cel = {
+    id: "oneof.field_list"
+    expression: "this.all(v, has(v.number))"
+  }];
+}
+
+message MessageOneofPresence {
+  option (buf.validate.message).oneof = {
+    fields: [
+      "number",
+      "text",
+      "outside"
+    ]
+    required: true
+  };
+
+  oneof choice {
+    int32 number = 1;
+    string text = 2;
+  }
+  string outside = 3;
+}
+
+message CelMessageTree {
+  option (buf.validate.message).cel = {
+    id: "tree.unique_children"
+    expression: "this.children.all(c, this.children.filter(t, t.id == c.id).size() == 1)"
+  };
+
+  string id = 1;
+  repeated CelMessageTree children = 2;
+}

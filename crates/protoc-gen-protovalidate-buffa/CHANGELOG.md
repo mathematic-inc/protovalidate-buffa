@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.3](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.2...protoc-gen-protovalidate-buffa-v0.7.3) (2026-09-06)
+
+
+### Bug Fixes
+
+* **cel:** Preserve oneof presence semantics in `has()` expressions for owned messages and borrowed views, including nested and repeated messages.
+* **cel:** Resolve repeated and recursive message schemas lazily so collection expressions can access their elements.
+* **oneof:** Count selected default values correctly in message-level oneof rules and avoid direct field guards for oneof members.
+
 ## [0.7.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.1...protoc-gen-protovalidate-buffa-v0.7.2) (2026-09-04)
 
 

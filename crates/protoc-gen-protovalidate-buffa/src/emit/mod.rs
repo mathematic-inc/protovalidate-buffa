@@ -408,7 +408,8 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
             .iter()
             .map(|f| {
                 let inner = field::emit(f, schemas, shape)?;
-                if implicit_ignore.contains(f.field_name.as_str())
+                if !inner.is_empty()
+                    && implicit_ignore.contains(f.field_name.as_str())
                     && !matches!(f.ignore, crate::scan::Ignore::Always)
                 {
                     let accessor = field_ident(&f.field_name);
@@ -475,10 +476,15 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .collect::<Result<_>>()?;
 
     // `(buf.validate.message).oneof` — fields where at most one may be set.
-    let message_oneof_blocks: Vec<TokenStream> = msg
+    let owned_message_oneof_blocks: Vec<TokenStream> = msg
         .message_oneofs
         .iter()
-        .map(|spec| emit_message_oneof(msg, spec))
+        .map(|spec| emit_message_oneof(msg, spec, Shape::Owned))
+        .collect();
+    let view_message_oneof_blocks: Vec<TokenStream> = msg
+        .message_oneofs
+        .iter()
+        .map(|spec| emit_message_oneof(msg, spec, Shape::View))
         .collect();
 
     let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, schemas, Shape::Owned);
@@ -518,6 +524,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
                        map_bindings: &[TokenStream],
                        field_blocks: &[TokenStream],
                        oneof_blocks: &[TokenStream],
+                       message_oneof_blocks: &[TokenStream],
                        cel_calls: &[TokenStream]| {
         quote! {
             #allows
@@ -565,6 +572,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
             &owned_map_bindings,
             &owned_field_blocks,
             &oneof_blocks,
+            &owned_message_oneof_blocks,
             &owned_cel_calls,
         ),
         render_impl(
@@ -572,6 +580,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
             &view_map_bindings,
             &view_field_blocks,
             &view_oneof_blocks,
+            &view_message_oneof_blocks,
             &view_cel_calls,
         ),
     ];
@@ -581,18 +590,13 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     })
 }
 
-/// Strip the package prefix from a fully-qualified proto name.
-///
-/// `"test.v1.ScalarsMessage"` with package `"test.v1"` → `"ScalarsMessage"`.
-/// `"example.v1.Outer.Inner"` with package `"example.v1"` → `"Outer.Inner"`.
-/// If `package` is empty or the name does not start with `<package>.`, return
-/// the original name unchanged.
 /// Emit a `(buf.validate.message).oneof` rule. Counts how many listed fields
 /// are considered "set"; emits `message.oneof` violation if zero (only when
 /// required) or more than one.
 fn emit_message_oneof(
     msg: &crate::scan::MessageValidators,
     spec: &crate::scan::MessageOneofSpec,
+    shape: Shape,
 ) -> TokenStream {
     use crate::scan::FieldKind;
     let checks: Vec<TokenStream> = spec
@@ -601,30 +605,50 @@ fn emit_message_oneof(
         .filter_map(|name| {
             let fv = msg.field_rules.iter().find(|f| &f.field_name == name)?;
             let ident = field_ident(&fv.field_name);
-            // "Set" semantics per protovalidate-go for message.oneof:
-            // messages: present; repeated/map: non-empty; proto3 optional: is_some;
-            // scalar: always counted as set (we can't distinguish default from unset).
-            let expr = match &fv.field_type {
-                FieldKind::Message { .. } | FieldKind::Wrapper(_) => {
-                    quote! { self.#ident.is_set() }
+            // Explicit-presence fields count when present, even with a default
+            // value. Fields without presence count when non-default.
+            let expr = if let Some(oneof_name) = &fv.oneof_name {
+                let oneof = msg
+                    .oneof_rules
+                    .iter()
+                    .find(|oneof| &oneof.name == oneof_name)?;
+                let accessor = field_ident(oneof_name);
+                let module = field_ident(&oneof::to_snake_case(&oneof.parent_msg_name));
+                let enumeration = field_ident(&oneof::to_pascal_case(oneof_name));
+                let variant = field_ident(&oneof::to_pascal_case(&fv.field_name));
+                let oneof_root = match shape {
+                    Shape::Owned => quote! { __buffa::oneof },
+                    Shape::View => quote! { __buffa::view::oneof },
+                };
+                quote! {
+                    matches!(
+                        &self.#accessor,
+                        Some(#oneof_root::#module::#enumeration::#variant(_))
+                    )
                 }
-                FieldKind::Repeated(_) | FieldKind::Map { .. } => {
-                    quote! { !self.#ident.is_empty() }
+            } else {
+                match &fv.field_type {
+                    FieldKind::Message { .. } | FieldKind::Wrapper(_) => {
+                        quote! { self.#ident.is_set() }
+                    }
+                    FieldKind::Repeated(_) | FieldKind::Map { .. } => {
+                        quote! { !self.#ident.is_empty() }
+                    }
+                    FieldKind::Optional(_) => quote! { self.#ident.is_some() },
+                    FieldKind::String | FieldKind::Bytes => quote! { !self.#ident.is_empty() },
+                    FieldKind::Bool => quote! { self.#ident },
+                    FieldKind::Int32 | FieldKind::Sint32 | FieldKind::Sfixed32 => {
+                        quote! { self.#ident != 0i32 }
+                    }
+                    FieldKind::Int64 | FieldKind::Sint64 | FieldKind::Sfixed64 => {
+                        quote! { self.#ident != 0i64 }
+                    }
+                    FieldKind::Uint32 | FieldKind::Fixed32 => quote! { self.#ident != 0u32 },
+                    FieldKind::Uint64 | FieldKind::Fixed64 => quote! { self.#ident != 0u64 },
+                    FieldKind::Float => quote! { self.#ident != 0f32 },
+                    FieldKind::Double => quote! { self.#ident != 0f64 },
+                    FieldKind::Enum { .. } => quote! { (self.#ident as i32) != 0i32 },
                 }
-                FieldKind::Optional(_) => quote! { self.#ident.is_some() },
-                FieldKind::String | FieldKind::Bytes => quote! { !self.#ident.is_empty() },
-                FieldKind::Bool => quote! { self.#ident },
-                FieldKind::Int32 | FieldKind::Sint32 | FieldKind::Sfixed32 => {
-                    quote! { self.#ident != 0i32 }
-                }
-                FieldKind::Int64 | FieldKind::Sint64 | FieldKind::Sfixed64 => {
-                    quote! { self.#ident != 0i64 }
-                }
-                FieldKind::Uint32 | FieldKind::Fixed32 => quote! { self.#ident != 0u32 },
-                FieldKind::Uint64 | FieldKind::Fixed64 => quote! { self.#ident != 0u64 },
-                FieldKind::Float => quote! { self.#ident != 0f32 },
-                FieldKind::Double => quote! { self.#ident != 0f64 },
-                FieldKind::Enum { .. } => quote! { (self.#ident as i32) != 0i32 },
             };
             Some(quote! { if #expr { __count += 1; } })
         })
@@ -671,6 +695,12 @@ fn snake_from_pascal(s: &str) -> String {
     out
 }
 
+/// Strip the package prefix from a fully-qualified proto name.
+///
+/// `"test.v1.ScalarsMessage"` with package `"test.v1"` → `"ScalarsMessage"`.
+/// `"example.v1.Outer.Inner"` with package `"example.v1"` → `"Outer.Inner"`.
+/// If `package` is empty or the name does not start with `<package>.`, return
+/// the original name unchanged.
 fn strip_package_prefix<'a>(proto_name: &'a str, package: &str) -> &'a str {
     if package.is_empty() {
         return proto_name;
