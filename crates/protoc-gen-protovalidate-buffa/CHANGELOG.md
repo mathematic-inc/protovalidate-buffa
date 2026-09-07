@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.8.0...protoc-gen-protovalidate-buffa-v0.9.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **codegen:** generator library users constructing `FieldValidator` or `OneofValidator` literals must provide `rust_name`. `scan::gather` fills it in.
+
+### Features
+
+* **codegen:** Support idiomatic field names ([#55](https://github.com/mathematic-inc/protovalidate-buffa/pull/55)) ([237e8f9](https://github.com/mathematic-inc/protovalidate-buffa/commit/237e8f9d4ac451a91aa5c920508381a4e82e2645)), implements [Discussion #53](https://github.com/mathematic-inc/protovalidate-buffa/discussions/53)
+
 ## [0.8.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.7.3...protoc-gen-protovalidate-buffa-v0.8.0) (2026-09-07)
 
 
