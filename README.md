@@ -49,8 +49,8 @@ set `cargo.binstall_only = true` to reject source compilation.
 | Linux musl | x64, ARM64 | `.tar.gz` |
 | Windows MSVC | x64, ARM64 | `.zip` |
 
-Every archive includes SHA-256 checksums and GitHub build provenance. CI builds all
-eight targets and runs the extracted executables on the matching architecture.
+Every archive includes SHA-256 checksums and GitHub build provenance. CI builds
+all eight targets and runs the extracted executables on the matching architecture.
 After publication, the release workflow installs through cargo-binstall and mise
 and runs both installations. A missing prebuilt binary fails the release checks.
 
