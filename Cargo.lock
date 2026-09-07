@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "protoc-gen-protovalidate-buffa"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "buffa",
@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-conformance"
-version = "0.0.17"
+version = "0.0.18"
 dependencies = [
  "anyhow",
  "buffa",

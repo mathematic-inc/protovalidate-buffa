@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.9.0...protoc-gen-protovalidate-buffa-v0.9.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **release:** Publish native binaries for all supported platforms ([#54](https://github.com/mathematic-inc/protovalidate-buffa/issues/54)) ([034f589](https://github.com/mathematic-inc/protovalidate-buffa/commit/034f589a78ca9e31ae8826215ab31485eb5c671d))
+
 ## [0.9.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.8.0...protoc-gen-protovalidate-buffa-v0.9.0) (2026-09-07)
 
 
