@@ -85,7 +85,7 @@ fn canonical_map_bindings(msg: &MessageValidators, shape: Shape) -> Vec<TokenStr
         .iter()
         .filter(|field| needs_canonical_map(field))
         .map(|field| {
-            let accessor = field_ident(&field.field_name);
+            let accessor = field_ident(&field.rust_name);
             let binding = canonical_map_ident(field.field_number);
             quote! {
                 let #binding =
@@ -413,7 +413,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
                     && implicit_ignore.contains(f.field_name.as_str())
                     && !matches!(f.ignore, crate::scan::Ignore::Always)
                 {
-                    let accessor = field_ident(&f.field_name);
+                    let accessor = field_ident(&f.rust_name);
                     let guard: Option<TokenStream> = match &f.field_type {
                         crate::scan::FieldKind::String | crate::scan::FieldKind::Bytes => {
                             Some(quote! { !self.#accessor.is_empty() })
@@ -605,7 +605,7 @@ fn emit_message_oneof(
         .iter()
         .filter_map(|name| {
             let fv = msg.field_rules.iter().find(|f| &f.field_name == name)?;
-            let ident = field_ident(&fv.field_name);
+            let ident = field_ident(&fv.rust_name);
             // Explicit-presence fields count when present, even with a default
             // value. Fields without presence count when non-default.
             let expr = if let Some(oneof_name) = &fv.oneof_name {
@@ -613,7 +613,7 @@ fn emit_message_oneof(
                     .oneof_rules
                     .iter()
                     .find(|oneof| &oneof.name == oneof_name)?;
-                let accessor = field_ident(oneof_name);
+                let accessor = field_ident(&oneof.rust_name);
                 let module = field_ident(&oneof::to_snake_case(&oneof.parent_msg_name));
                 let enumeration = field_ident(&oneof::to_pascal_case(oneof_name));
                 let variant = field_ident(&oneof::to_pascal_case(&fv.field_name));

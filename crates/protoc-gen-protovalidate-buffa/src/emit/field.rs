@@ -40,7 +40,7 @@ pub(crate) fn emit(
         return Ok(quote! {});
     }
 
-    let accessor = crate::emit::field_ident(&field.field_name);
+    let accessor = crate::emit::field_ident(&field.rust_name);
     let name_lit = &field.field_name;
     let mut blocks: Vec<TokenStream> = Vec::new();
 

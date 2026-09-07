@@ -26,6 +26,8 @@ use protovalidate_buffa_protos::buf::validate::{
     SFixed64Rules, SInt32Rules, SInt64Rules, StringRules, UInt32Rules, UInt64Rules,
 };
 
+mod field_names;
+
 // ─── Public output types ──────────────────────────────────────────────────────
 
 /// All validators collected for a single protobuf message.
@@ -55,6 +57,8 @@ pub struct MessageValidators {
 pub struct FieldValidator {
     pub field_number: i32,
     pub field_name: String,
+    /// Rust accessor name before keyword escaping; protobuf paths use `field_name`.
+    pub rust_name: String,
     pub field_type: FieldKind,
     /// `(buf.validate.field).required`
     pub required: bool,
@@ -89,6 +93,8 @@ pub struct FieldValidator {
 #[derive(Debug)]
 pub struct OneofValidator {
     pub name: String,
+    /// Rust struct field name; the enum type still derives from `name`.
+    pub rust_name: String,
     pub required: bool,
     /// The parent message name (e.g. `"CreateGradingRequest"`), used to derive the
     /// buffa-generated module name for the oneof enum type.
@@ -969,12 +975,32 @@ fn varint_decode(buf: &[u8]) -> Option<(u64, &[u8])> {
 /// Walk a `CodeGeneratorRequest` and return one `MessageValidators` per
 /// message (including nested) in every file listed in `file_to_generate`.
 ///
+/// Set `request.parameter` to `idiomatic_field_names=true` (or the bare flag)
+/// when buffa uses that option. Naming collisions are planned across all
+/// `proto_file` descriptors, including imports, just as in buffa. The default
+/// and `idiomatic_field_names=false` preserve protobuf spelling.
+///
+/// # Examples
+///
+/// ```
+/// use buffa_codegen::generated::compiler::CodeGeneratorRequest;
+/// use protoc_gen_protovalidate_buffa::scan::gather;
+/// let request = CodeGeneratorRequest {
+///     parameter: Some("idiomatic_field_names=true".into()),
+///     ..Default::default()
+/// };
+/// assert!(gather(&request)?.is_empty());
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if a field's type cannot be classified, if an unsupported
-/// rule family (e.g. `Any`, `Duration`) is encountered, or if a proto type
+/// rule family (e.g. `Any`, `Duration`) is encountered, if the naming option
+/// is not a boolean, or if a proto type
 /// cannot be parsed into the expected format.
 pub fn gather(request: &CodeGeneratorRequest) -> anyhow::Result<Vec<MessageValidators>> {
+    let idiomatic = idiomatic_field_names(request.parameter.as_deref().unwrap_or(""))?;
     let generate_set: std::collections::HashSet<&str> = request
         .file_to_generate
         .iter()
@@ -1004,7 +1030,31 @@ pub fn gather(request: &CodeGeneratorRequest) -> anyhow::Result<Vec<MessageValid
             )?;
         }
     }
+    if idiomatic {
+        let names = field_names::FieldNames::new(&request.proto_file);
+        for message in &mut out {
+            names.apply(message);
+        }
+    }
     Ok(out)
+}
+
+fn idiomatic_field_names(parameter: &str) -> anyhow::Result<bool> {
+    let mut enabled = false;
+    for part in parameter.split(',') {
+        let part = part.trim();
+        let (key, value) = part.split_once('=').unwrap_or((part, "true"));
+        if key.trim() == "idiomatic_field_names" {
+            enabled = match value.trim() {
+                "true" => true,
+                "false" => false,
+                value => {
+                    anyhow::bail!("idiomatic_field_names must be true or false, got {value:?}")
+                }
+            };
+        }
+    }
+    Ok(enabled)
 }
 
 // ─── Message recursion ───────────────────────────────────────────────────────
@@ -1439,6 +1489,7 @@ fn gather_field(
     Ok(FieldValidator {
         field_number: field.number.unwrap_or(0),
         field_name: field.name.as_deref().unwrap_or("").to_string(),
+        rust_name: field.name.as_deref().unwrap_or("").to_string(),
         field_type,
         required,
         ignore,
@@ -1467,6 +1518,7 @@ fn gather_oneof(
 
     OneofValidator {
         name: oneof.name.as_deref().unwrap_or("").to_string(),
+        rust_name: oneof.name.as_deref().unwrap_or("").to_string(),
         required,
         parent_msg_name: parent_msg_name.to_string(),
         fields,
@@ -2265,6 +2317,7 @@ fn parse_inner_field(
     Ok(FieldValidator {
         field_number: -1,
         field_name: std::string::String::new(),
+        rust_name: std::string::String::new(),
         field_type: FieldKind::String, // placeholder — no descriptor for inner rules
         required,
         ignore,

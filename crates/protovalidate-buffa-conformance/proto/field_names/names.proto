@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package field_names;
+
+import "buf/validate/validate.proto";
+
+message Names {
+  option (buf.validate.message).cel = {
+    id: "names.cel"
+    expression: "this.userName != 'blocked' && (!has(this.optionalName) || this.optionalName != 'blocked')"
+  };
+
+  string userName = 1 [(buf.validate.field).string.min_len = 2];
+  optional string optionalName = 2 [(buf.validate.field).string.min_len = 2];
+  repeated string manyNames = 3 [(buf.validate.field).repeated.items.string.min_len = 2];
+  map<string, string> nameMap = 4 [(buf.validate.field).map.values.string.min_len = 2];
+  Child childValue = 5 [(buf.validate.field).cel = {
+    id: "child.cel"
+    expression: "this.displayName != 'blocked'"
+  }];
+  repeated Child manyChildren = 6 [(buf.validate.field).cel = {
+    id: "children.cel"
+    expression: "this.all(c, c.displayName != 'blocked')"
+  }];
+  string XML2Request = 7 [(buf.validate.field).cel = {
+    id: "acronym.cel"
+    expression: "this != 'blocked'"
+  }];
+  string _leadingName_ = 8 [(buf.validate.field).cel = {
+    id: "underscore.cel"
+    expression: "this != 'blocked'"
+  }];
+  string Type = 9 [(buf.validate.field).cel = {
+    id: "keyword.cel"
+    expression: "this != 'blocked'"
+  }];
+  string Self = 10 [(buf.validate.field).cel = {
+    id: "self.cel"
+    expression: "this != 'blocked'"
+  }];
+
+  message Child {
+    string displayName = 1 [(buf.validate.field).string.min_len = 2];
+  }
+}
+
+message Choices {
+  option (buf.validate.message).cel = {
+    id: "choice.cel"
+    expression: "has(this.textValue)"
+  };
+  option (buf.validate.message).oneof = {
+    fields: [
+      "textValue",
+      "outsideValue"
+    ]
+    required: true
+  };
+
+  oneof choiceValue {
+    option (buf.validate.oneof).required = true;
+    string textValue = 1 [(buf.validate.field).string.min_len = 2];
+    int32 numberValue = 2;
+  }
+  string outsideValue = 3 [(buf.validate.field).string.min_len = 2];
+}

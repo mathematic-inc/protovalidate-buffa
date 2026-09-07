@@ -95,6 +95,31 @@ Add to your `buf.gen.yaml`:
   strategy: all
 ```
 
+If buffa uses `idiomatic_field_names`, enable it on the validator plugin too:
+
+```yaml
+- local: protoc-gen-buffa
+  out: gen/proto
+  strategy: all
+  opt: [idiomatic_field_names=true]
+- local: protoc-gen-protovalidate-buffa
+  out: gen/protovalidate
+  strategy: all
+  opt: [idiomatic_field_names=true]
+```
+
+The bare `idiomatic_field_names` flag also enables it; the default and
+`idiomatic_field_names=false` preserve protobuf field spelling. Use the same
+input descriptors and generation strategy for both plugins: buffa resolves
+collisions across the entire request, including imports. Rust accessors follow
+buffa's conversion and collision rules, while CEL expressions and validation
+error paths keep the original protobuf names. Oneof enum and variant names are
+unaffected.
+
+For in-process generation, set `CodeGeneratorRequest.parameter` before calling
+`scan::gather`, for example `Some("idiomatic_field_names=true".into())`. Then pass
+the scanned validators to `emit::render` or `emit::render_with_options` as usual.
+
 Annotate a proto (see upstream for the full rule vocabulary):
 
 ```protobuf
