@@ -987,7 +987,7 @@ fn oneof_field_path(f: &FieldValidator) -> TokenStream {
     }
 }
 
-fn to_snake_case(s: &str) -> String {
+pub(super) fn to_snake_case(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len() + 2);
     for (i, &c) in chars.iter().enumerate() {
@@ -1004,7 +1004,7 @@ fn to_snake_case(s: &str) -> String {
 }
 
 /// Convert `snake_case` to `PascalCase` (for buffa enum variant/type names).
-fn to_pascal_case(s: &str) -> String {
+pub(super) fn to_pascal_case(s: &str) -> String {
     s.split('_')
         .map(|part| {
             let mut chars = part.chars();

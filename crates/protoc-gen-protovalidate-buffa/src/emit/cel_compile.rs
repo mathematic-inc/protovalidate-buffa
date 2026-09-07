@@ -201,6 +201,14 @@ pub struct MessageFieldEntry {
 /// access shape. Mirrors a subset of `scan::FieldKind`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchemaFieldKind {
+    /// A real oneof alternative has presence even when its value is default.
+    Oneof {
+        accessor: String,
+        module: String,
+        enumeration: String,
+        variant: String,
+        view: bool,
+    },
     /// Singular scalar / enum / bool — `has()` returns true iff non-default.
     Scalar,
     /// String / bytes — `has()` returns true iff non-empty.
@@ -3935,6 +3943,11 @@ fn select_message_field(
         .ok_or_else(|| FallbackReason::new(format!("unknown field: {field}")))?;
     let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let access = match &entry.kind {
+        SchemaFieldKind::Oneof { .. } => {
+            return Err(FallbackReason::new(
+                "oneof value access requires a variant projection",
+            ));
+        }
         SchemaFieldKind::StringLike => match &entry.ty {
             CelType::Str { .. } => {
                 quote! { (::core::convert::AsRef::<str>::as_ref(&#operand.#rust_ident)) }
@@ -4050,6 +4063,24 @@ fn has_message_field(
         .ok_or_else(|| FallbackReason::new(format!("unknown field for has: {field}")))?;
     let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let tokens = match &entry.kind {
+        SchemaFieldKind::Oneof {
+            accessor,
+            module,
+            enumeration,
+            variant,
+            view,
+        } => {
+            let accessor = crate::emit::field_ident(accessor);
+            let module = crate::emit::field_ident(module);
+            let enumeration = crate::emit::field_ident(enumeration);
+            let variant = crate::emit::field_ident(variant);
+            let root = if *view {
+                quote! { __buffa::view::oneof }
+            } else {
+                quote! { __buffa::oneof }
+            };
+            quote! { matches!(&#operand.#accessor, Some(#root::#module::#enumeration::#variant(_))) }
+        }
         SchemaFieldKind::Scalar => match &entry.ty {
             CelType::Int => {
                 quote! { (::protovalidate_buffa::cel::CelScalar::cel_int(#operand.#rust_ident) != 0i64) }
@@ -4108,6 +4139,33 @@ mod tests {
     //! string contains-checks (we don't pin exact whitespace because
     //! quote! formatting is implementation-detail).
     use super::*;
+
+    #[test]
+    fn oneof_presence_matches_the_selected_variant_for_owned_and_view_messages() {
+        for view in [false, true] {
+            let schema = MessageSchema {
+                fields: vec![MessageFieldEntry {
+                    proto_name: "produced".to_owned(),
+                    rust_ident: "produced".to_owned(),
+                    ty: CelType::Dyn,
+                    kind: SchemaFieldKind::Oneof {
+                        accessor: "origin".to_owned(),
+                        module: "source".to_owned(),
+                        enumeration: "Origin".to_owned(),
+                        variant: "Produced".to_owned(),
+                        view,
+                    },
+                }],
+            };
+            let output =
+                compile_with_this("has(this.produced)", CelType::Message(Box::new(schema)));
+            let code = output.tokens.to_string();
+            assert!(code.contains("__this . origin"));
+            assert!(code.contains("Origin :: Produced"));
+            assert_eq!(code.contains("__buffa :: view :: oneof"), view);
+            assert!(!code.contains("produced . is_set"));
+        }
+    }
 
     fn compile_with_this(expr: &str, this_ty: CelType) -> CompileOutput {
         let mut c = Compiler::new();

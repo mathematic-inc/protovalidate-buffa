@@ -32,7 +32,18 @@ pub(crate) fn emit_message_level(
 ) -> (Vec<TokenStream>, Vec<TokenStream>) {
     let statics = Vec::new();
     let mut calls = Vec::new();
-    let msg_schema = build_message_schema(msg);
+    let mut msg_schema = build_message_schema(msg);
+    let mut shaped_schemas = schemas.clone();
+    if matches!(shape, crate::emit::Shape::View) {
+        for schema in std::iter::once(&mut msg_schema).chain(shaped_schemas.values_mut()) {
+            for entry in &mut schema.fields {
+                if let SchemaFieldKind::Oneof { view, .. } = &mut entry.kind {
+                    *view = true;
+                }
+            }
+        }
+    }
+    let schemas = &shaped_schemas;
     for rule in &msg.message_cel {
         if let Some(native) = try_emit_native_message_cel(rule, &msg_schema, schemas) {
             calls.push(native);
@@ -548,11 +559,12 @@ fn scalar_this_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Opti
             return Some(CelType::Timestamp);
         }
         FieldKind::Message { full_name } => {
-            // For a Message-typed element we need the schema of that
-            // message to compile nested selects. Without a schema, fall
-            // back.
-            let schema = schemas?.get(full_name)?.clone();
-            return Some(CelType::Message(Box::new(schema)));
+            // Keep message references when building the schema index. Resolving
+            // them lazily supports repeated and cyclic message declarations.
+            return Some(schemas.and_then(|index| index.get(full_name)).map_or_else(
+                || CelType::MessageRef(full_name.clone()),
+                |schema| CelType::Message(Box::new(schema.clone())),
+            ));
         }
         FieldKind::Map { key, value } => {
             let key_cel = scalar_this_for_with(key, schemas)?;
@@ -979,7 +991,24 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
         .field_rules
         .iter()
         .filter(|f| f.field_number != -1)
-        .filter_map(field_to_schema_entry)
+        .filter_map(|field| {
+            let mut entry = field_to_schema_entry(field)?;
+            if let Some(oneof) = msg.oneof_rules.iter().find(|oneof| {
+                oneof
+                    .fields
+                    .iter()
+                    .any(|candidate| candidate.field_number == field.field_number)
+            }) {
+                entry.kind = SchemaFieldKind::Oneof {
+                    accessor: oneof.name.clone(),
+                    module: super::oneof::to_snake_case(&oneof.parent_msg_name),
+                    enumeration: super::oneof::to_pascal_case(&oneof.name),
+                    variant: super::oneof::to_pascal_case(&field.field_name),
+                    view: false,
+                };
+            }
+            Some(entry)
+        })
         .collect();
     MessageSchema { fields }
 }
@@ -1271,6 +1300,59 @@ fn rule_path_for_field_cel(is_cel_expression: bool, idx_lit: u64) -> TokenStream
                     subscript: Some(::protovalidate_buffa::Subscript::Index(#idx_lit)),
                 }],
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeated_messages_remain_available_to_message_cel() {
+        let kind = FieldKind::Repeated(Box::new(FieldKind::Message {
+            full_name: "test.Child".to_owned(),
+        }));
+        let ty = scalar_this_for(&kind).expect("repeated message is a CEL list");
+        assert_eq!(
+            ty,
+            CelType::List(Box::new(CelType::MessageRef("test.Child".to_owned())))
+        );
+        let child = MessageSchema {
+            fields: vec![MessageFieldEntry {
+                proto_name: "id".to_owned(),
+                rust_ident: "id".to_owned(),
+                ty: CelType::Str { owned: false },
+                kind: SchemaFieldKind::StringLike,
+            }],
+        };
+        let parent = MessageSchema {
+            fields: vec![MessageFieldEntry {
+                proto_name: "children".to_owned(),
+                rust_ident: "children".to_owned(),
+                ty,
+                kind: SchemaFieldKind::Repeated,
+            }],
+        };
+        let schemas = SchemaIndex::from([("test.Child".to_owned(), child)]);
+        for expression in [
+            "this.children.size() == 0",
+            "this.children.all(s, this.children.filter(t, t.id == s.id).size() == 1)",
+            "this.children.filter(c, c.id != \"\").all(c, this.children.filter(t, t.id == c.id).size() == 1)",
+        ] {
+            let mut compiler = Compiler::new().with_schemas(&schemas);
+            compiler.bind(
+                "this",
+                Binding {
+                    rust_expr: quote! { self },
+                    ty: CelType::Message(Box::new(parent.clone())),
+                    constant: None,
+                },
+            );
+            let output = compiler
+                .compile(expression)
+                .expect("message-list CEL compiles");
+            assert_eq!(output.ty, CelType::Bool);
         }
     }
 }
