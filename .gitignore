@@ -5,4 +5,3 @@ Cargo.lock.bak
 .memsearch
 .claude
 /dist/
-__pycache__/
