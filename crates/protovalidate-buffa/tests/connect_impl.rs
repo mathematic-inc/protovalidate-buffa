@@ -123,6 +123,10 @@ fn injects_validate_for_owned_view_and_short_circuits_on_failure() {
         .handle(OwnedView(FakeView { valid: false }))
         .unwrap_err();
     assert_eq!(err.code, ::connectrpc::ErrorCode::InvalidArgument);
+    let details = protovalidate_buffa::decode_violations(&err.details[0])
+        .unwrap()
+        .unwrap();
+    assert_eq!(details.violations[0].rule_id.as_deref(), Some("fake"));
     assert!(!svc.called.get(), "body must not run when validate fails");
 }
 
@@ -143,6 +147,10 @@ fn injects_validate_for_service_request_and_short_circuits_on_failure() {
     let view = FakeView { valid: false };
     let err = svc.handle(ServiceRequest(&view)).unwrap_err();
     assert_eq!(err.code, ::connectrpc::ErrorCode::InvalidArgument);
+    let details = protovalidate_buffa::decode_violations(&err.details[0])
+        .unwrap()
+        .unwrap();
+    assert_eq!(details.violations[0].rule_id.as_deref(), Some("fake"));
     assert!(!svc.called.get(), "body must not run when validate fails");
 }
 

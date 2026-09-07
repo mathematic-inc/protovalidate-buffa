@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package module_tree.common.v1;
+
+enum RequestOutcome {
+  REQUEST_OUTCOME_UNSPECIFIED = 0;
+  REQUEST_OUTCOME_SUCCESS = 1;
+  REQUEST_OUTCOME_NEGATIVE = -1;
+}
+
+message Outcome {
+  enum Detail {
+    DETAIL_UNSPECIFIED = 0;
+    DETAIL_RETRY = 1;
+    DETAIL_NEGATIVE = -1;
+  }
+}

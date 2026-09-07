@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package module_tree.desktop.v1;
+
+import "buf/validate/validate.proto";
+import "module_tree/common/v1/outcome.proto";
+
+message Error {
+  module_tree.common.v1.RequestOutcome outcome = 1 [(buf.validate.field).enum.defined_only = true];
+  module_tree.common.v1.Outcome.Detail detail = 2 [(buf.validate.field).enum.defined_only = true];
+}

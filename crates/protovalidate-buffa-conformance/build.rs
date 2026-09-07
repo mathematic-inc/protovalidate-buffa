@@ -34,6 +34,13 @@ fn main() {
 
     // All .proto files we compile. Harness + validate.proto + vendored cases + WKTs.
     let mut files: Vec<PathBuf> = Vec::new();
+    let module_tree_sources = [
+        "module_tree/common/v1/outcome.proto",
+        "module_tree/runtime/v1/error.proto",
+        "module_tree/runtime/v1/collections.proto",
+        "module_tree/desktop/v1/error.proto",
+    ];
+    files.extend(module_tree_sources.iter().map(|name| proto_root.join(name)));
 
     let harness_dir = proto_root.join("buf/validate/conformance/harness");
     for entry in std::fs::read_dir(&harness_dir).unwrap().flatten() {
@@ -105,6 +112,8 @@ fn main() {
         .compile()
         .expect("buffa-build compile failed");
 
+    write_module_tree_fixtures(&out_dir, &fds_path, &fds, &module_tree_sources);
+
     // Now run our protovalidate plugin lib over the cases files.
     let case_source_names: Vec<String> = case_files
         .iter()
@@ -159,6 +168,78 @@ fn main() {
     // is the verification — any token sequence that doesn't type-check
     // breaks the build.
     write_cel_emit_fixtures(&out_dir);
+}
+
+fn write_module_tree_fixtures(
+    out_dir: &std::path::Path,
+    fds_path: &std::path::Path,
+    fds: &FileDescriptorSet,
+    sources: &[&str],
+) {
+    let fixture_dir = out_dir.join("module_tree");
+    let messages_dir = fixture_dir.join("buffa");
+    buffa_build::Config::new()
+        .descriptor_set(fds_path)
+        .files(sources)
+        .out_dir(&messages_dir)
+        .include_file("mod.rs")
+        .compile()
+        .expect("module-tree buffa generation failed");
+
+    let request = CodeGeneratorRequest {
+        file_to_generate: sources.iter().map(|name| (*name).to_string()).collect(),
+        proto_file: fds.file.clone(),
+        ..Default::default()
+    };
+    let validators = protoc_gen_protovalidate_buffa::scan::gather(&request)
+        .expect("module-tree validator scan failed");
+    for (directory, options) in [
+        (
+            "default",
+            protoc_gen_protovalidate_buffa::emit::Options::default(),
+        ),
+        (
+            "custom",
+            protoc_gen_protovalidate_buffa::emit::Options {
+                proto_module: "crate::custom::messages".to_string(),
+            },
+        ),
+    ] {
+        let destination = fixture_dir.join(directory);
+        std::fs::create_dir_all(&destination).expect("create module-tree fixture directory");
+        let files =
+            protoc_gen_protovalidate_buffa::emit::render_with_options(&validators, &options)
+                .expect("module-tree validator generation failed");
+        for file in files {
+            std::fs::write(
+                destination.join(file.name.expect("generated file name")),
+                file.content.expect("generated file content"),
+            )
+            .expect("write module-tree fixture");
+        }
+    }
+
+    // Mount each generator's actual module root. Per-package wrappers or
+    // merging the validator bodies into Buffa's modules would hide E0603.
+    let path_literal =
+        |path: PathBuf| proc_macro2::Literal::string(path.to_str().expect("UTF-8 fixture path"));
+    let messages = path_literal(messages_dir.join("mod.rs"));
+    let default = path_literal(fixture_dir.join("default/mod.rs"));
+    let custom = path_literal(fixture_dir.join("custom/mod.rs"));
+    let mounts = quote::quote! {
+        #[path = #messages]
+        mod proto;
+        mod custom {
+            #[path = #messages]
+            pub(crate) mod messages;
+        }
+        #[path = #default]
+        mod default_validators;
+        #[path = #custom]
+        mod custom_validators;
+    };
+    std::fs::write(out_dir.join("module_tree_mounts.rs"), mounts.to_string())
+        .expect("write module-tree root mounts");
 }
 
 fn walk_protos(dir: &std::path::Path, out: &mut Vec<PathBuf>) {

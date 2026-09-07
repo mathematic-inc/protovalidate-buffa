@@ -22,7 +22,7 @@ fn emit_map_kv_checks(
     key_kind_variant: &str,
     value_kind_variant: &str,
     for_key: bool,
-) -> Vec<TokenStream> {
+) -> Result<Vec<TokenStream>> {
     let mut out: Vec<TokenStream> = Vec::new();
     let key_ty = format_ident!("{}", key_kind_variant);
     let value_ty = format_ident!("{}", value_kind_variant);
@@ -33,7 +33,7 @@ fn emit_map_kv_checks(
     // the right subscript variant based on key kind.
     let key_subscript: TokenStream = match kind_variant_to_subscript(key_kind_variant) {
         Some(s) => s,
-        None => return Vec::new(),
+        None => return Ok(Vec::new()),
     };
     let field_path = quote! {
         ::protovalidate_buffa::FieldPath {
@@ -261,6 +261,17 @@ fn emit_map_kv_checks(
                 }
             }
         }
+        FieldKind::Enum { full_name } => {
+            if let Some(rules) = &rules.enum_rules {
+                out.extend(super::field::emit_enum_checks(
+                    &quote! { #elem_ident },
+                    rules,
+                    full_name,
+                    &field_path,
+                    |name, number, ty| rule_path_5("enum", 16, name, number, ty),
+                )?);
+            }
+        }
         FieldKind::String => {
             if let Some(s) = &rules.string {
                 if let Some(n) = s.min_len {
@@ -343,7 +354,7 @@ fn emit_map_kv_checks(
         }
         _ => {}
     }
-    out
+    Ok(out)
 }
 
 pub(crate) fn kind_variant_to_subscript(kind_variant: &str) -> Option<TokenStream> {
@@ -378,7 +389,7 @@ fn emit_repeated_items_checks(
     name_lit: &str,
     field_number: i32,
     element_type_variant: &str,
-) -> Vec<TokenStream> {
+) -> Result<Vec<TokenStream>> {
     let mut out: Vec<TokenStream> = Vec::new();
     let ety = format_ident!("{}", element_type_variant);
     let fp_idx = quote! {
@@ -744,56 +755,15 @@ fn emit_repeated_items_checks(
                 }
             }
         }
-        FieldKind::Enum { .. } => {
+        FieldKind::Enum { full_name } => {
             if let Some(e) = &rules.enum_rules {
-                if let Some(c) = e.r#const {
-                    push(
-                        &mut out,
-                        "enum",
-                        16,
-                        "const",
-                        1,
-                        "Int32",
-                        "enum.const".to_string(),
-                        quote! { #elem_ident.to_i32() != #c },
-                    );
-                }
-                if !e.in_set.is_empty() {
-                    let set = &e.in_set;
-                    let fp = fp_idx.clone();
-                    let rule = rule_path_4("enum", 16, "in", 3, "Int32");
-                    out.push(quote! {
-                        {
-                            const ALLOWED: &[i32] = &[ #( #set ),* ];
-                            if !ALLOWED.contains(&#elem_ident.to_i32()) {
-                                violations.push(::protovalidate_buffa::Violation {
-                                    field: #fp, rule: #rule,
-                                    rule_id: ::std::borrow::Cow::Borrowed("enum.in"),
-                                    message: ::std::borrow::Cow::Borrowed(""),
-                                    for_key: false,
-                                });
-                            }
-                        }
-                    });
-                }
-                if !e.not_in.is_empty() {
-                    let set = &e.not_in;
-                    let fp = fp_idx.clone();
-                    let rule = rule_path_4("enum", 16, "not_in", 4, "Int32");
-                    out.push(quote! {
-                        {
-                            const DISALLOWED: &[i32] = &[ #( #set ),* ];
-                            if DISALLOWED.contains(&#elem_ident.to_i32()) {
-                                violations.push(::protovalidate_buffa::Violation {
-                                    field: #fp, rule: #rule,
-                                    rule_id: ::std::borrow::Cow::Borrowed("enum.not_in"),
-                                    message: ::std::borrow::Cow::Borrowed(""),
-                                    for_key: false,
-                                });
-                            }
-                        }
-                    });
-                }
+                out.extend(super::field::emit_enum_checks(
+                    &quote! { #elem_ident },
+                    e,
+                    full_name,
+                    &fp_idx,
+                    |name, number, ty| rule_path_4("enum", 16, name, number, ty),
+                )?);
             }
         }
         FieldKind::Float => {
@@ -1064,7 +1034,7 @@ fn emit_repeated_items_checks(
         }
         _ => {}
     }
-    out
+    Ok(out)
 }
 
 fn repeated_field_path(name: &str, number: i32, ty: &str) -> TokenStream {
@@ -1267,7 +1237,7 @@ pub fn emit_repeated(
                 name_lit,
                 field_number,
                 element_type_variant,
-            );
+            )?;
             if !items_checks.is_empty() {
                 let ignore_empty = matches!(items.ignore, crate::scan::Ignore::IfZeroValue);
                 let guard: Option<TokenStream> = if ignore_empty {
@@ -1966,7 +1936,7 @@ pub fn emit_map(
             key_ty_variant,
             val_ty_variant,
             true,
-        );
+        )?;
         if rich.is_empty() {
             emit_scalar_checks(&format_ident!("key"), key_kind, &k.standard, name_lit, true)
         } else {
@@ -1988,7 +1958,7 @@ pub fn emit_map(
             key_ty_variant,
             val_ty_variant,
             false,
-        );
+        )?;
         if rich.is_empty() {
             emit_scalar_checks(
                 &format_ident!("value"),

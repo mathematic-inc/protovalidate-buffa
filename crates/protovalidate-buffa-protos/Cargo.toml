@@ -4,7 +4,7 @@ version = "0.7.0"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Compiled Rust types for buf/validate/validate.proto (for buffa), consumed by protoc-gen-protovalidate-buffa."
+description = "Generated Buffa types for buf/validate/validate.proto, including canonical validation error details."
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -15,9 +15,16 @@ categories.workspace = true
 buffa = "0.9.1"
 buffa-descriptor = "0.9.1"
 buffa-types = "0.9.1"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
-[build-dependencies]
-buffa-build = "0.9.1"
+[dev-dependencies]
+buffa-build = "=0.9.2"
+
+[features]
+default = ["views"]
+json = ["buffa-descriptor/json", "buffa-types/json", "buffa/json", "dep:serde", "dep:serde_json"]
+views = []
 
 [lints]
 workspace = true
