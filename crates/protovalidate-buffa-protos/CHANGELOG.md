@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-protos-v0.7.0...protovalidate-buffa-protos-v0.7.1) (2026-09-07)
+
+
+### Features
+
+* Align validation errors and enum rules with Protovalidate ([#50](https://github.com/mathematic-inc/protovalidate-buffa/issues/50)) ([85e1b71](https://github.com/mathematic-inc/protovalidate-buffa/commit/85e1b71996d2f7029750f9bfd6cce9d2b98c4742))
+
 ## [0.7.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-protos-v0.6.0...protovalidate-buffa-protos-v0.7.0) (2026-08-27)
 
 ### ⚠ BREAKING CHANGES

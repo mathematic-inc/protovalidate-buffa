@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.4.0...protovalidate-buffa-macros-v0.4.1) (2026-09-07)
+
+
+### Performance Improvements
+
+* **macros:** Validate Connect request views directly ([#51](https://github.com/mathematic-inc/protovalidate-buffa/issues/51)) ([edde752](https://github.com/mathematic-inc/protovalidate-buffa/commit/edde75221096077c7bd6ed2bea30dc8d1d3aae69))
+
 ## [0.4.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.3.1...protovalidate-buffa-macros-v0.4.0) (2026-07-25)
 
 ### ⚠ BREAKING CHANGES

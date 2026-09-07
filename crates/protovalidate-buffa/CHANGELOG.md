@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.1...v0.7.2) (2026-09-07)
+
+
+### Features
+
+* Align validation errors and enum rules with Protovalidate ([#50](https://github.com/mathematic-inc/protovalidate-buffa/issues/50)) ([85e1b71](https://github.com/mathematic-inc/protovalidate-buffa/commit/85e1b71996d2f7029750f9bfd6cce9d2b98c4742))
+
+
+### Performance Improvements
+
+* **macros:** Validate Connect request views directly ([#51](https://github.com/mathematic-inc/protovalidate-buffa/issues/51)) ([edde752](https://github.com/mathematic-inc/protovalidate-buffa/commit/edde75221096077c7bd6ed2bea30dc8d1d3aae69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-macros bumped from 0.4.0 to 0.4.1
+    * protovalidate-buffa-protos bumped from 0.7.0 to 0.7.1
+
 ## [0.7.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.0...v0.7.1) (2026-09-04)
 
 
