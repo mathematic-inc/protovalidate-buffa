@@ -1,0 +1,52 @@
+{
+  "include": [
+    {
+      "target": "x86_64-apple-darwin",
+      "runner": "macos-15-intel",
+      "build_runner": "macos-15-intel",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "aarch64-apple-darwin",
+      "runner": "macos-15",
+      "build_runner": "macos-15",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "runner": "ubuntu-22.04",
+      "build_runner": "ubuntu-22.04",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "aarch64-unknown-linux-gnu",
+      "runner": "ubuntu-22.04-arm",
+      "build_runner": "ubuntu-22.04-arm",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "x86_64-unknown-linux-musl",
+      "runner": "ubuntu-22.04",
+      "build_runner": "ubuntu-22.04",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "aarch64-unknown-linux-musl",
+      "runner": "ubuntu-22.04-arm",
+      "build_runner": "ubuntu-22.04-arm",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "runner": "windows-2025",
+      "build_runner": "windows-2025",
+      "build_tool": "cargo"
+    },
+    {
+      "target": "aarch64-pc-windows-msvc",
+      "runner": "windows-11-arm",
+      "build_runner": "windows-11-arm",
+      "build_tool": "cargo"
+    }
+  ]
+}

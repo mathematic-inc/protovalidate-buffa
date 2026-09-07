@@ -10,7 +10,8 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions: {}
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -109,16 +110,27 @@ jobs:
       - name: Build and test
         run: cargo test --locked -p "${{ needs.meta.outputs.crate_name }}"
 
+  prebuilt:
+    permissions:
+      contents: read
+    needs: [meta, build-and-test]
+    if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
+    uses: ./.github/workflows/prebuilt.yml
+
   create-release:
     name: Publish GitHub Release
     needs:
       - meta
       - build-and-test
+      - prebuilt
+    if: ${{ !cancelled() && needs.build-and-test.result == 'success' && (needs.prebuilt.result == 'success' || needs.prebuilt.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,12 +138,28 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Download native archives
+        if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+
+      - name: Attest native archives
+        if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: ${{ needs.meta.outputs.tag }}
           generate_release_notes: true
+          files: ${{ needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa' && 'dist/*' || '' }}
+          fail_on_unmatched_files: true
           prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
           make_latest: ${{ needs.meta.outputs.crate_name == 'protovalidate-buffa' && needs.meta.outputs.is_prerelease == 'false' }}
 
@@ -189,3 +217,13 @@ jobs:
             echo "$output" >&2
             exit 1
           fi
+
+  verify-install:
+    permissions:
+      contents: read
+    name: Verify published installations
+    needs: [meta, publish-crate]
+    if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
+    uses: ./.github/workflows/prebuilt.yml
+    with:
+      verify-install: true

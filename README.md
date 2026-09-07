@@ -20,6 +20,40 @@ material:
 [protovalidate]: https://github.com/bufbuild/protovalidate
 [buffa]: https://github.com/anthropics/buffa
 
+## Prebuilt installation
+
+Release archives contain the executable and install without a Rust compiler.
+Install with cargo-binstall, with source compilation disabled:
+
+```sh
+cargo binstall --disable-strategies compile protoc-gen-protovalidate-buffa
+```
+
+Or declare the GitHub release directly in `mise.toml`:
+
+```toml
+[tools."github:mathematic-inc/protovalidate-buffa"]
+version = "latest"
+version_prefix = "protoc-gen-protovalidate-buffa-v"
+```
+
+Run `mise install` to download and activate the executable. No custom mise plugin
+is required. The Cargo backend
+(`cargo:protoc-gen-protovalidate-buffa`) also supports these releases;
+set `cargo.binstall_only = true` to reject source compilation.
+
+| Platform | Architectures | Archive |
+| --- | --- | --- |
+| macOS | x64, ARM64 | `.tar.gz` |
+| Linux GNU (glibc 2.35 or newer) | x64, ARM64 | `.tar.gz` |
+| Linux musl | x64, ARM64 | `.tar.gz` |
+| Windows MSVC | x64, ARM64 | `.zip` |
+
+Every archive has a SHA-256 sidecar and GitHub build provenance. CI builds all
+eight targets and runs the extracted executables on the matching architecture.
+After publication, the release workflow installs through cargo-binstall and mise
+and runs both installations. A missing prebuilt binary fails the release checks.
+
 ## Status
 
 **Conformance: 2872 / 2872 (100%)** against the upstream

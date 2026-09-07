@@ -65,3 +65,9 @@ jobs:
           cache-on-failure: true
       - name: Check minimum supported Rust version
         run: rustup run 1.88.0 cargo check --locked --workspace
+
+  prebuilt:
+    permissions:
+      contents: read
+    name: Verify prebuilt distribution
+    uses: ./.github/workflows/prebuilt.yml

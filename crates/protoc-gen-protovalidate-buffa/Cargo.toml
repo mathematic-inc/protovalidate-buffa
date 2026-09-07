@@ -11,6 +11,19 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/protoc-gen-protovalidate-buffa-v{ version }/{ name }-{ version }-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/protoc-gen-protovalidate-buffa-v{ version }/{ name }-{ version }-{ target }.zip"
+pkg-fmt = "zip"
+
+[package.metadata.binstall.overrides.aarch64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/protoc-gen-protovalidate-buffa-v{ version }/{ name }-{ version }-{ target }.zip"
+pkg-fmt = "zip"
+
 [lib]
 path = "src/lib.rs"
 

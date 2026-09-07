@@ -4,3 +4,5 @@ Cargo.lock.bak
 .DS_Store
 .memsearch
 .claude
+/dist/
+__pycache__/

@@ -1,0 +1,178 @@
+name: Prebuilt binaries
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+      verify-install:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  MANIFEST: crates/protoc-gen-protovalidate-buffa/Cargo.toml
+  CARGO_PACKAGE: protoc-gen-protovalidate-buffa
+
+jobs:
+  metadata:
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: python
+          cache: false
+      - name: Test release packaging
+        run: python -m unittest discover -s scripts/release -p 'test_*.py' -v
+      - id: matrix
+        run: |
+          python - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          matrix = json.loads(Path("scripts/release/targets.json").read_text())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write("matrix=" + json.dumps(matrix) + "\n")
+          PYTHON
+
+  build:
+    permissions:
+      contents: read
+    if: ${{ !inputs.verify-install }}
+    needs: metadata
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.build_runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: python rust
+          cache: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config musl-tools libdbus-1-dev
+      - name: Configure musl linker
+        if: contains(matrix.target, 'musl')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          target_env="${TARGET^^}"
+          target_env="${target_env//-/_}"
+          echo "CARGO_TARGET_${target_env}_LINKER=musl-gcc" >> "$GITHUB_ENV"
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
+      
+      - name: Link the Windows runtime statically
+        if: contains(matrix.target, 'windows')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          target_env="${TARGET^^}"
+          target_env="${target_env//-/_}"
+          echo "CARGO_TARGET_${target_env}_RUSTFLAGS=-C target-feature=+crt-static" >> "$GITHUB_ENV"
+      - name: Read package metadata
+        id: package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python scripts/release/release.py metadata --manifest "$MANIFEST" --target "$TARGET"
+      - name: Build executable
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ steps.package.outputs.version }}
+          BUILD_TOOL: ${{ matrix.build_tool }}
+        run: |
+          rustup target add "$TARGET"
+          cargo build --locked --release -p "$CARGO_PACKAGE" --target "$TARGET"
+      - name: Package executable and checksum
+        env:
+          TARGET: ${{ matrix.target }}
+          BINARY: ${{ steps.package.outputs.binary }}
+        run: |
+          python scripts/release/release.py package --manifest "$MANIFEST" --target "$TARGET" \
+            --binary "target/$TARGET/release/$BINARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  smoke:
+    permissions:
+      contents: read
+    if: ${{ !inputs.verify-install }}
+    needs: [metadata, build]
+    name: Run archive ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: python
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist
+      - name: Verify checksum and run extracted executable
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python scripts/release/release.py verify-archive --manifest "$MANIFEST" --target "$TARGET"
+
+  install:
+    permissions:
+      contents: read
+    if: inputs.verify-install
+    needs: metadata
+    name: Install without compiling ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: python cargo-binstall
+          cache: false
+      - name: Install published binaries through binstall and mise
+        env:
+          TARGET: ${{ matrix.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release/release.py verify-install --manifest "$MANIFEST" --target "$TARGET"
