@@ -35,11 +35,12 @@
 pub mod __private;
 pub mod cel;
 mod error;
+#[cfg(feature = "protos")]
+mod error_proto;
 pub mod rules;
 
 #[cfg(feature = "connect")]
 mod connect;
-
 // Re-export `regex` so generated patterns (`::protovalidate_buffa::regex::Regex`)
 // resolve without each downstream crate having to add a direct `regex` dep.
 // `buffa` is re-exported for convenience but generated code uses the
@@ -55,6 +56,8 @@ pub use chrono;
 /// feature is enabled — rules without tz args don't need this dep.
 #[cfg(feature = "tz")]
 pub use chrono_tz;
+#[cfg(feature = "connect")]
+pub use connect::{DecodeViolationsError, decode_violations};
 pub use error::{FieldPath, FieldPathElement, FieldType, Subscript, ValidationError, Violation};
 /// `#[connect_impl]` — attribute macro applied to a Connect service `impl`
 /// block that inserts `req.validate()?` at the top of every handler method.
@@ -65,6 +68,13 @@ pub use error::{FieldPath, FieldPathElement, FieldType, Subscript, ValidationErr
 /// the emitted code calls [`ValidationError::into_connect_error`].
 #[cfg(feature = "connect")]
 pub use protovalidate_buffa_macros::connect_impl;
+/// Canonical generated `buf.validate` messages, including `Violations`.
+///
+/// Requires the `protos` feature (also enabled by `connect`). These are the
+/// types from `protovalidate-buffa-protos`; callers need no duplicate codegen.
+#[cfg(feature = "protos")]
+#[doc(no_inline)]
+pub use protovalidate_buffa_protos::buf::validate as proto;
 pub use regex;
 
 pub trait Validate {
@@ -74,9 +84,10 @@ pub trait Validate {
     /// # Errors
     ///
     /// Returns a [`ValidationError`] containing one or more [`Violation`]s
-    /// when any rule fails. Callers typically map this to
-    /// `ConnectError::invalid_argument` via
-    /// [`ValidationError::into_connect_error`] (requires the `connect` feature).
+    /// when any rule fails, or compilation/evaluation diagnostics when a rule
+    /// cannot run. For RPC requests, `ValidationError::into_connect_error`
+    /// (the `connect` feature) maps violations to `invalid_argument` and
+    /// validator defects to `internal`.
     fn validate(&self) -> Result<(), ValidationError>;
 }
 

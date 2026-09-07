@@ -1,9 +1,10 @@
-//! Compiled Rust types for `buf/validate/validate.proto`, used by
-//! `protoc-gen-protovalidate-buffa` to read `(buf.validate.*)` options off
-//! `FieldOptions` / `MessageOptions` / `OneofOptions`.
+//! Generated types for `buf/validate/validate.proto`, used for validation
+//! annotations and canonical `buf.validate.Violations` error details.
 //!
-//! The body of this file is entirely `buffa-build` output; we disable the
-//! workspace's strict lints for it so upstream codegen style doesn't block CI.
+//! Generated Rust is checked in; downstream builds do not need protoc.
+//! The `views` feature is enabled by default, preserving the existing view
+//! API. The optional `json` feature enables canonical protobuf JSON support.
+//! Maintainers regenerate with the `regenerate` example, using `buffa-build`.
 
 #![allow(
     clippy::all,
@@ -17,4 +18,4 @@
     reason = "generated code may emit unused-imports/dead-code warnings"
 )]
 
-include!(concat!(env!("OUT_DIR"), "/_include.rs"));
+include!("generated/mod.rs");

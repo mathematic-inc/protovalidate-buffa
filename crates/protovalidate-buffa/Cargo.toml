@@ -12,7 +12,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+base64 = { version = "0.22", optional = true }
 buffa = "0.9.1"
+buffa-descriptor = { version = "0.9.1", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 chrono-tz = { version = "0.10", optional = true }
 connectrpc = { version = "0.9", default-features = false, optional = true }
@@ -21,13 +23,24 @@ http = "1"
 ipnet = "2"
 percent-encoding = "2"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.0" }
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.0", optional = true }
 regex = "1"
 ulid = "3"
 uuid = "1"
 
+[dev-dependencies]
+buffa-types = { version = "0.9.1", features = ["json"] }
+connectrpc = { version = "0.9", default-features = false, features = ["client", "json"] }
+http-body-util = "0.1"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }
+tower = { version = "0.5", features = ["util"] }
+
 [features]
 default = ["connect"]
-connect = ["dep:connectrpc"]
+connect = ["dep:base64", "dep:connectrpc", "protos"]
+json = ["protos", "protovalidate-buffa-protos/json"]
+protos = ["dep:buffa-descriptor", "dep:protovalidate-buffa-protos"]
 # Enables `chrono-tz` for the timezone argument on CEL timestamp
 # accessors (`t.getHours("America/New_York")`). chrono-tz ships the
 # full IANA database (~4 MiB), so it's opt-in — rules that only use
