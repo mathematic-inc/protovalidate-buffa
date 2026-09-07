@@ -71,7 +71,7 @@ pub(crate) fn emit_message_level(
         if is_unsupported_wkt_field_for_cel(&f.field_type) {
             continue;
         }
-        let field_ident = crate::emit::field_ident(&f.field_name);
+        let field_ident = crate::emit::field_ident(&f.rust_name);
         let field_name = &f.field_name;
         let fnum = f.field_number;
         // For repeated scalars the CEL rule path uses the element type; for
@@ -146,7 +146,7 @@ pub(crate) fn emit_message_level(
             continue;
         }
         let default_family = predef_family_for(&f.field_type);
-        let field_ident = crate::emit::field_ident(&f.field_name);
+        let field_ident = crate::emit::field_ident(&f.rust_name);
         let field_name = &f.field_name;
         let fnum = f.field_number;
         for rule in &f.standard.predefined {
@@ -1000,7 +1000,7 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
                     .any(|candidate| candidate.field_number == field.field_number)
             }) {
                 entry.kind = SchemaFieldKind::Oneof {
-                    accessor: oneof.name.clone(),
+                    accessor: oneof.rust_name.clone(),
                     module: super::oneof::to_snake_case(&oneof.parent_msg_name),
                     enumeration: super::oneof::to_pascal_case(&oneof.name),
                     variant: super::oneof::to_pascal_case(&field.field_name),
@@ -1015,7 +1015,7 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
 
 fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
     let proto_name = f.field_name.clone();
-    let rust_ident = f.field_name.clone();
+    let rust_ident = f.rust_name.clone();
     let (ty, kind) = match &f.field_type {
         FieldKind::String => (CelType::Str { owned: false }, SchemaFieldKind::StringLike),
         FieldKind::Bytes => (CelType::Bytes { owned: false }, SchemaFieldKind::StringLike),

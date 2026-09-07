@@ -1,0 +1,32 @@
+syntax = "proto2";
+
+package field_names;
+
+import "buf/validate/validate.proto";
+
+message Collision {
+  option (buf.validate.message).cel = {
+    id: "collision.cel"
+    expression: "this.userName != 'blocked'"
+  };
+
+  required string userName = 1 [(buf.validate.field).string.min_len = 2];
+  required string user_name = 2;
+  required string collision_choice = 3;
+  oneof collisionChoice {
+    option (buf.validate.oneof).required = true;
+    string textValue = 4 [(buf.validate.field).string.min_len = 2];
+  }
+}
+
+message Fallback {
+  required string otherName = 11 [(buf.validate.field).string.min_len = 2];
+  required string other_name = 12;
+  required string other_name_f11 = 13;
+  required string unrelatedName = 14 [(buf.validate.field).string.min_len = 2];
+}
+
+message Inherited {
+  required string userName = 1 [(buf.validate.field).string.min_len = 2];
+  required string otherName = 11 [(buf.validate.field).string.min_len = 2];
+}

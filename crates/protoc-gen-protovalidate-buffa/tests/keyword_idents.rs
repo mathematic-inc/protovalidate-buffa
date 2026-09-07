@@ -30,6 +30,7 @@ fn field(name: &str, field_type: FieldKind) -> FieldValidator {
     FieldValidator {
         field_number: 1,
         field_name: name.to_string(),
+        rust_name: name.to_string(),
         field_type,
         required: false,
         ignore: Ignore::Unspecified,
@@ -102,6 +103,7 @@ fn required_oneof_named_type_uses_raw_ident() {
     let mut msg = message(Vec::new());
     msg.oneof_rules = vec![OneofValidator {
         name: "type".to_string(),
+        rust_name: "type".to_string(),
         required: true,
         parent_msg_name: "M".to_string(),
         fields: Vec::new(),

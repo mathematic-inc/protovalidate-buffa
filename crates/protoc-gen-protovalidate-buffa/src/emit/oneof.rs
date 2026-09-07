@@ -41,7 +41,7 @@ fn emit_for(v: &OneofValidator, representation: Representation) -> Result<TokenS
         return Ok(quote! {});
     }
 
-    let accessor = crate::emit::field_ident(&v.name);
+    let accessor = crate::emit::field_ident(&v.rust_name);
     let name_lit = &v.name;
 
     // The module name buffa generates for a message's oneof is the snake_case of

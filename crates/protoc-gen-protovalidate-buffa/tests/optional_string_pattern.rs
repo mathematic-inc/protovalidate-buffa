@@ -33,6 +33,7 @@ fn string_field_with_pattern(field_type: FieldKind) -> FieldValidator {
     FieldValidator {
         field_number: 1,
         field_name: "name".to_string(),
+        rust_name: "name".to_string(),
         field_type,
         required: false,
         ignore: Ignore::Unspecified,
@@ -86,6 +87,7 @@ fn oneof_string_pattern_borrows_value() {
 
     let oneof = OneofValidator {
         name: "kind".to_string(),
+        rust_name: "kind".to_string(),
         required: false,
         parent_msg_name: "M".to_string(),
         fields: vec![member],

@@ -168,6 +168,81 @@ fn main() {
     // is the verification — any token sequence that doesn't type-check
     // breaks the build.
     write_cel_emit_fixtures(&out_dir);
+    write_field_name_fixtures(&out_dir, &proto_root, &protoc_path, &protoc_include);
+}
+
+/// Compile both generators from the same descriptors in each naming mode.
+fn write_field_name_fixtures(
+    out_dir: &std::path::Path,
+    proto_root: &std::path::Path,
+    protoc: &str,
+    protoc_include: &std::path::Path,
+) {
+    let sources = ["field_names/names.proto", "field_names/collisions.proto"];
+    let fds_path = out_dir.join("field_names.fds");
+    let status = std::process::Command::new(protoc)
+        .arg(format!("--descriptor_set_out={}", fds_path.display()))
+        .arg("--include_imports")
+        .arg(format!("-I{}", proto_root.display()))
+        .arg(format!("-I{}", protoc_include.display()))
+        .args(sources)
+        .status()
+        .expect("run protoc for field-name fixtures");
+    assert!(status.success(), "field-name fixture protoc failed");
+    let fds = FileDescriptorSet::decode_from_slice(
+        &std::fs::read(&fds_path).expect("read naming descriptors"),
+    )
+    .expect("decode naming descriptors");
+    let mut mounts = proc_macro2::TokenStream::new();
+    for (mode, idiomatic) in [("verbatim", false), ("idiomatic", true)] {
+        let directory = out_dir.join("field_names").join(mode);
+        let messages = directory.join("messages");
+        buffa_build::Config::new()
+            .descriptor_set(&fds_path)
+            .files(&sources)
+            .out_dir(&messages)
+            .include_file("mod.rs")
+            .idiomatic_field_names(idiomatic)
+            .compile()
+            .expect("generate buffa field-name fixtures");
+        let request = CodeGeneratorRequest {
+            file_to_generate: sources.iter().map(|s| (*s).to_string()).collect(),
+            proto_file: fds.file.clone(),
+            parameter: Some(format!("idiomatic_field_names={idiomatic}")),
+            ..Default::default()
+        };
+        let scanned = protoc_gen_protovalidate_buffa::scan::gather(&request)
+            .expect("scan field-name fixtures");
+        let options = protoc_gen_protovalidate_buffa::emit::Options {
+            proto_module: format!("crate::{mode}::proto"),
+        };
+        let validators = directory.join("validators");
+        std::fs::create_dir_all(&validators).expect("create naming validators directory");
+        for file in protoc_gen_protovalidate_buffa::emit::render_with_options(&scanned, &options)
+            .expect("render field-name validators")
+        {
+            std::fs::write(
+                validators.join(file.name.expect("generated name")),
+                file.content.expect("generated content"),
+            )
+            .expect("write field-name validators");
+        }
+        let module = quote::format_ident!("{mode}");
+        let messages = messages.join("mod.rs");
+        let messages = messages.to_str().expect("UTF-8 messages path");
+        let validators = validators.join("mod.rs");
+        let validators = validators.to_str().expect("UTF-8 validators path");
+        mounts.extend(quote::quote! {
+            mod #module {
+                #[path = #messages]
+                pub(crate) mod proto;
+                #[path = #validators]
+                mod validators;
+            }
+        });
+    }
+    std::fs::write(out_dir.join("field_name_mounts.rs"), mounts.to_string())
+        .expect("write field-name mounts");
 }
 
 fn write_module_tree_fixtures(
