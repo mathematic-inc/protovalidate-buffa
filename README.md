@@ -114,8 +114,6 @@ message CreateUserRequest {
 Use in a Connect handler:
 
 ```rust
-use protovalidate_buffa::Validate;
-
 #[protovalidate_buffa::connect_impl]
 impl UserService for UserServiceImpl {
     async fn create_user(
@@ -128,6 +126,12 @@ impl UserService for UserServiceImpl {
     }
 }
 ```
+
+`#[connect_impl]` validates `request.view()` for `ServiceRequest` parameters
+and `request.reborrow()` for `OwnedView` parameters. It uses the generated
+view's `Validate` implementation without converting the request to an owned
+message. Regenerate validators with the current codegen plugin to include
+view implementations.
 
 ## Error model
 

@@ -841,6 +841,7 @@ dependencies = [
  "buffa-descriptor",
  "buffa-types",
  "chrono",
+ "connectrpc",
  "prettyplease 0.3.0",
  "proc-macro2",
  "protoc-gen-protovalidate-buffa",

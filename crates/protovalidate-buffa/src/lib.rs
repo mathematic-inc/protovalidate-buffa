@@ -57,7 +57,9 @@ pub use chrono;
 pub use chrono_tz;
 pub use error::{FieldPath, FieldPathElement, FieldType, Subscript, ValidationError, Violation};
 /// `#[connect_impl]` — attribute macro applied to a Connect service `impl`
-/// block that inserts `req.validate()?` at the top of every handler method.
+/// block that validates the borrowed request view at the top of every handler
+/// method, without converting it to an owned message. Requires `Validate` on
+/// the generated view type.
 /// Guarantees protovalidate runs for every RPC without relying on per-handler
 /// discipline.
 ///

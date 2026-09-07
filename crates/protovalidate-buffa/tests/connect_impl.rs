@@ -1,8 +1,9 @@
-//! Confirms `#[connect_impl]` injects `validate()` before user code. A
-//! fake service impls use mock traits and mock views — the macro still
-//! inserts the decode + validate because it recognizes `OwnedView<_>` and
-//! `ServiceRequest<'_, _>` in the signature.
+//! Confirms `#[connect_impl]` validates views before user code. The request
+//! doubles expose only borrowed view accessors and have no owned-message
+//! conversion, so an expansion that materializes an owned message fails to
+//! compile.
 
+#![warn(rust_2018_idioms)]
 #![cfg(feature = "connect")]
 // `clippy::result_large_err` fires on the fake trait because
 // `connectrpc::ConnectError` is a hefty type; the test doesn't care.
@@ -16,11 +17,11 @@ use std::cell::Cell;
 
 use protovalidate_buffa::{FieldPath, Validate, ValidationError, Violation, connect_impl};
 
-struct FakeOwned {
+struct FakeView {
     valid: bool,
 }
 
-impl Validate for FakeOwned {
+impl Validate for FakeView {
     fn validate(&self) -> Result<(), ValidationError> {
         if self.valid {
             Ok(())
@@ -39,30 +40,19 @@ impl Validate for FakeOwned {
     }
 }
 
-struct FakeView {
-    valid: bool,
-}
-
-impl FakeView {
-    const fn to_owned_message(&self) -> FakeOwned {
-        FakeOwned { valid: self.valid }
-    }
-}
-
 struct OwnedView<T>(T);
 
-impl<T> std::ops::Deref for OwnedView<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
+impl<T> OwnedView<T> {
+    const fn reborrow(&self) -> &T {
         &self.0
     }
 }
 
 struct ServiceRequest<'a, T>(&'a T);
 
-impl ServiceRequest<'_, FakeView> {
-    const fn to_owned_message(&self) -> FakeOwned {
-        self.0.to_owned_message()
+impl<T> ServiceRequest<'_, T> {
+    const fn view(&self) -> &T {
+        self.0
     }
 }
 
@@ -88,6 +78,8 @@ struct ServiceRequestImpl {
 #[connect_impl]
 impl FakeService for OwnedViewImpl {
     fn handle(&self, _request: OwnedView<FakeView>) -> Result<(), ::connectrpc::ConnectError> {
+        let OwnedView(view) = _request;
+        assert!(view.valid, "body receives the validated request");
         self.called.set(true);
         Ok(())
     }
@@ -99,9 +91,27 @@ impl FakeServiceRequestService for ServiceRequestImpl {
         &self,
         _request: ServiceRequest<'_, FakeView>,
     ) -> Result<(), ::connectrpc::ConnectError> {
+        assert!(_request.view().valid, "body receives the validated request");
         self.called.set(true);
         Ok(())
     }
+}
+
+#[connect_impl]
+impl OwnedViewImpl {
+    fn helper(&self, value: usize) -> usize {
+        self.called.set(true);
+        value
+    }
+}
+
+#[test]
+fn leaves_non_handler_methods_unchanged() {
+    let svc = OwnedViewImpl {
+        called: Cell::new(false),
+    };
+    assert_eq!(svc.helper(42), 42);
+    assert!(svc.called.get());
 }
 
 #[test]

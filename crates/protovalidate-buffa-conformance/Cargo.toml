@@ -30,6 +30,9 @@ regex = "1"
 # Duration / Timestamp typing in transpiler outputs. Runtime crate
 # already depends on chrono via protovalidate-buffa.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Exercise Connect handlers against the generated request views.
+connectrpc = { version = "0.9", default-features = false }
+protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.7.1", default-features = false, features = ["connect"] }
 
 [build-dependencies]
 anyhow = "1"
