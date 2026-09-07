@@ -3455,15 +3455,30 @@ fn emit_enum_value(
     e: &EnumStandard,
     full_name: &str,
 ) -> Result<Vec<TokenStream>> {
+    emit_enum_checks(
+        value,
+        e,
+        full_name,
+        &field_path_scalar(name_lit, field_number, "Enum"),
+        |inner, inner_num, ty| rule_path_scalar("enum", 16, inner, inner_num, ty),
+    )
+}
+
+/// Apply enum rules to a numeric value with the caller's location metadata.
+/// Scalar fields, repeated items, and map values share these rule semantics.
+pub(super) fn emit_enum_checks(
+    value: &TokenStream,
+    e: &EnumStandard,
+    full_name: &str,
+    field_path: &TokenStream,
+    rule_path: impl Fn(&str, i32, &str) -> TokenStream,
+) -> Result<Vec<TokenStream>> {
     // EnumRules outer field number = 16; inner: const=1 (TYPE_INT32),
     // defined_only=2 (TYPE_BOOL), in=3 (TYPE_INT32), not_in=4 (TYPE_INT32).
-    let fp = || field_path_scalar(name_lit, field_number, "Enum");
-    let rule_path =
-        |inner: &str, inner_num: i32, ty: &str| rule_path_scalar("enum", 16, inner, inner_num, ty);
     let mut out: Vec<TokenStream> = Vec::new();
 
     if let Some(c) = e.r#const {
-        let field = fp();
+        let field = field_path;
         let rule = rule_path("const", 1, "Int32");
         out.push(quote! {
             {
@@ -3484,7 +3499,7 @@ fn emit_enum_value(
 
     if e.defined_only == Some(true) {
         let enum_type = resolve_local_type(full_name)?;
-        let field = fp();
+        let field = field_path;
         let rule = rule_path("defined_only", 2, "Bool");
         out.push(quote! {
             {
@@ -3505,7 +3520,7 @@ fn emit_enum_value(
 
     if !e.in_set.is_empty() {
         let set = &e.in_set;
-        let field = fp();
+        let field = field_path;
         let rule = rule_path("in", 3, "Int32");
         out.push(quote! {
             {
@@ -3527,7 +3542,7 @@ fn emit_enum_value(
 
     if !e.not_in.is_empty() {
         let set = &e.not_in;
-        let field = fp();
+        let field = field_path;
         let rule = rule_path("not_in", 4, "Int32");
         out.push(quote! {
             {

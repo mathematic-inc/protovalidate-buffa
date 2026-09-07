@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package module_tree.runtime.v1;
+
+import "buf/validate/validate.proto";
+import "module_tree/common/v1/outcome.proto";
+
+message EnumCollectionsDefined {
+  repeated module_tree.common.v1.RequestOutcome top = 1 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated module_tree.common.v1.Outcome.Detail nested = 2 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  map<string, module_tree.common.v1.RequestOutcome> top_values = 3 [(buf.validate.field).map.values.enum.defined_only = true];
+  map<int32, module_tree.common.v1.Outcome.Detail> nested_values = 4 [(buf.validate.field).map.values.enum.defined_only = true];
+}
+
+message EnumCollectionsDisabled {
+  repeated module_tree.common.v1.RequestOutcome top = 1 [(buf.validate.field).repeated.items.enum = {
+    defined_only: false
+    not_in: [0]
+  }];
+  repeated module_tree.common.v1.Outcome.Detail nested = 2 [(buf.validate.field).repeated.items.enum = {
+    defined_only: false
+    not_in: [0]
+  }];
+  map<string, module_tree.common.v1.RequestOutcome> top_values = 3 [(buf.validate.field).map.values.enum = {
+    defined_only: false
+    not_in: [0]
+  }];
+  map<int32, module_tree.common.v1.Outcome.Detail> nested_values = 4 [(buf.validate.field).map.values.enum = {
+    defined_only: false
+    not_in: [0]
+  }];
+}
+
+message EnumCollectionsAbsent {
+  repeated module_tree.common.v1.RequestOutcome top = 1 [(buf.validate.field).repeated.items.enum.not_in = 0];
+  repeated module_tree.common.v1.Outcome.Detail nested = 2 [(buf.validate.field).repeated.items.enum.not_in = 0];
+  map<string, module_tree.common.v1.RequestOutcome> top_values = 3 [(buf.validate.field).map.values.enum.not_in = 0];
+  map<int32, module_tree.common.v1.Outcome.Detail> nested_values = 4 [(buf.validate.field).map.values.enum.not_in = 0];
+}
+
+message EnumCollectionsCombined {
+  repeated module_tree.common.v1.RequestOutcome top = 1 [(buf.validate.field).repeated.items.enum = {
+    defined_only: true
+    not_in: [
+      0,
+      99
+    ]
+  }];
+  repeated module_tree.common.v1.Outcome.Detail nested = 2 [(buf.validate.field).repeated.items.enum = {
+    defined_only: true
+    not_in: [
+      0,
+      99
+    ]
+  }];
+  map<string, module_tree.common.v1.RequestOutcome> top_values = 3 [(buf.validate.field).map.values.enum = {
+    defined_only: true
+    not_in: [
+      0,
+      99
+    ]
+  }];
+  map<int32, module_tree.common.v1.Outcome.Detail> nested_values = 4 [(buf.validate.field).map.values.enum = {
+    defined_only: true
+    not_in: [
+      0,
+      99
+    ]
+  }];
+}
+
+message EnumCollectionsOtherRules {
+  repeated module_tree.common.v1.RequestOutcome top = 1 [(buf.validate.field).repeated.items.enum.const = 1];
+  map<string, module_tree.common.v1.RequestOutcome> top_values = 3 [(buf.validate.field).map.values.enum = {
+    in: [1]
+  }];
+}

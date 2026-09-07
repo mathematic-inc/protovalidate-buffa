@@ -37,6 +37,7 @@ fn main() {
     let module_tree_sources = [
         "module_tree/common/v1/outcome.proto",
         "module_tree/runtime/v1/error.proto",
+        "module_tree/runtime/v1/collections.proto",
         "module_tree/desktop/v1/error.proto",
     ];
     files.extend(module_tree_sources.iter().map(|name| proto_root.join(name)));
