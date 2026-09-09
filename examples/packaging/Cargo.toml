@@ -1,6 +1,6 @@
 [package]
 name = "protovalidate-buffa-packaging-examples"
-version = "0.0.0"
+version = "0.0.1"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,7 +20,7 @@ protovalidate-buffa = { path = "../../crates/protovalidate-buffa", version = "0.
 anyhow = "1"
 buffa = "0.9.1"
 buffa-codegen = "0.9.1"
-protoc-gen-protovalidate-buffa = { path = "../../crates/protoc-gen-protovalidate-buffa", version = "0.9.1" }
+protoc-gen-protovalidate-buffa = { path = "../../crates/protoc-gen-protovalidate-buffa", version = "0.10.0" }
 
 [lints]
 workspace = true

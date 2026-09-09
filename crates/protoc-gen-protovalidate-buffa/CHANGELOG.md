@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.9.1...protoc-gen-protovalidate-buffa-v0.10.0) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **codegen:** add independent packaging and file grouping options ([#59](https://github.com/mathematic-inc/protovalidate-buffa/issues/59))
+
+### Features
+
+* **codegen:** Add independent packaging and file grouping options ([#59](https://github.com/mathematic-inc/protovalidate-buffa/issues/59)) ([f2fed30](https://github.com/mathematic-inc/protovalidate-buffa/commit/f2fed3042e8641eff377c8cded75f5c2e331c06f))
+
 ## [0.9.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.9.0...protoc-gen-protovalidate-buffa-v0.9.1) (2026-09-07)
 
 
