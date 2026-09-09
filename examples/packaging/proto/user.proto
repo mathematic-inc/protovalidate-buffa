@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package example.users.v1;
+
+import "buf/validate/validate.proto";
+
+message User {
+  string email = 1 [(buf.validate.field).string.email = true];
+}

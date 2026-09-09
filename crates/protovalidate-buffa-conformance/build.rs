@@ -215,6 +215,7 @@ fn write_field_name_fixtures(
             .expect("scan field-name fixtures");
         let options = protoc_gen_protovalidate_buffa::emit::Options {
             proto_module: format!("crate::{mode}::proto"),
+            ..Default::default()
         };
         let validators = directory.join("validators");
         std::fs::create_dir_all(&validators).expect("create naming validators directory");
@@ -277,6 +278,7 @@ fn write_module_tree_fixtures(
             "custom",
             protoc_gen_protovalidate_buffa::emit::Options {
                 proto_module: "crate::custom::messages".to_string(),
+                ..Default::default()
             },
         ),
     ] {

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package example.orders.v1;
+
+import "buf/validate/validate.proto";
+import "shared/currency.proto";
+
+message LineItem {
+  int32 quantity = 1 [(buf.validate.field).int32.gt = 0];
+  example.money.v1.Currency currency = 2 [(buf.validate.field).enum.defined_only = true];
+}

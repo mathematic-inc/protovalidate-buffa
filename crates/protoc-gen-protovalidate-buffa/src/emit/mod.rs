@@ -1,5 +1,5 @@
 //! Orchestrate the emit phase: group scanned validators by source `.proto`
-//! file and render one Rust file per source.
+//! file with module packaging, or by package for inclusion beside message types.
 
 use anyhow::Result;
 use buffa_codegen::generated::compiler::code_generator_response::File;
@@ -9,18 +9,36 @@ use quote::quote;
 use crate::scan::MessageValidators;
 
 /// Plugin options parsed from `opt:` in `buf.gen.yaml`.
+///
+/// # Examples
+///
+/// ```
+/// use protoc_gen_protovalidate_buffa::emit::{self, Options};
+///
+/// let options = Options { packaging: false, ..Options::default() };
+/// let files = emit::render_with_options(&[], &options)?;
+/// assert!(files.is_empty());
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 #[derive(Debug, Clone)]
 pub struct Options {
     /// Rust module path under which the protobuf message types live —
     /// the `mod.rs` packaging file emits `pub(crate) use <proto_module>::<pkg>::*;`
     /// inside each leaf package so local and cross-package type names resolve.
+    /// Ignored when [`Self::packaging`] is `false`.
     pub proto_module: String,
+    /// Emit a module tree and one validator file per source proto (default: `true`).
+    /// Set to `false` to emit only `<package>.validate.rs`, with all validators
+    /// in that package, for inclusion in the same module as the message types.
+    /// The unnamed package uses Buffa's filename stem: `__buffa.validate.rs`.
+    pub packaging: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
             proto_module: "crate::proto".to_string(),
+            packaging: true,
         }
     }
 }
@@ -122,11 +140,15 @@ pub fn render(messages: &[MessageValidators]) -> Result<Vec<File>> {
 
 /// Same as [`render`] but threads parsed plugin options through.
 ///
-/// Also emits a `mod.rs` packaging file that mirrors the proto-package
+/// By default, also emits a `mod.rs` packaging file that mirrors the proto-package
 /// hierarchy as nested `pub mod` declarations, and per-package
 /// `<pkg>.mod.rs` files that flat-`include!()` each per-source output.
 /// Removes the need for an external "generate mod tree" script in
 /// projects that consume this plugin.
+///
+/// With [`Options::packaging`] set to `false`, emits one `<package>.validate.rs`
+/// per declared protobuf package and no module files. Include each validator
+/// file beside the corresponding Buffa types. `proto_module` is ignored.
 ///
 /// # Errors
 ///
@@ -135,6 +157,29 @@ pub fn render_with_options(messages: &[MessageValidators], opts: &Options) -> Re
     use std::collections::BTreeMap;
 
     let schemas = cel::build_schema_index(messages);
+    if !opts.packaging {
+        let mut by_package: BTreeMap<&str, Vec<&MessageValidators>> = BTreeMap::new();
+        for message in messages {
+            by_package
+                .entry(&message.package)
+                .or_default()
+                .push(message);
+        }
+        return by_package
+            .into_iter()
+            .map(|(package, messages)| {
+                let filename = buffa_codegen::package_to_filename(package);
+                let stem = filename.strip_suffix(".rs").unwrap_or(&filename);
+                let path = format!("{stem}.validate.rs");
+                let body = render_file(&messages, &schemas)?;
+                Ok(File {
+                    content: Some(format_token_stream(&body, "", &path)?),
+                    name: Some(path),
+                    ..Default::default()
+                })
+            })
+            .collect();
+    }
     let mut by_file: BTreeMap<String, Vec<&MessageValidators>> = BTreeMap::new();
     for m in messages {
         by_file.entry(m.source_file.clone()).or_default().push(m);

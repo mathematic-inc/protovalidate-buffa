@@ -985,6 +985,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "protovalidate-buffa-packaging-examples"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "buffa",
+ "buffa-codegen",
+ "protoc-gen-protovalidate-buffa",
+ "protovalidate-buffa",
+]
+
+[[package]]
 name = "protovalidate-buffa-protos"
 version = "0.7.1"
 dependencies = [

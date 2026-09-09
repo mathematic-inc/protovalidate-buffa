@@ -6,6 +6,7 @@ members = [
   "crates/protovalidate-buffa-conformance",
   "crates/protovalidate-buffa-macros",
   "crates/protovalidate-buffa-protos",
+  "examples/packaging",
 ]
 
 [workspace.package]

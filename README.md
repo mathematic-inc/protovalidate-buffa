@@ -154,6 +154,66 @@ For in-process generation, set `CodeGeneratorRequest.parameter` before calling
 `scan::gather`, for example `Some("idiomatic_field_names=true".into())`. Then pass
 the scanned validators to `emit::render` or `emit::render_with_options` as usual.
 
+### Include validators beside message types
+
+Set `packaging=false` to generate one `<package>.validate.rs` per declared
+protobuf package. Include that file in the same Rust module as its Buffa types.
+The plugin emits no `mod.rs` or `<package>.mod.rs` in this mode, so it can share
+an output directory with your handwritten module files.
+
+```yaml
+- local: protoc-gen-buffa
+  out: gen/proto
+  strategy: all
+  opt: [file_per_package=true]
+- local: protoc-gen-protovalidate-buffa
+  out: gen/proto
+  strategy: all
+  opt: [packaging=false]
+```
+
+For package `example.v1`, mount both generated files:
+
+```rust
+pub mod example {
+    pub mod v1 {
+        use crate::example;
+
+        include!("gen/proto/example.v1.rs");
+        include!("gen/proto/example.v1.validate.rs");
+    }
+}
+```
+
+The filename follows the declared package, even when the source directories
+differ. Multiple `.proto` files in a package share one validator file; keep
+`strategy: all` so each plugin sees them together. Packages with messages but
+no validation annotations still get validators. Packages with only enums or
+services need no validator include. The unnamed package uses
+`__buffa.validate.rs`, beside Buffa's `__buffa.rs`.
+
+Preserve the package hierarchy for cross-package references. Enum validators
+use paths beginning at the top-level protobuf package, so bring those roots
+into scope in each consuming module (for example, `use crate::example;`).
+
+`proto_module` is ignored with `packaging=false`. The default,
+`packaging=true`, and the bare `packaging` flag preserve the existing output:
+one validator file per source proto, plus the generated module tree. Other
+`packaging` values fail generation with an error. When switching an existing
+output directory to this mode, remove old generated packaging files once;
+generation does not delete files left by previous runs.
+
+For in-process generation, pass
+`emit::Options { packaging: false, ..Default::default() }` to
+`emit::render_with_options`. Code that previously constructed `Options` with
+only `proto_module` must add `..Default::default()` or set `packaging` explicitly.
+
+Two [runnable examples](examples/packaging/) demonstrate a single package and
+a package split across source files with an enum from another package. Both
+exercise validation on owned messages and borrowed views.
+
+### Annotate and validate a request
+
 Annotate a proto (see upstream for the full rule vocabulary):
 
 ```protobuf

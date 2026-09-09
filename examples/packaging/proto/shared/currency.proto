@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package example.money.v1;
+
+enum Currency {
+  CURRENCY_UNSPECIFIED = 0;
+  CURRENCY_USD = 1;
+  CURRENCY_EUR = 2;
+}
