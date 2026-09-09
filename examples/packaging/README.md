@@ -1,9 +1,12 @@
 # Packaging examples
 
-Both examples generate Buffa types with `file_per_package=true` and validators
-with `packaging=false` into the same directory. Handwritten Rust modules include
-the types and validators together. The build script uses the workspace's plugin
-library, so you can try a checkout without installing a plugin binary.
+Both examples generate Buffa types and validators into the same directory.
+Handwritten Rust modules include the types and validators together. The
+validator plugin's `packaging` and `file_per_package` flags are independent:
+the first example disables packaging with per-source output, and the second
+also enables per-package output. Buffa uses `file_per_package=true` in both.
+The build script uses the workspace's plugin library, so you can try a checkout
+without installing a plugin binary.
 
 You need Rust and `protoc` on `PATH`, or set `PROTOC` to its executable. From
 the repository root:
@@ -14,26 +17,28 @@ cargo run -p protovalidate-buffa-packaging-examples --bin same_module
 cargo run -p protovalidate-buffa-packaging-examples --bin split_package
 ```
 
-## One package in one module
+## Per-source validators in one module
 
 [`same_module.rs`](src/bin/same_module.rs) mounts the types and validators for
 [`user.proto`](proto/user.proto) inside `mod users`. It accepts a valid email
 and rejects an invalid one, using both `User` and `UserView`.
+It sets `packaging=false` and leaves `file_per_package=false` at its default.
 
 ```rust
 mod users {
     include!(concat!(env!("OUT_DIR"), "/example.users.v1.rs"));
-    include!(concat!(env!("OUT_DIR"), "/example.users.v1.validate.rs"));
+    include!(concat!(env!("OUT_DIR"), "/user.validate.rs"));
 }
 ```
 
 This package has no cross-package references, so the module can use any name.
 
-## A package split across files
+## Per-package validators across source files
 
 [`split_package.rs`](src/bin/split_package.rs) mounts `example.orders.v1`,
 which contains [`Order`](proto/order.proto) and [`LineItem`](proto/line_item.proto)
-in separate source files. A single `example.orders.v1.validate.rs` contains both
+in separate source files. It sets `packaging=false,file_per_package=true`.
+A single `example.orders.v1.validate.rs` contains both
 validators. Adding another message file to that package needs no new include.
 
 `LineItem` references [`Currency`](proto/shared/currency.proto) from

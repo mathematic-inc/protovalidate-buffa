@@ -60,12 +60,16 @@ fn parse_opts(parameter: &str) -> anyhow::Result<emit::Options> {
             "proto_module" if part.contains('=') => {
                 opts.proto_module = value.trim().to_string();
             }
-            "packaging" => {
-                opts.packaging = match value.trim() {
+            key @ ("packaging" | "file_per_package") => {
+                let enabled = match value.trim() {
                     "true" => true,
                     "false" => false,
-                    value => anyhow::bail!("packaging must be true or false, got {value:?}"),
+                    value => anyhow::bail!("{key} must be true or false, got {value:?}"),
                 };
+                match key {
+                    "packaging" => opts.packaging = enabled,
+                    _ => opts.file_per_package = enabled,
+                }
             }
             _ => {}
         }

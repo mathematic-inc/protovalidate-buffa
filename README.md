@@ -156,10 +156,22 @@ the scanned validators to `emit::render` or `emit::render_with_options` as usual
 
 ### Include validators beside message types
 
-Set `packaging=false` to generate one `<package>.validate.rs` per declared
-protobuf package. Include that file in the same Rust module as its Buffa types.
-The plugin emits no `mod.rs` or `<package>.mod.rs` in this mode, so it can share
-an output directory with your handwritten module files.
+Two independent flags control the output:
+
+- `packaging=false` omits `mod.rs` and `<package>.mod.rs` and adds a `.validate`
+  infix to validator filenames. This lets you share an output directory with
+  handwritten module files. The default is `true`.
+- `file_per_package=true` merges validators by declared protobuf package.
+  The default is `false`, which emits one file per source proto.
+
+| `packaging` | `file_per_package` | Validator files | Module files |
+| --- | --- | --- | --- |
+| `true` | `false` | `<source>.rs` | Yes (default layout) |
+| `false` | `false` | `<source>.validate.rs` | No |
+| `true` | `true` | `<package>.rs` | Yes |
+| `false` | `true` | `<package>.validate.rs` | No |
+
+To mount one validator file beside each package's Buffa types, set both flags:
 
 ```yaml
 - local: protoc-gen-buffa
@@ -169,7 +181,7 @@ an output directory with your handwritten module files.
 - local: protoc-gen-protovalidate-buffa
   out: gen/proto
   strategy: all
-  opt: [packaging=false]
+  opt: [packaging=false, file_per_package=true]
 ```
 
 For package `example.v1`, mount both generated files:
@@ -185,8 +197,9 @@ pub mod example {
 }
 ```
 
-The filename follows the declared package, even when the source directories
-differ. Multiple `.proto` files in a package share one validator file; keep
+With `file_per_package=true`, the filename follows the declared package, even
+when the source directories differ. Multiple `.proto` files in a package share
+one validator file; keep
 `strategy: all` so each plugin sees them together. Packages with messages but
 no validation annotations still get validators. Packages with only enums or
 services need no validator include. The unnamed package uses
@@ -196,20 +209,28 @@ Preserve the package hierarchy for cross-package references. Enum validators
 use paths beginning at the top-level protobuf package, so bring those roots
 into scope in each consuming module (for example, `use crate::example;`).
 
-`proto_module` is ignored with `packaging=false`. The default,
-`packaging=true`, and the bare `packaging` flag preserve the existing output:
-one validator file per source proto, plus the generated module tree. Other
-`packaging` values fail generation with an error. When switching an existing
+`proto_module` is ignored with `packaging=false`. Omitting both flags preserves
+the existing output. Either bare flag means `true`; both accept explicit
+`true` and `false`, and other values fail generation with an error.
+When switching an existing
 output directory to this mode, remove old generated packaging files once;
 generation does not delete files left by previous runs.
 
-For in-process generation, pass
-`emit::Options { packaging: false, ..Default::default() }` to
-`emit::render_with_options`. Code that previously constructed `Options` with
-only `proto_module` must add `..Default::default()` or set `packaging` explicitly.
+For in-process generation, pass these options to `emit::render_with_options`:
 
-Two [runnable examples](examples/packaging/) demonstrate a single package and
-a package split across source files with an enum from another package. Both
+```rust
+emit::Options {
+    packaging: false,
+    file_per_package: true,
+    ..Default::default()
+}
+```
+
+Code that previously constructed `Options` with only `proto_module` must add
+`..Default::default()` or set both new fields explicitly.
+
+Two [runnable examples](examples/packaging/) demonstrate per-source output and
+per-package output with an enum from another package. Both
 exercise validation on owned messages and borrowed views.
 
 ### Annotate and validate a request

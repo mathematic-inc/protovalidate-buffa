@@ -15,7 +15,7 @@ use protovalidate_buffa::Validate as _;
 )]
 mod users {
     include!(concat!(env!("OUT_DIR"), "/example.users.v1.rs"));
-    include!(concat!(env!("OUT_DIR"), "/example.users.v1.validate.rs"));
+    include!(concat!(env!("OUT_DIR"), "/user.validate.rs"));
 }
 
 fn main() {

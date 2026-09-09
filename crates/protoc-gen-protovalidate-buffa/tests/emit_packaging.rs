@@ -35,7 +35,7 @@ fn request() -> CodeGeneratorRequest {
                 ..Default::default()
             })
             .collect(),
-        parameter: Some("packaging=false".into()),
+        parameter: Some("packaging=false,file_per_package=true".into()),
         ..Default::default()
     }
 }
@@ -85,6 +85,7 @@ fn flat_output_merges_declared_packages_and_includes_owned_and_view_impls() {
     let scanned = scan::gather(&request).unwrap();
     let options = emit::Options {
         packaging: false,
+        file_per_package: true,
         ..Default::default()
     };
     assert_eq!(
@@ -136,14 +137,17 @@ fn default_true_and_bare_flag_preserve_packaged_output() {
 fn flat_output_ignores_proto_module_even_when_it_is_invalid() {
     let mut request = request();
     let expected = invoke_plugin(&request).file;
-    request.parameter =
-        Some(" proto_module = not a Rust path, packaging = false, unknown=1, ".into());
+    request.parameter = Some(
+        " proto_module = not a Rust path, packaging = false, file_per_package = true, unknown=1, "
+            .into(),
+    );
     let response = invoke_plugin(&request);
     assert!(response.error.is_none(), "{:?}", response.error);
     assert_eq!(response.file, expected);
     let options = emit::Options {
         proto_module: "not a Rust path".into(),
         packaging: false,
+        file_per_package: true,
     };
     assert_eq!(
         emit::render_with_options(&scan::gather(&request).unwrap(), &options).unwrap(),
@@ -215,4 +219,127 @@ fn imported_messages_are_not_emitted() {
     assert!(content.contains("Validate for Second"));
     assert!(!content.contains("Validate for First"));
     assert!(!content.contains("Validate for Third"));
+}
+
+#[test]
+fn packaging_and_file_per_package_are_independent() {
+    let mut request = request();
+    for (parameter, expected_names) in [
+        (
+            "packaging=false,file_per_package=false",
+            vec![
+                "elsewhere.first.validate.rs",
+                "elsewhere.third.validate.rs",
+                "second.validate.rs",
+            ],
+        ),
+        (
+            "packaging=true,file_per_package=true",
+            vec![
+                "example.v1.rs",
+                "other.v1.rs",
+                "example.v1.mod.rs",
+                "other.v1.mod.rs",
+                "mod.rs",
+            ],
+        ),
+    ] {
+        request.parameter = Some(parameter.into());
+        let response = invoke_plugin(&request);
+        assert!(
+            response.error.is_none(),
+            "{parameter}: {:?}",
+            response.error
+        );
+        let names: Vec<_> = response
+            .file
+            .iter()
+            .map(|f| f.name.as_deref().unwrap())
+            .collect();
+        assert_eq!(names, expected_names, "{parameter}");
+        for file in &response.file {
+            syn::parse_file(file.content.as_deref().unwrap()).expect("valid Rust syntax");
+        }
+        if parameter == "packaging=true,file_per_package=true" {
+            let package = response.file[0].content.as_deref().unwrap();
+            assert!(package.contains("Validate for First"));
+            assert!(package.contains("Validate for Second"));
+            assert!(
+                response.file[2]
+                    .content
+                    .as_deref()
+                    .unwrap()
+                    .contains("include!(\"example.v1.rs\");")
+            );
+            assert!(
+                response.file[4]
+                    .content
+                    .as_deref()
+                    .unwrap()
+                    .contains("crate::proto::example::v1::*")
+            );
+        }
+    }
+}
+
+#[test]
+fn file_per_package_defaults_to_false_and_accepts_bare_flag() {
+    let mut request = request();
+    request.parameter = Some("packaging=false,file_per_package=false".into());
+    let expected_per_source = invoke_plugin(&request).file;
+    request.parameter = Some("packaging=false,file_per_package=true".into());
+    let expected_per_package = invoke_plugin(&request).file;
+    for (parameter, expected) in [
+        ("packaging=false", &expected_per_source),
+        (
+            "packaging=false,file_per_package=true,file_per_package=false",
+            &expected_per_source,
+        ),
+        ("packaging=false,file_per_package", &expected_per_package),
+    ] {
+        request.parameter = Some(parameter.into());
+        let response = invoke_plugin(&request);
+        assert!(
+            response.error.is_none(),
+            "{parameter}: {:?}",
+            response.error
+        );
+        assert_eq!(&response.file, expected, "{parameter}");
+    }
+    assert!(!emit::Options::default().file_per_package);
+}
+
+#[test]
+fn invalid_file_per_package_returns_error_without_files() {
+    let mut request = request();
+    for value in ["", "no", "0", "TRUE"] {
+        request.parameter = Some(format!("packaging=false,file_per_package={value}"));
+        let response = invoke_plugin(&request);
+        assert!(
+            response
+                .error
+                .unwrap()
+                .contains("file_per_package must be true or false")
+        );
+        assert!(response.file.is_empty());
+    }
+}
+
+#[test]
+fn packaged_unnamed_package_uses_buffa_stem_and_root_import() {
+    let mut request = request();
+    request.file_to_generate = vec!["second.proto".into()];
+    request.proto_file[1].package = None;
+    request.parameter = Some("file_per_package=true".into());
+    let response = invoke_plugin(&request);
+    assert!(response.error.is_none(), "{:?}", response.error);
+    let names: Vec<_> = response
+        .file
+        .iter()
+        .map(|f| f.name.as_deref().unwrap())
+        .collect();
+    assert_eq!(names, ["__buffa.rs", "__buffa.mod.rs", "mod.rs"]);
+    let root = response.file[2].content.as_deref().unwrap();
+    assert!(root.contains("use crate::proto::*;"));
+    assert!(root.contains("include!(\"__buffa.mod.rs\");"));
 }

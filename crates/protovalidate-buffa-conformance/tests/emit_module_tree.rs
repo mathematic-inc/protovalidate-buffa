@@ -62,3 +62,5 @@ module_tree_tests!(default_runtime, crate::proto, runtime);
 module_tree_tests!(default_desktop, crate::proto, desktop);
 module_tree_tests!(custom_runtime, crate::custom::messages, runtime);
 module_tree_tests!(custom_desktop, crate::custom::messages, desktop);
+module_tree_tests!(grouped_runtime, crate::grouped::proto, runtime);
+module_tree_tests!(grouped_desktop, crate::grouped::proto, desktop);

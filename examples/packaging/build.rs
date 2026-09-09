@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
         "protoc failed to compile the example schemas"
     );
     let fds = FileDescriptorSet::decode_from_slice(&fs::read(descriptors)?)?;
-    let request = CodeGeneratorRequest {
+    let mut request = CodeGeneratorRequest {
         file_to_generate: sources.into_iter().map(str::to_string).collect(),
         proto_file: fds.file,
         ..Default::default()
@@ -47,15 +47,30 @@ fn main() -> anyhow::Result<()> {
     for file in buffa_codegen::generate(&request.proto_file, &request.file_to_generate, &config)? {
         fs::write(out.join(&file.name), file.content)?;
     }
-    let options = emit::Options {
-        packaging: false,
-        ..Default::default()
-    };
-    for file in emit::render_with_options(&scan::gather(&request)?, &options)? {
-        fs::write(
-            out.join(file.name.as_deref().expect("generated filename")),
-            file.content.as_deref().expect("generated content"),
-        )?;
+    for (sources, options) in [
+        (
+            &["user.proto"][..],
+            emit::Options {
+                packaging: false,
+                ..Default::default()
+            },
+        ),
+        (
+            &["order.proto", "line_item.proto", "shared/currency.proto"][..],
+            emit::Options {
+                packaging: false,
+                file_per_package: true,
+                ..Default::default()
+            },
+        ),
+    ] {
+        request.file_to_generate = sources.iter().map(|s| (*s).to_string()).collect();
+        for file in emit::render_with_options(&scan::gather(&request)?, &options)? {
+            fs::write(
+                out.join(file.name.as_deref().expect("generated filename")),
+                file.content.as_deref().expect("generated content"),
+            )?;
+        }
     }
     Ok(())
 }
