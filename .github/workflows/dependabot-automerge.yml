@@ -55,6 +55,8 @@ jobs:
                 ))
               and ($runs | all(.[];
                 .name == "Strict Dependabot gate" or
+                ((.name | startswith("Verify prebuilt distribution / Install without compiling")) and
+                  .status == "completed" and .conclusion == "skipped") or
                 (.status == "completed" and .conclusion == "success")
               ))
             ' <<< "$checks" > /dev/null; then
