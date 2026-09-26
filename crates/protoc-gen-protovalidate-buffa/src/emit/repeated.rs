@@ -2279,10 +2279,10 @@ fn emit_scalar_checks(
                     let cache_ident = format_ident!("RE_{}_{}", field_upper, elem_upper);
                     out.push(quote! {
                         {
-                            static #cache_ident: ::std::sync::OnceLock<::regex::Regex> =
+                            static #cache_ident: ::std::sync::OnceLock<::protovalidate_buffa::regex::Regex> =
                                 ::std::sync::OnceLock::new();
                             let re = #cache_ident.get_or_init(|| {
-                                ::regex::Regex::new(#pat_str)
+                                ::protovalidate_buffa::regex::Regex::new(#pat_str)
                                     .expect("pattern regex compiled at code-gen time")
                             });
                             if !re.is_match(#elem_ident) {
