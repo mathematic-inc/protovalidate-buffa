@@ -22,6 +22,7 @@ mod generated {
 use generated::buf::validate::conformance::cases::{
     __buffa::{oneof, view},
     CelMessageTree, CelOneofChild, CelOneofContainer, CelOneofPresence, MessageOneofPresence,
+    cel_oneof_outer::middle::Inner,
 };
 
 fn assert_rules(result: Result<(), ValidationError>, expected: &[&str]) {
@@ -147,6 +148,65 @@ fn recursive_message_lists_resolve_element_schemas() {
         } else {
             &["tree.unique_children"]
         };
+        assert_rules(owned.validate(), rules);
+        assert_rules(borrowed.validate(), rules);
+    }
+}
+
+#[test]
+fn oneofs_in_nested_messages_resolve_their_module_path() {
+    use oneof::cel_oneof_outer::middle::inner::{Choice, Mode};
+
+    let valid = Inner {
+        selected: 1,
+        choice: Some(Choice::Number(1)),
+        mode: Some(Mode::Strict(true)),
+        ..Default::default()
+    };
+    let cases: [(Inner, &[&str]); 6] = [
+        (valid.clone(), &[]),
+        (
+            Inner {
+                selected: 0,
+                choice: None,
+                ..valid.clone()
+            },
+            &["required"],
+        ),
+        (
+            Inner {
+                choice: Some(Choice::Number(0)),
+                ..valid.clone()
+            },
+            &["int32.gt"],
+        ),
+        (
+            Inner {
+                selected: 0,
+                ..valid.clone()
+            },
+            &["nested_oneof.presence"],
+        ),
+        (
+            Inner {
+                selected: 0,
+                choice: Some(Choice::Text("set".to_string())),
+                outside: "set".to_string(),
+                ..valid.clone()
+            },
+            &["message.oneof"],
+        ),
+        (
+            Inner {
+                mode: Some(Mode::Lenient(true)),
+                ..valid
+            },
+            &["required"],
+        ),
+    ];
+    for (owned, rules) in cases {
+        let bytes = owned.encode_to_vec();
+        let borrowed = view::cel_oneof_outer::middle::InnerView::decode_view(&bytes).unwrap();
         assert_rules(owned.validate(), rules);
         assert_rules(borrowed.validate(), rules);
     }
