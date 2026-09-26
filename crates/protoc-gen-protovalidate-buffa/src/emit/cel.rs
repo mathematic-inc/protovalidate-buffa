@@ -1001,7 +1001,7 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
             }) {
                 entry.kind = SchemaFieldKind::Oneof {
                     accessor: oneof.rust_name.clone(),
-                    module: super::oneof::to_snake_case(&oneof.parent_msg_name),
+                    parent_msg_name: oneof.parent_msg_name.clone(),
                     enumeration: super::oneof::to_pascal_case(&oneof.name),
                     variant: super::oneof::to_pascal_case(&field.field_name),
                     view: false,
