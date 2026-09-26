@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.0...protoc-gen-protovalidate-buffa-v0.10.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **codegen:** Reference regex through the runtime re-export ([#77](https://github.com/mathematic-inc/protovalidate-buffa/issues/77)) ([8e77fe1](https://github.com/mathematic-inc/protovalidate-buffa/commit/8e77fe1590055b1f028105aa2d1ed6167541844f)), closes [#75](https://github.com/mathematic-inc/protovalidate-buffa/issues/75)
+* **codegen:** Resolve oneofs declared in nested messages ([#76](https://github.com/mathematic-inc/protovalidate-buffa/issues/76)) ([6c5274e](https://github.com/mathematic-inc/protovalidate-buffa/commit/6c5274ee7104d3a996dad69a065a1d52e240462f)), closes [#75](https://github.com/mathematic-inc/protovalidate-buffa/issues/75)
+
 ## [0.10.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.9.1...protoc-gen-protovalidate-buffa-v0.10.0) (2026-09-09)
 
 
