@@ -23,7 +23,6 @@ buffa-descriptor = "0.9.1"
 buffa-types = "0.9.1"
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.7.2", default-features = false, features = ["tz"] }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.1" }
-regex = "1"
 
 [dev-dependencies]
 # Referenced by the emit-compile fixture (`tests/emit_compiles.rs`) for

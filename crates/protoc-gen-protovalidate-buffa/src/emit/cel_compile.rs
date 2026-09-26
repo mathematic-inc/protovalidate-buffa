@@ -953,8 +953,8 @@ impl<'a> Compiler<'a> {
             let pat = p.clone();
             return Ok(quote! {
                 ({
-                    static __RE: ::std::sync::OnceLock<::regex::Regex> = ::std::sync::OnceLock::new();
-                    let re = __RE.get_or_init(|| ::regex::Regex::new(#pat).expect("CEL regex compile"));
+                    static __RE: ::std::sync::OnceLock<::protovalidate_buffa::regex::Regex> = ::std::sync::OnceLock::new();
+                    let re = __RE.get_or_init(|| ::protovalidate_buffa::regex::Regex::new(#pat).expect("CEL regex compile"));
                     re.is_match(#target_str)
                 })
             });
@@ -967,7 +967,7 @@ impl<'a> Compiler<'a> {
         }
         let pat_str = string_as_str(pattern);
         Ok(quote! {
-            (::regex::Regex::new(#pat_str).map(|__re| __re.is_match(#target_str)).unwrap_or(false))
+            (::protovalidate_buffa::regex::Regex::new(#pat_str).map(|__re| __re.is_match(#target_str)).unwrap_or(false))
         })
     }
 
@@ -5079,7 +5079,7 @@ mod tests {
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
         assert!(
-            s.contains("OnceLock") && s.contains("Regex"),
+            s.contains("OnceLock < :: protovalidate_buffa :: regex :: Regex >"),
             "expected cached Regex: {s}"
         );
     }
@@ -5113,7 +5113,7 @@ mod tests {
         assert_eq!(out.ty, CelType::Bool);
         let s = out.tokens.to_string();
         assert!(
-            s.contains("Regex :: new") || s.contains("Regex::new"),
+            s.contains(":: protovalidate_buffa :: regex :: Regex :: new"),
             "expected per-call Regex::new: {s}"
         );
         assert!(
