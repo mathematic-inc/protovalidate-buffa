@@ -96,8 +96,9 @@ pub struct OneofValidator {
     /// Rust struct field name; the enum type still derives from `name`.
     pub rust_name: String,
     pub required: bool,
-    /// The parent message name (e.g. `"CreateGradingRequest"`), used to derive the
-    /// buffa-generated module name for the oneof enum type.
+    /// The parent message name relative to its package (e.g.
+    /// `"CreateGradingRequest"`, or `"Outer.Inner"` when nested), used to derive
+    /// the buffa-generated module path for the oneof enum type.
     pub parent_msg_name: String,
     /// Per-variant field validators for fields belonging to this oneof.
     /// These have field rules that must be checked inside a match arm.
@@ -1080,14 +1081,16 @@ fn gather_message(
         return Ok(());
     }
 
-    let qualified_name = if parent.is_empty() {
-        if package.is_empty() {
-            msg_name.to_string()
-        } else {
-            format!("{package}.{msg_name}")
-        }
+    // Name relative to the package, e.g. `Outer.Inner`.
+    let local_name = if parent.is_empty() {
+        msg_name.to_string()
     } else {
         format!("{parent}.{msg_name}")
+    };
+    let qualified_name = if package.is_empty() {
+        local_name.clone()
+    } else {
+        format!("{package}.{local_name}")
     };
 
     // Message-level rules.
@@ -1139,7 +1142,7 @@ fn gather_message(
             .filter(|f| f.oneof_index == Some(i32::try_from(idx).expect("oneof index fits in i32")))
             .map(|f| gather_field(file, msg, f, &qualified_name, predef))
             .collect::<anyhow::Result<_>>()?;
-        let ov = gather_oneof(msg_name, oneof, variant_fields);
+        let ov = gather_oneof(&local_name, oneof, variant_fields);
         oneof_rules_out.push(ov);
     }
 
@@ -1153,7 +1156,7 @@ fn gather_message(
         .or_else(|| check_message_cel_type_errors(&message_cel, &field_rules_out));
 
     out.push(MessageValidators {
-        proto_name: qualified_name.clone(),
+        proto_name: qualified_name,
         package: package.to_string(),
         source_file: source_file.to_string(),
         message_cel,
@@ -1165,15 +1168,7 @@ fn gather_message(
 
     // Recurse into nested messages.
     for nested in &msg.nested_type {
-        gather_message(
-            file,
-            source_file,
-            package,
-            &qualified_name,
-            nested,
-            out,
-            predef,
-        )?;
+        gather_message(file, source_file, package, &local_name, nested, out, predef)?;
     }
 
     Ok(())

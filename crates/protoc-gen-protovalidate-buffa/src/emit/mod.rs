@@ -677,7 +677,7 @@ fn emit_message_oneof(
                     .iter()
                     .find(|oneof| &oneof.name == oneof_name)?;
                 let accessor = field_ident(&oneof.rust_name);
-                let module = field_ident(&oneof::to_snake_case(&oneof.parent_msg_name));
+                let module = oneof::module_path(&oneof.parent_msg_name);
                 let enumeration = field_ident(&oneof::to_pascal_case(oneof_name));
                 let variant = field_ident(&oneof::to_pascal_case(&fv.field_name));
                 let oneof_root = match shape {

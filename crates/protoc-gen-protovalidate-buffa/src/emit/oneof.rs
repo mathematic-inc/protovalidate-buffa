@@ -44,11 +44,9 @@ fn emit_for(v: &OneofValidator, representation: Representation) -> Result<TokenS
     let accessor = crate::emit::field_ident(&v.rust_name);
     let name_lit = &v.name;
 
-    // The module name buffa generates for a message's oneof is the snake_case of
-    // the parent message name, e.g. `CreateGradingRequest` → `create_grading_request`.
     // These are constant across all variants, so derive them once and pass them
     // down to the per-variant emitters.
-    let module_ident = crate::emit::field_ident(&to_snake_case(&v.parent_msg_name));
+    let module = module_path(&v.parent_msg_name);
     let oneof_enum_ident = crate::emit::field_ident(&to_pascal_case(&v.name));
     let oneof_root = match representation {
         Representation::Owned => quote! { __buffa::oneof },
@@ -89,7 +87,7 @@ fn emit_for(v: &OneofValidator, representation: Representation) -> Result<TokenS
         .fields
         .iter()
         .filter(|f| has_field_rules(f))
-        .map(|f| emit_variant_arm(f, &oneof_root, &module_ident, &oneof_enum_ident))
+        .map(|f| emit_variant_arm(f, &oneof_root, &module, &oneof_enum_ident))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .filter(|ts| !ts.is_empty())
@@ -97,7 +95,7 @@ fn emit_for(v: &OneofValidator, representation: Representation) -> Result<TokenS
 
     // Compute required_variant_blocks early so they survive all early-return paths.
     let required_variant_blocks =
-        emit_required_variant_blocks(v, &accessor, &oneof_root, &module_ident, &oneof_enum_ident);
+        emit_required_variant_blocks(v, &accessor, &oneof_root, &module, &oneof_enum_ident);
 
     // If no variant has rules, we only need the None check (already handled above).
     if some_arms.is_empty() && !has_required && !has_required_variants {
@@ -161,7 +159,7 @@ fn emit_required_variant_blocks(
     v: &OneofValidator,
     accessor: &syn::Ident,
     oneof_root: &TokenStream,
-    module_ident: &syn::Ident,
+    module: &TokenStream,
     oneof_enum_ident: &syn::Ident,
 ) -> Vec<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
@@ -197,7 +195,7 @@ fn emit_required_variant_blocks(
             _ => quote!(Message),
         };
         out.push(quote! {
-            if !matches!(&self.#accessor, Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(_))) {
+            if !matches!(&self.#accessor, Some(#oneof_root::#module::#oneof_enum_ident::#variant_ident(_))) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath {
                         elements: ::std::vec![
@@ -259,7 +257,7 @@ fn has_field_rules(f: &FieldValidator) -> bool {
 fn emit_variant_arm(
     f: &FieldValidator,
     oneof_root: &TokenStream,
-    module_ident: &syn::Ident,
+    module: &TokenStream,
     oneof_enum_ident: &syn::Ident,
 ) -> Result<TokenStream> {
     if matches!(f.ignore, crate::scan::Ignore::Always) {
@@ -412,14 +410,14 @@ fn emit_variant_arm(
     );
     if needs_copy_deref {
         Ok(quote! {
-            Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
+            Some(#oneof_root::#module::#oneof_enum_ident::#variant_ident(__oneof_val)) => {
                 let #val_ident = *__oneof_val;
                 #( #checks )*
             }
         })
     } else {
         Ok(quote! {
-            Some(#oneof_root::#module_ident::#oneof_enum_ident::#variant_ident(#val_ident)) => {
+            Some(#oneof_root::#module::#oneof_enum_ident::#variant_ident(#val_ident)) => {
                 #( #checks )*
             }
         })
@@ -987,6 +985,15 @@ fn oneof_field_path(f: &FieldValidator) -> TokenStream {
     }
 }
 
+/// The module buffa generates for a message's oneof enums: one snake_case
+/// segment per message, outermost first (`Outer.InnerMsg` → `outer::inner_msg`).
+pub(super) fn module_path(parent_msg_name: &str) -> TokenStream {
+    let segments = parent_msg_name
+        .split('.')
+        .map(|name| crate::emit::field_ident(&to_snake_case(name)));
+    quote! { #(#segments)::* }
+}
+
 pub(super) fn to_snake_case(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len() + 2);
@@ -1013,4 +1020,19 @@ pub(super) fn to_pascal_case(s: &str) -> String {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::module_path;
+
+    #[test]
+    fn module_path_nests_one_snake_case_segment_per_message() {
+        for (parent_msg_name, expected) in [
+            ("CreateGradingRequest", "create_grading_request"),
+            ("Outer.HTTPRequest.Type", "outer :: http_request :: r#type"),
+        ] {
+            assert_eq!(module_path(parent_msg_name).to_string(), expected);
+        }
+    }
 }

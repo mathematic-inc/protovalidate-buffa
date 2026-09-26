@@ -66,3 +66,34 @@ message CelMessageTree {
   string id = 1;
   repeated CelMessageTree children = 2;
 }
+
+message CelOneofOuter {
+  message Middle {
+    message Inner {
+      option (buf.validate.message).cel = {
+        id: "nested_oneof.presence"
+        expression: "has(this.number) == (this.selected == 1)"
+      };
+      option (buf.validate.message).oneof = {
+        fields: [
+          "text",
+          "outside"
+        ]
+      };
+
+      int32 selected = 1;
+      oneof choice {
+        option (buf.validate.oneof).required = true;
+        int32 number = 2 [(buf.validate.field).int32.gt = 0];
+        string text = 3;
+      }
+      string outside = 4;
+      oneof mode {
+        bool strict = 5 [(buf.validate.field).required = true];
+        bool lenient = 6;
+      }
+    }
+    Inner inner = 1;
+  }
+  Middle middle = 1;
+}
