@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.1...protoc-gen-protovalidate-buffa-v0.10.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* **codegen:** Enforce field rules and preserve extension paths ([ea43bea](https://github.com/mathematic-inc/protovalidate-buffa/commit/ea43bea332317eb77722f6103b1d65851a0bbb3d))
+
 ## [0.10.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.0...protoc-gen-protovalidate-buffa-v0.10.1) (2026-09-26)
 
 
