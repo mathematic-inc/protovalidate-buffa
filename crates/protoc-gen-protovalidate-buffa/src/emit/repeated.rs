@@ -1577,7 +1577,7 @@ pub fn emit_repeated(
             let Some(fam) = family else { continue };
             let fam_name = fam.name;
             let fam_num = fam.number;
-            let ext_bracketed = format!("[buf.validate.conformance.cases.{ext_name}]");
+            let ext_bracketed = format!("[{ext_name}]");
             // Native path: bind `this` to the element value and `rule` to
             // the extension's constant value.
             let fp_quote = quote! {

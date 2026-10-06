@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package acme.v1;
+
+import "acme/v1/rules.proto";
+import "buf/validate/validate.proto";
+import "google/protobuf/wrappers.proto";
+import "unscoped.proto";
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/84
+message IgnoredLocale {
+  string locale = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.min_len = 2,
+    (buf.validate.field).cel = {
+      id: "locale.cel"
+      expression: "this.matches('^[a-z]{2}$')"
+    },
+    (buf.validate.field).string.(language_tag) = true
+  ];
+}
+
+message ZeroValueRules {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_SET = 1;
+  }
+  string text = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "text.cel"
+      expression: "false"
+    }
+  ];
+  bytes data = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "data.cel"
+      expression: "false"
+    }
+  ];
+  int32 signed32 = 3 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "signed32.cel"
+      expression: "false"
+    }
+  ];
+  int64 signed64 = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "signed64.cel"
+      expression: "false"
+    }
+  ];
+  uint32 unsigned32 = 5 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "unsigned32.cel"
+      expression: "false"
+    }
+  ];
+  uint64 unsigned64 = 6 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "unsigned64.cel"
+      expression: "false"
+    }
+  ];
+  float float32 = 7 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "float32.cel"
+      expression: "false"
+    }
+  ];
+  double float64 = 8 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "float64.cel"
+      expression: "false"
+    }
+  ];
+  bool flag = 9 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "flag.cel"
+      expression: "false"
+    }
+  ];
+  State state = 10 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "state.cel"
+      expression: "false"
+    }
+  ];
+  repeated string items = 11 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "items.cel"
+      expression: "false"
+    }
+  ];
+  map<string, string> entries = 12 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "entries.cel"
+      expression: "false"
+    }
+  ];
+}
+
+message PresenceRules {
+  optional string text = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "optional.cel"
+      expression: "false"
+    },
+    (buf.validate.field).string.(language_tag) = true
+  ];
+  google.protobuf.StringValue wrapper = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "wrapper.cel"
+      expression: "false"
+    },
+    (buf.validate.field).string.(language_tag) = true
+  ];
+  Child child = 3 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "message.cel"
+      expression: "false"
+    }
+  ];
+  message Child {}
+}
+
+message IgnoredUnsupportedRule {
+  string text = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).cel = {
+      id: "unsupported.cel"
+      expression: "this.unknownFunction()"
+    }
+  ];
+}
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/85
+message PredefinedPaths {
+  string direct = 1 [(buf.validate.field).string.(language_tag) = true];
+  string nested = 2 [(buf.validate.field).string.(Outer.Inner.language_tag) = true];
+  repeated string items = 3 [(buf.validate.field).repeated.items.string.(language_tag) = true];
+  string global = 4 [(buf.validate.field).string.(global_language_tag) = true];
+}

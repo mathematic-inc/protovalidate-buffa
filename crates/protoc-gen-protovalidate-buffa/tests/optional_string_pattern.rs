@@ -65,7 +65,7 @@ fn message(
 /// The emitted `pattern` check must borrow the value through `AsRef`.
 fn assert_pattern_borrows(src: &str) {
     assert!(
-        src.contains("is_match(::core::convert::AsRef::<str>::as_ref(v))"),
+        src.contains("is_match(::core::convert::AsRef::<str>::as_ref(&(v)))"),
         "pattern check must borrow the value through `AsRef`; generated source was:\n{src}"
     );
 }

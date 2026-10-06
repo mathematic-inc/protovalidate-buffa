@@ -2,3 +2,7 @@ version: v2
 lint:
   use:
     - MINIMAL
+  ignore_only:
+    PACKAGE_DEFINED:
+      # This fixture tests fully qualified extensions declared without a package.
+      - unscoped.proto

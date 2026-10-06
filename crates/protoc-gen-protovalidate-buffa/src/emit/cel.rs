@@ -122,16 +122,15 @@ pub(crate) fn emit_message_level(
             // Try compile-time expansion first; on failure emit a
             // runtime-error marker so the unsupported rule surfaces
             // clearly at validate-time.
-            if let Some(native_call) =
+            let call =
                 try_emit_native_field_cel(f, rule, &fp, idx_lit, &field_ident, schemas, shape)
-            {
-                calls.push(native_call);
-                continue;
-            }
-            calls.push(emit_runtime_error_violation(
-                &rule.id,
-                &format!("unsupported CEL: {}", rule.expression),
-            ));
+                    .unwrap_or_else(|| {
+                        emit_runtime_error_violation(
+                            &rule.id,
+                            &format!("unsupported CEL: {}", rule.expression),
+                        )
+                    });
+            calls.push(guard_ignored_zero_value(f, &field_ident, call));
         }
     }
     // Predefined (extension-based) CEL rules.
@@ -161,7 +160,7 @@ pub(crate) fn emit_message_level(
             let family_num = family.number;
             let family_fty = format_ident!("Message");
             let ext_fty = format_ident!("{}", rule.ext_field_type);
-            let ext_bracketed = format!("[buf.validate.conformance.cases.{}]", rule.ext_name);
+            let ext_bracketed = format!("[{}]", rule.ext_name);
             let ext_num = rule.ext_number;
             // For Optional<T> (proto2 / editions explicit) or Repeated<T>,
             // the field path uses inner scalar type. Wrapper/Map keep
@@ -206,24 +205,41 @@ pub(crate) fn emit_message_level(
                     ],
                 }
             };
-            if let Some(native_call) = try_emit_native_predefined(
+            let call = try_emit_native_predefined(
                 f,
                 rule,
                 &field_ident,
                 &predef_field_path,
                 &predef_rule_path,
                 shape,
-            ) {
-                calls.push(native_call);
-                continue;
-            }
-            calls.push(emit_runtime_error_violation(
-                &rule.id,
-                &format!("unsupported CEL: {}", rule.expression),
-            ));
+            )
+            .unwrap_or_else(|| {
+                emit_runtime_error_violation(
+                    &rule.id,
+                    &format!("unsupported CEL: {}", rule.expression),
+                )
+            });
+            calls.push(guard_ignored_zero_value(f, &field_ident, call));
         }
     }
     (statics, calls)
+}
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/84
+// IGNORE_IF_ZERO_VALUE applies to CEL and predefined rules, including fallbacks.
+fn guard_ignored_zero_value(
+    field: &FieldValidator,
+    accessor: &syn::Ident,
+    call: TokenStream,
+) -> TokenStream {
+    if matches!(field.ignore, crate::scan::Ignore::IfZeroValue)
+        && !field.is_legacy_required
+        && let Some(guard) = super::field::nonzero_guard(&field.field_type, accessor)
+    {
+        quote! { if #guard { #call } }
+    } else {
+        call
+    }
 }
 
 #[derive(Clone, Copy)]

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package validation.string_presence;
+
+import "buf/validate/validate.proto";
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/83
+message OptionalStrings {
+  optional string uuid = 1 [(buf.validate.field).string.uuid = true];
+  optional string email = 2 [(buf.validate.field).string.email = true];
+  optional string characters = 3 [(buf.validate.field).string.len = 2];
+  optional string bytes = 4 [(buf.validate.field).string.len_bytes = 4];
+  optional string hostname = 5 [(buf.validate.field).string.hostname = true];
+  optional string header = 6 [(buf.validate.field).string.well_known_regex = KNOWN_REGEX_HTTP_HEADER_NAME];
+  optional string pattern = 7 [(buf.validate.field).string.pattern = "^a"];
+  optional string constant = 8 [(buf.validate.field).string.const = "a"];
+}
+
+message OneofStrings {
+  oneof choice {
+    string uuid = 1 [(buf.validate.field).string.uuid = true];
+    string email = 2 [(buf.validate.field).string.email = true];
+    string characters = 3 [(buf.validate.field).string.len = 2];
+    string bytes = 4 [(buf.validate.field).string.len_bytes = 4];
+    string hostname = 5 [(buf.validate.field).string.hostname = true];
+    string header = 6 [(buf.validate.field).string.well_known_regex = KNOWN_REGEX_HTTP_HEADER_NAME];
+    string pattern = 7 [(buf.validate.field).string.pattern = "^a"];
+    string constant = 8 [(buf.validate.field).string.const = "a"];
+  }
+}
