@@ -41,6 +41,13 @@ fn main() {
         "module_tree/desktop/v1/error.proto",
     ];
     files.extend(module_tree_sources.iter().map(|name| proto_root.join(name)));
+    let validation_sources = [
+        "validation/string_presence/strings.proto",
+        "acme/v1/predefined.proto",
+        "acme/v1/rules.proto",
+        "unscoped.proto",
+    ];
+    files.extend(validation_sources.iter().map(|name| proto_root.join(name)));
 
     let harness_dir = proto_root.join("buf/validate/conformance/harness");
     for entry in std::fs::read_dir(&harness_dir).unwrap().flatten() {
@@ -118,6 +125,7 @@ fn main() {
     let case_source_names: Vec<String> = case_files
         .iter()
         .map(|c| format!("buf/validate/conformance/cases/{c}"))
+        .chain(validation_sources.iter().map(|name| (*name).to_string()))
         .collect();
     let request = CodeGeneratorRequest {
         file_to_generate: case_source_names,

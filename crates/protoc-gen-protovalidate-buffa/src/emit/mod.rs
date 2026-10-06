@@ -477,36 +477,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
                     && !matches!(f.ignore, crate::scan::Ignore::Always)
                 {
                     let accessor = field_ident(&f.rust_name);
-                    let guard: Option<TokenStream> = match &f.field_type {
-                        crate::scan::FieldKind::String | crate::scan::FieldKind::Bytes => {
-                            Some(quote! { !self.#accessor.is_empty() })
-                        }
-                        crate::scan::FieldKind::Repeated(_)
-                        | crate::scan::FieldKind::Map { .. } => {
-                            Some(quote! { !self.#accessor.is_empty() })
-                        }
-                        crate::scan::FieldKind::Int32
-                        | crate::scan::FieldKind::Sint32
-                        | crate::scan::FieldKind::Sfixed32 => {
-                            Some(quote! { self.#accessor != 0i32 })
-                        }
-                        crate::scan::FieldKind::Int64
-                        | crate::scan::FieldKind::Sint64
-                        | crate::scan::FieldKind::Sfixed64 => {
-                            Some(quote! { self.#accessor != 0i64 })
-                        }
-                        crate::scan::FieldKind::Uint32 | crate::scan::FieldKind::Fixed32 => {
-                            Some(quote! { self.#accessor != 0u32 })
-                        }
-                        crate::scan::FieldKind::Uint64 | crate::scan::FieldKind::Fixed64 => {
-                            Some(quote! { self.#accessor != 0u64 })
-                        }
-                        crate::scan::FieldKind::Float => Some(quote! { self.#accessor != 0f32 }),
-                        crate::scan::FieldKind::Double => Some(quote! { self.#accessor != 0f64 }),
-                        crate::scan::FieldKind::Bool => Some(quote! { self.#accessor }),
-                        crate::scan::FieldKind::Enum { .. } => {
-                            Some(quote! { (self.#accessor as i32) != 0i32 })
-                        }
+                    let guard = match &f.field_type {
                         crate::scan::FieldKind::Message { .. }
                         | crate::scan::FieldKind::Wrapper(_) => {
                             Some(quote! { self.#accessor.is_set() })
@@ -514,6 +485,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
                         crate::scan::FieldKind::Optional(_) => {
                             Some(quote! { self.#accessor.is_some() })
                         }
+                        _ => field::nonzero_guard(&f.field_type, &accessor),
                     };
                     if let Some(g) = guard {
                         Ok(quote! { if #g { #inner } })
