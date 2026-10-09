@@ -260,11 +260,11 @@ fn nested_reads_use_defaults_but_absent_field_rules_are_skipped() {
     }
 }
 
-fn field_mask(paths: Option<&[&str]>) -> Option<generated::google::protobuf::FieldMask> {
-    paths.map(|paths| generated::google::protobuf::FieldMask {
+fn field_mask(paths: &[&str]) -> generated::google::protobuf::FieldMask {
+    generated::google::protobuf::FieldMask {
         paths: paths.iter().map(|path| (*path).to_owned()).collect(),
         ..Default::default()
-    })
+    }
 }
 
 // https://github.com/mathematic-inc/protovalidate-buffa/discussions/90
@@ -301,7 +301,7 @@ fn field_mask_paths_validate_nested_update_requests() {
                     ..Default::default()
                 })
                 .into(),
-            update_mask: field_mask(paths).into(),
+            update_mask: paths.map(field_mask).into(),
             ..Default::default()
         };
         let bytes = owned.encode_to_vec();
@@ -339,7 +339,7 @@ fn field_mask_list_operations_preserve_presence_and_rule_paths() {
         (Some(&["other", "display_name"][..]), &[][..]),
     ] {
         let owned = CelFieldMaskOperations {
-            update_mask: field_mask(paths).into(),
+            update_mask: paths.map(field_mask).into(),
             mask_present: paths.is_some(),
             ..Default::default()
         };
