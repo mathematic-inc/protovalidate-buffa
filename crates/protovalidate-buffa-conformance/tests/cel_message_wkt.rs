@@ -259,3 +259,152 @@ fn nested_reads_use_defaults_but_absent_field_rules_are_skipped() {
         }
     }
 }
+
+fn field_mask(paths: Option<&[&str]>) -> Option<generated::google::protobuf::FieldMask> {
+    paths.map(|paths| generated::google::protobuf::FieldMask {
+        paths: paths.iter().map(|path| (*path).to_owned()).collect(),
+        ..Default::default()
+    })
+}
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/90
+#[test]
+fn field_mask_paths_validate_nested_update_requests() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelFieldMaskPathsView, CelFieldMaskPaths, cel_field_mask_paths::Item,
+    };
+
+    for (name, paths, expected) in [
+        (None, None, None),
+        (
+            Some(""),
+            Some(&[][..]),
+            Some(("update_mask.not_empty", "the update writes no fields")),
+        ),
+        (
+            None,
+            Some(&["display_name"][..]),
+            Some(("item.display_name.required", "display_name is required")),
+        ),
+        (
+            Some(""),
+            Some(&["display_name"][..]),
+            Some(("item.display_name.required", "display_name is required")),
+        ),
+        (Some("set"), Some(&["display_name"][..]), None),
+        (Some(""), Some(&["other"][..]), None),
+    ] {
+        let owned = CelFieldMaskPaths {
+            item: name
+                .map(|name| Item {
+                    display_name: name.to_owned(),
+                    ..Default::default()
+                })
+                .into(),
+            update_mask: field_mask(paths).into(),
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let view = CelFieldMaskPathsView::decode_view(&bytes).expect("update request must decode");
+        for result in [owned.validate(), view.validate()] {
+            assert_eq!(
+                result.is_ok(),
+                expected.is_none(),
+                "{name:?} {paths:?}: {result:?}"
+            );
+            if let (Err(error), Some((rule, message))) = (result, expected) {
+                assert!(error.compile_error.is_none(), "{error:?}");
+                assert!(error.runtime_error.is_none(), "{error:?}");
+                assert_eq!(error.violations.len(), 1, "{error:?}");
+                assert_eq!(error.violations[0].rule_id, rule);
+                assert_eq!(error.violations[0].message, message);
+            }
+        }
+    }
+}
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/90
+#[test]
+fn field_mask_list_operations_preserve_presence_and_rule_paths() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelFieldMaskOperationsView, CelFieldMaskOperations,
+    };
+    use protovalidate_buffa::{FieldType, Subscript};
+
+    for (paths, failed_rules) in [
+        (None, &[0usize, 1, 2, 3][..]),
+        (Some(&[][..]), &[0, 1, 2, 3][..]),
+        (Some(&["other"][..]), &[2, 3][..]),
+        (Some(&["display_name"][..]), &[][..]),
+        (Some(&["other", "display_name"][..]), &[][..]),
+    ] {
+        let owned = CelFieldMaskOperations {
+            update_mask: field_mask(paths).into(),
+            mask_present: paths.is_some(),
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let view =
+            CelFieldMaskOperationsView::decode_view(&bytes).expect("mask operations must decode");
+        for result in [owned.validate(), view.validate()] {
+            assert_eq!(
+                result.is_ok(),
+                failed_rules.is_empty(),
+                "{paths:?}: {result:?}"
+            );
+            if let Err(error) = result {
+                assert!(error.compile_error.is_none(), "{error:?}");
+                assert!(error.runtime_error.is_none(), "{error:?}");
+                let scopes = if paths.is_some() {
+                    &["message", "field"][..]
+                } else {
+                    &["message"][..]
+                };
+                let expected: Vec<_> = scopes
+                    .iter()
+                    .flat_map(|scope| {
+                        failed_rules.iter().map(move |index| {
+                            format!(
+                                "{scope}.{}",
+                                ["size", "receiver_size", "in", "exists"][*index]
+                            )
+                        })
+                    })
+                    .collect();
+                let actual: Vec<_> = error
+                    .violations
+                    .iter()
+                    .map(|v| v.rule_id.as_ref())
+                    .collect();
+                assert_eq!(actual, expected, "{paths:?}");
+                for (violation, index) in error
+                    .violations
+                    .iter()
+                    .filter(|v| v.rule_id.starts_with("field."))
+                    .zip(failed_rules)
+                {
+                    assert_eq!(violation.field.to_string(), "update_mask");
+                    assert_eq!(violation.field.elements[0].field_number, Some(1));
+                    assert_eq!(
+                        violation.field.elements[0].field_type,
+                        Some(FieldType::Message)
+                    );
+                    assert_eq!(violation.rule.to_string(), format!("cel[{index}]"));
+                    assert_eq!(violation.rule.elements[0].field_number, Some(23));
+                    assert!(
+                        matches!(violation.rule.elements[0].subscript, Some(Subscript::Index(actual)) if actual == *index as u64)
+                    );
+                    assert_eq!(
+                        violation.message,
+                        if *index < 2 {
+                            "paths must not be empty"
+                        } else {
+                            "paths must contain display_name"
+                        }
+                    );
+                    assert!(!violation.for_key);
+                }
+            }
+        }
+    }
+}

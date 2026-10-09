@@ -423,7 +423,8 @@ pub(crate) fn try_emit_native_field_cel(
     // First, try the message-typed `this` binding for fields whose type is
     // a known sub-message (e.g., `optional Inner val = 1` with a CEL rule
     // like `this.val == 'foo'`). Falls back to the scalar path below.
-    if let Some(out) = try_emit_native_field_cel_message(f, rule, field_path, field_ident, schemas)
+    if let Some(out) =
+        try_emit_native_field_cel_message(f, rule, field_path, idx_lit, field_ident, schemas)
     {
         return Some(out);
     }
@@ -702,16 +703,29 @@ fn field_this_access(
     }
 }
 
-/// Index of every emitted message's `MessageSchema`, keyed by proto FQN.
+/// Index of message schemas, including FieldMask, keyed by proto FQN.
 pub type SchemaIndex = std::collections::BTreeMap<String, MessageSchema>;
 
-/// Build the `SchemaIndex` for every message the plugin is emitting.
+/// Build the `SchemaIndex` for emitted messages and the FieldMask well-known type.
 #[must_use]
 pub fn build_schema_index(messages: &[MessageValidators]) -> SchemaIndex {
-    messages
+    let mut index: SchemaIndex = messages
         .iter()
         .map(|m| (m.proto_name.clone(), build_message_schema(m)))
-        .collect()
+        .collect();
+    // FieldMask retains its protobuf message shape in CEL, but its imported
+    // descriptor is not normally among the messages being emitted.
+    index
+        .entry("google.protobuf.FieldMask".to_owned())
+        .or_insert_with(|| MessageSchema {
+            fields: vec![MessageFieldEntry {
+                proto_name: "paths".to_owned(),
+                rust_ident: "paths".to_owned(),
+                ty: CelType::List(Box::new(CelType::Str { owned: false })),
+                kind: SchemaFieldKind::Repeated,
+            }],
+        });
+    index
 }
 
 /// Try the message-typed `this` shape: when `(field).cel` targets a
@@ -721,6 +735,7 @@ fn try_emit_native_field_cel_message(
     f: &FieldValidator,
     rule: &crate::scan::CelRule,
     field_path: &TokenStream,
+    idx_lit: u64,
     field_ident: &syn::Ident,
     schemas: &SchemaIndex,
 ) -> Option<TokenStream> {
@@ -732,9 +747,11 @@ fn try_emit_native_field_cel_message(
         },
         _ => return None,
     };
-    // Skip well-known types — they need their own CEL semantics handled by
-    // the runtime impls.
-    if inner_full_name.starts_with("google.protobuf.") {
+    // FieldMask exposes ordinary message fields. Other well-known types
+    // retain their specialized CEL handling (e.g. Timestamp and Duration).
+    if inner_full_name.starts_with("google.protobuf.")
+        && inner_full_name != "google.protobuf.FieldMask"
+    {
         return None;
     }
     let inner_schema = schemas.get(&inner_full_name)?.clone();
@@ -757,7 +774,7 @@ fn try_emit_native_field_cel_message(
     } else {
         quote! {}
     };
-    let rule_path = rule_path_for_field_cel(rule.is_cel_expression, 0);
+    let rule_path = rule_path_for_field_cel(rule.is_cel_expression, idx_lit);
     let fp = field_path.clone();
     let id_lit = &rule.id;
     let msg_lit = &rule.message;
