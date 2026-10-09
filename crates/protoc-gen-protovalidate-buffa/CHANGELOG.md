@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.2...protoc-gen-protovalidate-buffa-v0.10.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **cel:** Read FieldMask paths in validation rules ([daef273](https://github.com/mathematic-inc/protovalidate-buffa/commit/daef27308ecbc5323ec5154010ecf9f1c4bdfa56))
+
 ## [0.10.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.1...protoc-gen-protovalidate-buffa-v0.10.2) (2026-10-06)
 
 
