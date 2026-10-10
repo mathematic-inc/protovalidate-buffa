@@ -4,6 +4,7 @@ package buf.validate.conformance.cases;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 
 // Regression for https://github.com/mathematic-inc/protovalidate-buffa/discussions/44.
@@ -76,4 +77,68 @@ message CelNestedTimestampDefaults {
     id: "nested_timestamp_defaults.ordered"
     expression: "this.range.start < this.range.end"
   }];
+}
+
+// Regression for https://github.com/mathematic-inc/protovalidate-buffa/discussions/90.
+message CelFieldMaskPaths {
+  option (buf.validate.message).cel = {
+    id: "item.display_name.required"
+    message: "display_name is required"
+    expression: "!('display_name' in this.update_mask.paths) || this.item.display_name != ''"
+  };
+  message Item {
+    string display_name = 1;
+  }
+  Item item = 1;
+  google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).cel = {
+    id: "update_mask.not_empty"
+    message: "the update writes no fields"
+    expression: "size(this.paths) > 0"
+  }];
+}
+
+message CelFieldMaskOperations {
+  option (buf.validate.message).cel = {
+    id: "message.size"
+    expression: "size(this.update_mask.paths) > 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "message.receiver_size"
+    expression: "this.update_mask.paths.size() > 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "message.in"
+    expression: "'display_name' in this.update_mask.paths"
+  };
+  option (buf.validate.message).cel = {
+    id: "message.exists"
+    expression: "this.update_mask.paths.exists(p, p == 'display_name')"
+  };
+  option (buf.validate.message).cel = {
+    id: "message.presence"
+    expression: "has(this.update_mask) == this.mask_present"
+  };
+  google.protobuf.FieldMask update_mask = 1 [
+    (buf.validate.field).cel = {
+      id: "field.size"
+      message: "paths must not be empty"
+      expression: "size(this.paths) > 0"
+    },
+    (buf.validate.field).cel = {
+      id: "field.receiver_size"
+      message: "paths must not be empty"
+      expression: "this.paths.size() > 0"
+    },
+    (buf.validate.field).cel = {
+      id: "field.in"
+      message: "paths must contain display_name"
+      expression: "'display_name' in this.paths"
+    },
+    (buf.validate.field).cel = {
+      id: "field.exists"
+      message: "paths must contain display_name"
+      expression: "this.paths.exists(p, p == 'display_name')"
+    }
+  ];
+  bool mask_present = 2;
 }
