@@ -3,7 +3,8 @@
 //! The build script (`build.rs`) runs the transpiler against a curated
 //! battery of CEL expressions covering features the conformance suite
 //! doesn't exercise (two-variable comprehensions, `type()`, dynamic
-//! `duration()` / `timestamp()`, format directives `%e` / `%x` / `%o` /
+//! `duration()` / `timestamp()`, timestamp and duration arithmetic and
+//! the runtime errors it raises, format directives `%e` / `%x` / `%o` /
 //! `%b`, map literals, list indexing, `int`/`uint` cross-type compare,
 //! empty-list short-circuits, dynamic regex, `rule`-const folding) and
 //! emits each result as a `pub fn _check_<name>(...) -> <Type>` function

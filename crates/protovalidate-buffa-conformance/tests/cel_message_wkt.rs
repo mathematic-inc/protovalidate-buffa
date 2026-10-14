@@ -408,3 +408,303 @@ fn field_mask_list_operations_preserve_presence_and_rule_paths() {
         }
     }
 }
+
+/// 0001-01-01T00:00:00Z and 9999-12-31T23:59:59Z, CEL's timestamp bounds.
+const YEAR_1: i64 = -62_135_596_800;
+const YEAR_9999: i64 = 253_402_300_799;
+const HOUR: i64 = 3600;
+
+fn timestamp(seconds: i64, nanos: i32) -> generated::google::protobuf::Timestamp {
+    generated::google::protobuf::Timestamp {
+        seconds,
+        nanos,
+        ..Default::default()
+    }
+}
+
+fn duration(seconds: i64, nanos: i32) -> generated::google::protobuf::Duration {
+    generated::google::protobuf::Duration {
+        seconds,
+        nanos,
+        ..Default::default()
+    }
+}
+
+/// What validating a message produced.
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    /// The IDs of the rules it failed, if any.
+    Failed(Vec<String>),
+    /// A runtime error, which replaces any violations.
+    RuntimeError(String),
+}
+
+fn outcome(result: Result<(), protovalidate_buffa::ValidationError>) -> Outcome {
+    let Err(error) = result else {
+        return Outcome::Failed(Vec::new());
+    };
+    assert!(error.compile_error.is_none(), "{error:?}");
+    if let Some(message) = error.runtime_error {
+        assert!(error.violations.is_empty(), "{:?}", error.violations);
+        return Outcome::RuntimeError(message);
+    }
+    Outcome::Failed(
+        error
+            .violations
+            .into_iter()
+            .map(|v| v.rule_id.into_owned())
+            .collect(),
+    )
+}
+
+/// Validates an owned message and its view, which must agree, and returns
+/// their [`Outcome`].
+macro_rules! validate_both {
+    ($view:ident, $owned:expr) => {{
+        let owned = $owned;
+        let bytes = owned.encode_to_vec();
+        let view = $view::decode_view(&bytes).expect("message must decode");
+        let outcome = outcome(owned.validate());
+        assert_eq!(outcome, self::outcome(view.validate()), "{owned:?}");
+        outcome
+    }};
+}
+
+fn failed(rules: &[&str]) -> Outcome {
+    Outcome::Failed(rules.iter().map(|rule| (*rule).to_owned()).collect())
+}
+
+fn runtime_error(rule: &str, reason: &str) -> Outcome {
+    Outcome::RuntimeError(format!("cel runtime error in rule {rule:?}: {reason}"))
+}
+
+#[test]
+fn timestamp_differences_compare_with_duration_literals() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTimestampSpanView, CelTimestampSpan,
+    };
+
+    for (from, to, expected) in [
+        ((0, 0), (24 * HOUR, 0), failed(&[])),
+        ((0, 0), (25 * HOUR, 0), failed(&[])),
+        ((0, 0), (25 * HOUR, 1), failed(&["board.range"])),
+        ((0, 0), (26 * HOUR, 0), failed(&["board.range"])),
+        ((-HOUR, 500), (HOUR, 0), failed(&[])),
+        ((0, 0), (0, 0), failed(&["board.range"])),
+        ((HOUR, 0), (0, 0), failed(&["board.range"])),
+    ] {
+        let actual = validate_both!(
+            CelTimestampSpanView,
+            CelTimestampSpan {
+                from: timestamp(from.0, from.1).into(),
+                to: timestamp(to.0, to.1).into(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{from:?} to {to:?}");
+    }
+}
+
+#[test]
+fn scheduled_spans_compare_with_duration_literals() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelScheduledSpanView, CelScheduledSpan,
+    };
+
+    for (start, end, expected) in [
+        (0, 11 * HOUR, failed(&[])),
+        (0, 12 * HOUR, failed(&[])),
+        (0, 13 * HOUR, failed(&["assign.length"])),
+        (HOUR, 0, failed(&["assign.length"])),
+        (HOUR, HOUR, failed(&["assign.length"])),
+    ] {
+        let actual = validate_both!(
+            CelScheduledSpanView,
+            CelScheduledSpan {
+                scheduled_start: timestamp(start, 0).into(),
+                scheduled_end: timestamp(end, 0).into(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{start} to {end}");
+    }
+}
+
+#[test]
+fn timestamp_and_duration_arithmetic_follows_cel() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalArithmeticView, CelTemporalArithmetic,
+    };
+
+    let all_spans = [
+        "timestamp_plus_duration",
+        "duration_plus_timestamp",
+        "timestamp_minus_duration",
+        "timestamp_minus_timestamp",
+    ];
+    for (start, end, length, rest, expected) in [
+        (
+            (1000, 0),
+            (1000 + 2 * HOUR, 0),
+            (2 * HOUR, 0),
+            (HOUR, 0),
+            failed(&[]),
+        ),
+        // Before the epoch, nanos still count up from the second.
+        ((-10, 999_999_999), (-9, 0), (0, 1), (0, 0), failed(&[])),
+        ((-10, 0), (-11, 0), (-1, 0), (-1, 0), failed(&[])),
+        (
+            (0, 0),
+            (2 * HOUR, 1),
+            (2 * HOUR, 0),
+            (0, 0),
+            failed(&all_spans),
+        ),
+        (
+            (0, 0),
+            (2 * HOUR, 0),
+            (2 * HOUR, 0),
+            (3 * HOUR, 0),
+            failed(&["duration_minus_duration"]),
+        ),
+        (
+            (0, 0),
+            (2 * HOUR, 0),
+            (2 * HOUR, 0),
+            (6 * HOUR, 0),
+            failed(&["duration_minus_duration", "duration_plus_duration"]),
+        ),
+    ] {
+        let actual = validate_both!(
+            CelTemporalArithmeticView,
+            CelTemporalArithmetic {
+                start: timestamp(start.0, start.1).into(),
+                end: timestamp(end.0, end.1).into(),
+                length: duration(length.0, length.1).into(),
+                rest: duration(rest.0, rest.1).into(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{start:?} {end:?} {length:?} {rest:?}");
+    }
+}
+
+#[test]
+fn timestamp_and_duration_overflow_is_a_runtime_error() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalOverflowView, CelTemporalOverflow,
+    };
+
+    // The longest duration CEL allows is i64::MAX nanoseconds.
+    let half_max = (4_611_686_018, 427_387_903);
+    let century = 100 * 365 * 24 * HOUR;
+    for (start, end, shift, expected) in [
+        ((0, 0), (0, 0), (0, 0), failed(&[])),
+        (
+            (YEAR_1, 0),
+            (YEAR_9999, 0),
+            (0, 0),
+            runtime_error("span", "duration overflow"),
+        ),
+        (
+            (YEAR_9999 - century, 0),
+            (YEAR_9999, 999_999_999),
+            (0, 0),
+            failed(&[]),
+        ),
+        (
+            (YEAR_9999 - century, 0),
+            (YEAR_9999, 999_999_999),
+            (0, 1),
+            runtime_error("shifted", "timestamp overflow"),
+        ),
+        (
+            (YEAR_1, 0),
+            (YEAR_1, 0),
+            (0, -1),
+            runtime_error("shifted", "timestamp overflow"),
+        ),
+        ((0, 0), (0, 0), half_max, failed(&[])),
+        (
+            (0, 0),
+            (0, 0),
+            (half_max.0, half_max.1 + 1),
+            runtime_error("doubled", "duration overflow"),
+        ),
+    ] {
+        let actual = validate_both!(
+            CelTemporalOverflowView,
+            CelTemporalOverflow {
+                start: timestamp(start.0, start.1).into(),
+                end: timestamp(end.0, end.1).into(),
+                shift: duration(shift.0, shift.1).into(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{start:?} {end:?} {shift:?}");
+    }
+}
+
+#[test]
+fn logical_operators_discard_errors_the_other_operand_overrides() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalLogicalErrorsView, CelTemporalLogicalErrors,
+    };
+
+    for (start, end, expected) in [
+        (0, HOUR / 2, failed(&[])),
+        (0, 2 * HOUR, failed(&["and", "or"])),
+        (2 * HOUR, 0, failed(&["and"])),
+        // The span overflows: `end > start` decides `and`, and `end <= start`
+        // decides `or`.
+        (YEAR_9999, YEAR_1, failed(&["and"])),
+        // Neither right operand decides, so the error stands.
+        (YEAR_1, YEAR_9999, runtime_error("and", "duration overflow")),
+    ] {
+        let actual = validate_both!(
+            CelTemporalLogicalErrorsView,
+            CelTemporalLogicalErrors {
+                start: timestamp(start, 0).into(),
+                end: timestamp(end, 0).into(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{start} to {end}");
+    }
+}
+
+#[test]
+fn quantifiers_discard_errors_another_element_overrides() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalQuantifierErrorsView, CelTemporalQuantifierErrors,
+        cel_temporal_quantifier_errors::Slot,
+    };
+
+    let slot = |start: i64, end: i64| Slot {
+        start: timestamp(start, 0).into(),
+        end: timestamp(end, 0).into(),
+        ..Default::default()
+    };
+    let overflow = || slot(YEAR_1, YEAR_9999);
+    for (slots, expected) in [
+        (vec![], failed(&["exists"])),
+        (vec![slot(0, HOUR / 2)], failed(&["exists"])),
+        (vec![slot(0, 2 * HOUR)], failed(&["all"])),
+        (vec![overflow(), slot(0, 2 * HOUR)], failed(&["all"])),
+        (vec![slot(0, 2 * HOUR), overflow()], failed(&["all"])),
+        (vec![overflow()], runtime_error("all", "duration overflow")),
+        (
+            vec![slot(0, HOUR / 2), overflow()],
+            runtime_error("all", "duration overflow"),
+        ),
+    ] {
+        let actual = validate_both!(
+            CelTemporalQuantifierErrorsView,
+            CelTemporalQuantifierErrors {
+                slots: slots.clone(),
+                ..Default::default()
+            }
+        );
+        assert_eq!(actual, expected, "{slots:?}");
+    }
+}
