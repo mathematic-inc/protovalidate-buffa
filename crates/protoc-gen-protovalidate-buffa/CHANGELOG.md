@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.3...protoc-gen-protovalidate-buffa-v0.10.4) (2026-10-14)
+
+
+### Bug Fixes
+
+* **cel:** Transpile timestamp and duration arithmetic ([36273cb](https://github.com/mathematic-inc/protovalidate-buffa/commit/36273cbf41c5b17d4d1646300e20f38a7083c00b))
+
 ## [0.10.3](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.2...protoc-gen-protovalidate-buffa-v0.10.3) (2026-10-09)
 
 
