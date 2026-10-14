@@ -505,6 +505,7 @@ pub(crate) fn try_emit_native_field_cel(
         },
         _ => return None,
     };
+    let check = catch_runtime_errors(&compiler, &rule.id, check);
     let body = quote! {
         let __cel_this = #access;
         #now_prelude
@@ -811,6 +812,7 @@ fn try_emit_native_field_cel_message(
         },
         _ => return None,
     };
+    let check = catch_runtime_errors(&compiler, &rule.id, check);
     let body = quote! {
         #now_prelude
         #check
@@ -842,6 +844,35 @@ pub(crate) fn emit_runtime_error_violation(rule_id: &str, reason: &str) -> Token
             message: ::std::borrow::Cow::Borrowed(#msg),
             for_key: false,
         });
+    }
+}
+
+/// Declare the `__cel_error` cell a compiled check records CEL runtime errors
+/// in, when it can raise any. A recorded error replaces the violations the
+/// check pushed with a `__cel_runtime_error__` marker, since the rule has no
+/// result.
+fn catch_runtime_errors(compiler: &Compiler<'_>, rule_id: &str, check: TokenStream) -> TokenStream {
+    if !compiler.raises_runtime_errors() {
+        return check;
+    }
+    let prefix = format!("cel runtime error in rule {rule_id:?}: ");
+    quote! {
+        {
+            let __cel_error =
+                ::core::cell::Cell::new(::core::option::Option::<&'static str>::None);
+            let __cel_violations = violations.len();
+            #check
+            if let ::core::option::Option::Some(__cel_reason) = __cel_error.take() {
+                violations.truncate(__cel_violations);
+                violations.push(::protovalidate_buffa::Violation {
+                    field: ::protovalidate_buffa::FieldPath::default(),
+                    rule: ::protovalidate_buffa::FieldPath::default(),
+                    rule_id: ::std::borrow::Cow::Borrowed("__cel_runtime_error__"),
+                    message: ::std::borrow::Cow::Owned(::std::format!("{}{}", #prefix, __cel_reason)),
+                    for_key: false,
+                });
+            }
+        }
     }
 }
 
@@ -950,6 +981,7 @@ pub(crate) fn try_compile_cel_check(
         },
         _ => return None,
     };
+    let check = catch_runtime_errors(&compiler, rule_id, check);
     Some(quote! {
         #now_prelude
         #check
@@ -1176,6 +1208,7 @@ fn try_emit_native_message_cel(
         },
         _ => return None,
     };
+    let check = catch_runtime_errors(&compiler, &rule.id, check);
     Some(quote! {
         {
             #now_prelude
@@ -1279,6 +1312,7 @@ pub(crate) fn try_emit_native_predefined(
         },
         _ => return None,
     };
+    let check = catch_runtime_errors(&compiler, &rule.id, check);
     let body = quote! {
         let __cel_this = #access;
         #now_prelude

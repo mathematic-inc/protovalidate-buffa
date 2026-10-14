@@ -79,6 +79,112 @@ message CelNestedTimestampDefaults {
   }];
 }
 
+// Subtracting timestamps gives a duration to compare with a literal.
+message CelTimestampSpan {
+  option (buf.validate.message).cel = {
+    id: "board.range"
+    message: "a board covers one day at most"
+    expression: "this.to > this.from && this.to - this.from <= duration('25h')"
+  };
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+}
+
+message CelScheduledSpan {
+  option (buf.validate.message).cel = {
+    id: "assign.length"
+    message: "a job ends after it starts, within 12 hours"
+    expression: "this.scheduled_end > this.scheduled_start && this.scheduled_end - this.scheduled_start <= duration('12h')"
+  };
+  google.protobuf.Timestamp scheduled_start = 1;
+  google.protobuf.Timestamp scheduled_end = 2;
+}
+
+// Every timestamp and duration overload of + and -.
+message CelTemporalArithmetic {
+  option (buf.validate.message).cel = {
+    id: "timestamp_plus_duration"
+    expression: "this.start + this.length == this.end"
+  };
+  option (buf.validate.message).cel = {
+    id: "duration_plus_timestamp"
+    expression: "this.length + this.start == this.end"
+  };
+  option (buf.validate.message).cel = {
+    id: "timestamp_minus_duration"
+    expression: "this.end - this.length == this.start"
+  };
+  option (buf.validate.message).cel = {
+    id: "timestamp_minus_timestamp"
+    expression: "this.end - this.start == this.length"
+  };
+  option (buf.validate.message).cel = {
+    id: "duration_minus_duration"
+    expression: "this.length - this.rest >= duration('0s')"
+  };
+  option (buf.validate.message).cel = {
+    id: "duration_plus_duration"
+    expression: "this.length + this.rest < duration('8h')"
+  };
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+  google.protobuf.Duration length = 3;
+  google.protobuf.Duration rest = 4;
+}
+
+// Results outside CEL's ranges are runtime errors: durations hold an int64
+// count of nanoseconds, and timestamps run from year 1 to year 9999.
+message CelTemporalOverflow {
+  option (buf.validate.message).cel = {
+    id: "span"
+    expression: "this.end - this.start >= duration('0s')"
+  };
+  option (buf.validate.message).cel = {
+    id: "shifted"
+    expression: "this.end + this.shift >= this.start"
+  };
+  option (buf.validate.message).cel = {
+    id: "doubled"
+    expression: "this.shift + this.shift >= duration('0s')"
+  };
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+  google.protobuf.Duration shift = 3;
+}
+
+// An operand that decides && or || on its own discards an error from the
+// other operand, as CEL specifies.
+message CelTemporalLogicalErrors {
+  option (buf.validate.message).cel = {
+    id: "and"
+    expression: "this.end - this.start <= duration('1h') && this.end > this.start"
+  };
+  option (buf.validate.message).cel = {
+    id: "or"
+    expression: "this.end - this.start <= duration('1h') || this.end <= this.start"
+  };
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+// Likewise, an element that decides all() or exists() discards errors from
+// the other elements.
+message CelTemporalQuantifierErrors {
+  option (buf.validate.message).cel = {
+    id: "all"
+    expression: "this.slots.all(s, s.end - s.start <= duration('1h'))"
+  };
+  option (buf.validate.message).cel = {
+    id: "exists"
+    expression: "this.slots.exists(s, s.end - s.start > duration('1h'))"
+  };
+  message Slot {
+    google.protobuf.Timestamp start = 1;
+    google.protobuf.Timestamp end = 2;
+  }
+  repeated Slot slots = 1;
+}
+
 // Regression for https://github.com/mathematic-inc/protovalidate-buffa/discussions/90.
 message CelFieldMaskPaths {
   option (buf.validate.message).cel = {

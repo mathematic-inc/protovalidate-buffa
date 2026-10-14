@@ -46,6 +46,17 @@
 //! lets the emit code report better diagnostic messages in the violation
 //! payload.
 //!
+//! # Runtime errors
+//!
+//! Some operations can only fail while the rule evaluates, such as
+//! timestamp arithmetic that leaves CEL's range. They record the first such
+//! error in a `__cel_error` cell that the caller declares when
+//! [`Compiler::raises_runtime_errors`] is true, and carry on with a
+//! placeholder value; the caller then reports the error instead of the
+//! rule's result. `&&`, `||`, `all()` and `exists()` discard an error when
+//! another operand or element decides the result, as CEL specifies. Code
+//! that can't fail is emitted exactly as before.
+//!
 //! See `emit_message_level` in `emit/cel.rs` for the integration point.
 
 use std::collections::BTreeMap;
@@ -299,6 +310,9 @@ pub struct Compiler<'a> {
     /// Lookup table for `CelType::MessageRef`. When `None`, message refs
     /// cannot be resolved and field-selection on them falls back.
     schemas: Option<&'a dyn SchemaLookup>,
+    /// How many operations that can raise a CEL runtime error the emitted
+    /// code contains. See [`Compiler::raises_runtime_errors`].
+    runtime_error_sites: usize,
 }
 
 /// Trait-object-style lookup for sub-message schemas. Implemented by the
@@ -365,6 +379,38 @@ impl<'a> Compiler<'a> {
             ty: c.ty,
             needs_now: self.needs_now,
         })
+    }
+
+    /// Whether the compiled tokens can raise a CEL runtime error, such as a
+    /// timestamp overflow. If so, they record the first one in
+    /// `__cel_error`, a `Cell<Option<&'static str>>` the caller declares
+    /// before them (as it declares `now` for `needs_now`), and evaluate to
+    /// a placeholder value. The caller reports the error instead of the
+    /// value.
+    #[must_use]
+    pub const fn raises_runtime_errors(&self) -> bool {
+        self.runtime_error_sites > 0
+    }
+
+    /// Unwrap `value`, an `Option<T>` expression. `None` records `reason` in
+    /// `__cel_error`, unless an earlier error is recorded, and evaluates to
+    /// `placeholder` so the rest of the expression can still run.
+    fn raise_on_none(
+        &mut self,
+        value: &TokenStream,
+        reason: &str,
+        placeholder: &TokenStream,
+    ) -> TokenStream {
+        self.runtime_error_sites += 1;
+        quote! {
+            match #value {
+                ::core::option::Option::Some(__cel_ok) => __cel_ok,
+                ::core::option::Option::None => {
+                    __cel_error.set(__cel_error.get().or(::core::option::Option::Some(#reason)));
+                    #placeholder
+                }
+            }
+        }
     }
 
     fn expr(&mut self, e: &IdedExpr) -> Result<Compiled, FallbackReason> {
@@ -2163,6 +2209,7 @@ impl<'a> Compiler<'a> {
         if args.len() != 2 {
             return Err(FallbackReason::new("logical arity"));
         }
+        let sites = self.runtime_error_sites;
         let lhs = self.expr(&args[0])?;
         let rhs = self.expr(&args[1])?;
         if lhs.ty != CelType::Bool || rhs.ty != CelType::Bool {
@@ -2170,7 +2217,9 @@ impl<'a> Compiler<'a> {
         }
         let lt = lhs.tokens;
         let rt = rhs.tokens;
-        let tokens = if is_and {
+        let tokens = if self.runtime_error_sites > sites {
+            logical_discarding_errors(&lt, &rt, is_and)
+        } else if is_and {
             quote! { (#lt && #rt) }
         } else {
             quote! { (#lt || #rt) }
@@ -2250,6 +2299,9 @@ impl<'a> Compiler<'a> {
                 constant: None,
             });
         }
+        if let Some(temporal) = self.temporal_arith(name, &lhs, &rhs) {
+            return Ok(temporal);
+        }
         // Numeric arithmetic with CEL promotion rules.
         if !lhs.ty.is_numeric() || !rhs.ty.is_numeric() {
             return Err(FallbackReason::new(format!(
@@ -2271,6 +2323,76 @@ impl<'a> Compiler<'a> {
         Ok(Compiled {
             tokens: quote! { ((#lt) #op_tok (#rt)) },
             ty: result_ty,
+            constant: None,
+        })
+    }
+
+    /// CEL's timestamp and duration overloads of `+` and `-`, or `None` for
+    /// other operand types. A result outside CEL's range is a runtime
+    /// error: a duration holds an `int64` count of nanoseconds, and a
+    /// timestamp lies between `0001-01-01T00:00:00Z` and
+    /// `9999-12-31T23:59:59.999999999Z`.
+    fn temporal_arith(&mut self, name: &str, lhs: &Compiled, rhs: &Compiled) -> Option<Compiled> {
+        use CelType::{Duration, Timestamp};
+        let (value, ty) = match (name, &lhs.ty, &rhs.ty) {
+            // chrono's own ranges are wider than CEL's, so only the range
+            // check below can fail for a difference of two timestamps.
+            (op::SUBSTRACT, Timestamp, Timestamp) => (
+                quote! {
+                    ::core::option::Option::Some(__cel_lhs.signed_duration_since(__cel_rhs))
+                },
+                Duration,
+            ),
+            (op::ADD, Timestamp, Duration) => (
+                quote! { __cel_lhs.checked_add_signed(__cel_rhs) },
+                Timestamp,
+            ),
+            (op::ADD, Duration, Timestamp) => (
+                quote! { __cel_rhs.checked_add_signed(__cel_lhs) },
+                Timestamp,
+            ),
+            (op::SUBSTRACT, Timestamp, Duration) => (
+                quote! { __cel_lhs.checked_sub_signed(__cel_rhs) },
+                Timestamp,
+            ),
+            (op::ADD, Duration, Duration) => {
+                (quote! { __cel_lhs.checked_add(&__cel_rhs) }, Duration)
+            }
+            (op::SUBSTRACT, Duration, Duration) => {
+                (quote! { __cel_lhs.checked_sub(&__cel_rhs) }, Duration)
+            }
+            _ => return None,
+        };
+        let checked = if ty == Duration {
+            self.raise_on_none(
+                &quote! { (#value).filter(|__cel_d| __cel_d.num_nanoseconds().is_some()) },
+                "duration overflow",
+                &quote! { ::protovalidate_buffa::chrono::Duration::zero() },
+            )
+        } else {
+            self.raise_on_none(
+                &quote! {
+                    (#value).filter(|__cel_t| {
+                        (-62_135_596_800i64..=253_402_300_799i64).contains(&__cel_t.timestamp())
+                    })
+                },
+                "timestamp overflow",
+                &quote! { ::protovalidate_buffa::cel::timestamp_from_secs_nanos(0, 0) },
+            )
+        };
+        let l = &lhs.tokens;
+        let r = &rhs.tokens;
+        Some(Compiled {
+            // Bind the operands in order so an error in the left one is
+            // the one reported.
+            tokens: quote! {
+                ({
+                    let __cel_lhs = #l;
+                    let __cel_rhs = #r;
+                    #checked
+                })
+            },
+            ty,
             constant: None,
         })
     }
@@ -3005,13 +3127,16 @@ impl<'a> Compiler<'a> {
         );
         let body_args = &call.args[2..];
         let body_pat = quote! { (#var_ident1, #var_ident2) };
+        let sites = self.runtime_error_sites;
         let result: Result<Compiled, FallbackReason> = match kind {
             "all" => {
                 let pred = self.expr(&body_args[0])?;
                 if pred.ty == CelType::Bool {
                     let pred_t = pred.tokens;
-                    Ok(Compiled {
-                        tokens: quote! {
+                    let tokens = if self.runtime_error_sites > sites {
+                        quantifier_discarding_errors(&body_pat, &iter_expr, &pred_t, true)
+                    } else {
+                        quote! {
                             ({
                                 let mut __cel_ok = true;
                                 for #body_pat in #iter_expr {
@@ -3019,7 +3144,10 @@ impl<'a> Compiler<'a> {
                                 }
                                 __cel_ok
                             })
-                        },
+                        }
+                    };
+                    Ok(Compiled {
+                        tokens,
                         ty: CelType::Bool,
                         constant: None,
                     })
@@ -3034,8 +3162,10 @@ impl<'a> Compiler<'a> {
                 let pred = self.expr(&body_args[0])?;
                 if pred.ty == CelType::Bool {
                     let pred_t = pred.tokens;
-                    Ok(Compiled {
-                        tokens: quote! {
+                    let tokens = if self.runtime_error_sites > sites {
+                        quantifier_discarding_errors(&body_pat, &iter_expr, &pred_t, false)
+                    } else {
+                        quote! {
                             ({
                                 let mut __cel_hit = false;
                                 for #body_pat in #iter_expr {
@@ -3043,7 +3173,10 @@ impl<'a> Compiler<'a> {
                                 }
                                 __cel_hit
                             })
-                        },
+                        }
+                    };
+                    Ok(Compiled {
+                        tokens,
                         ty: CelType::Bool,
                         constant: None,
                     })
@@ -3228,6 +3361,7 @@ impl<'a> Compiler<'a> {
                 let Expr::Call(step_call) = &c.loop_step.expr else {
                     return Err(FallbackReason::new("bool comp: step not call"));
                 };
+                let sites = s.runtime_error_sites;
                 let pred = s.expr(&step_call.args[1])?;
                 if pred.ty != CelType::Bool {
                     return Err(FallbackReason::new(format!(
@@ -3235,17 +3369,23 @@ impl<'a> Compiler<'a> {
                         pred.ty
                     )));
                 }
-                let method = match kind {
-                    ComprehensionKind::All => quote! { all },
-                    ComprehensionKind::Exists => quote! { any },
-                    _ => unreachable!(),
-                };
+                let is_all = matches!(kind, ComprehensionKind::All);
                 let iter_t = range_iter_tokens.clone();
                 let pred_t = pred.tokens;
-                Ok(Compiled {
-                    tokens: quote! {
+                let tokens = if s.runtime_error_sites > sites {
+                    quantifier_discarding_errors(&iter_pat, &iter_t, &pred_t, is_all)
+                } else {
+                    let method = if is_all {
+                        quote! { all }
+                    } else {
+                        quote! { any }
+                    };
+                    quote! {
                         ((#iter_t).#method(|#iter_pat| #pred_t))
-                    },
+                    }
+                };
+                Ok(Compiled {
+                    tokens,
                     ty: CelType::Bool,
                     constant: None,
                 })
@@ -3680,6 +3820,85 @@ fn literal(lit: &LiteralValue) -> Compiled {
                 constant: Some(ConstValue::UInt(v)),
             }
         }
+    }
+}
+
+/// `&&` or `||` over operands that can raise runtime errors. CEL makes both
+/// operators commutative: an operand that decides the result on its own
+/// (`false` for `&&`, `true` for `||`) discards an error from the other
+/// operand. An error recorded before the operator still takes precedence.
+fn logical_discarding_errors(lhs: &TokenStream, rhs: &TokenStream, is_and: bool) -> TokenStream {
+    let decides = |value: TokenStream| {
+        if is_and {
+            quote! { !#value }
+        } else {
+            value
+        }
+    };
+    let lhs_decides = decides(quote! { __cel_lhs });
+    let rhs_decides = decides(quote! { __cel_rhs });
+    let (decided, undecided) = (!is_and, is_and);
+    quote! {
+        ({
+            let __cel_earlier = __cel_error.take();
+            let __cel_lhs = #lhs;
+            let __cel_lhs_error = __cel_error.take();
+            let __cel_value = if __cel_lhs_error.is_none() && #lhs_decides {
+                #decided
+            } else {
+                let __cel_rhs = #rhs;
+                let __cel_rhs_error = __cel_error.take();
+                if __cel_rhs_error.is_none() && #rhs_decides {
+                    #decided
+                } else {
+                    __cel_error.set(__cel_lhs_error.or(__cel_rhs_error));
+                    #undecided
+                }
+            };
+            if __cel_earlier.is_some() {
+                __cel_error.set(__cel_earlier);
+            }
+            __cel_value
+        })
+    }
+}
+
+/// `all()` or `exists()` over a predicate that can raise runtime errors.
+/// As with `&&` and `||`, an element that decides the result (`false` for
+/// `all`, `true` for `exists`) discards errors from the other elements.
+fn quantifier_discarding_errors(
+    pattern: &TokenStream,
+    iter: &TokenStream,
+    pred: &TokenStream,
+    is_all: bool,
+) -> TokenStream {
+    let step_decides = if is_all {
+        quote! { !__cel_step }
+    } else {
+        quote! { __cel_step }
+    };
+    let (decided, undecided) = (!is_all, is_all);
+    quote! {
+        ({
+            let __cel_earlier = __cel_error.take();
+            let mut __cel_pending: ::core::option::Option<&'static str> =
+                ::core::option::Option::None;
+            let mut __cel_value = #undecided;
+            for #pattern in #iter {
+                let __cel_step = #pred;
+                match __cel_error.take() {
+                    ::core::option::Option::None if #step_decides => {
+                        __cel_value = #decided;
+                        __cel_pending = ::core::option::Option::None;
+                        break;
+                    }
+                    ::core::option::Option::None => {}
+                    __cel_raised => __cel_pending = __cel_pending.or(__cel_raised),
+                }
+            }
+            __cel_error.set(__cel_earlier.or(__cel_pending));
+            __cel_value
+        })
     }
 }
 
@@ -6144,5 +6363,151 @@ mod tests {
             !s.contains("as_option"),
             "field access must not skip unset messages: {s}"
         );
+    }
+
+    // ====================================================================
+    // Timestamp and duration arithmetic, and the runtime errors it raises.
+    // ====================================================================
+
+    /// Compile `expr` against `this`, returning the output and whether it
+    /// can raise runtime errors.
+    fn compile_raising(expr: &str, this_ty: CelType) -> (CompileOutput, bool) {
+        let mut c = Compiler::new();
+        c.bind(
+            "this",
+            Binding {
+                rust_expr: quote! { __this },
+                ty: this_ty,
+                constant: None,
+            },
+        );
+        let out = c.compile(expr).expect("expected successful compile");
+        assert_parses_as_expr(&out.tokens, expr);
+        (out, c.raises_runtime_errors())
+    }
+
+    #[test]
+    fn timestamp_and_duration_arithmetic_has_cel_result_types() {
+        for (expr, this_ty, result_ty) in [
+            ("this - this", CelType::Timestamp, CelType::Duration),
+            (
+                "this + duration('1h')",
+                CelType::Timestamp,
+                CelType::Timestamp,
+            ),
+            (
+                "duration('1h') + this",
+                CelType::Timestamp,
+                CelType::Timestamp,
+            ),
+            (
+                "this - duration('1h')",
+                CelType::Timestamp,
+                CelType::Timestamp,
+            ),
+            ("now - this", CelType::Timestamp, CelType::Duration),
+            ("this + this", CelType::Duration, CelType::Duration),
+            (
+                "this - duration('1h')",
+                CelType::Duration,
+                CelType::Duration,
+            ),
+        ] {
+            let (out, raises) = compile_raising(expr, this_ty);
+            assert_eq!(out.ty, result_ty, "{expr}");
+            assert!(raises, "{expr} can overflow");
+        }
+    }
+
+    #[test]
+    fn timestamp_differences_compare_with_duration_literals() {
+        for op in ["<", "<=", ">", ">=", "==", "!="] {
+            let expr = format!("this - this {op} duration('25h')");
+            let (out, _) = compile_raising(&expr, CelType::Timestamp);
+            assert_eq!(out.ty, CelType::Bool, "{expr}");
+            let s = rendered(&out.tokens);
+            assert!(s.contains("signed_duration_since"), "{s}");
+            assert!(s.contains("duration_from_secs_nanos"), "{s}");
+        }
+    }
+
+    #[test]
+    fn temporal_results_outside_cel_ranges_raise_errors() {
+        let (out, _) = compile_raising("this + duration('1h') > this", CelType::Timestamp);
+        let s = rendered(&out.tokens);
+        assert!(s.contains("checked_add_signed"), "{s}");
+        assert!(s.contains("62_135_596_800i64"), "year 1 bound: {s}");
+        assert!(s.contains("253_402_300_799i64"), "year 9999 bound: {s}");
+        assert!(s.contains("\"timestamp overflow\""), "{s}");
+
+        let (out, _) = compile_raising("this + this > this", CelType::Duration);
+        let s = rendered(&out.tokens);
+        assert!(s.contains("checked_add"), "{s}");
+        assert!(s.contains("num_nanoseconds"), "int64 nanosecond bound: {s}");
+        assert!(s.contains("\"duration overflow\""), "{s}");
+    }
+
+    #[test]
+    fn temporal_overloads_cel_lacks_fall_back() {
+        for (expr, this_ty) in [
+            ("this + this", CelType::Timestamp),
+            ("duration('1h') - this", CelType::Timestamp),
+            ("this * 2", CelType::Duration),
+            ("this - 1", CelType::Duration),
+        ] {
+            let err = compile_fails(expr, this_ty);
+            assert_eq!(err.kind, FallbackKind::Unsupported, "{expr}");
+        }
+    }
+
+    #[test]
+    fn rules_that_cannot_fail_are_emitted_as_before() {
+        let (out, raises) = compile_raising(
+            "this > duration('1s') && (this < duration('2s') || this == duration('5s'))",
+            CelType::Duration,
+        );
+        assert!(!raises);
+        let s = rendered(&out.tokens);
+        assert!(!s.contains("__cel_error"), "{s}");
+        assert!(s.contains("&&") && s.contains("||"), "{s}");
+
+        let (out, raises) = compile_raising(
+            "this.all(d, d > duration('0s'))",
+            CelType::List(Box::new(CelType::Duration)),
+        );
+        assert!(!raises);
+        let s = rendered(&out.tokens);
+        assert!(s.contains(". all ("), "{s}");
+    }
+
+    #[test]
+    fn logical_operators_discard_errors_the_other_operand_overrides() {
+        for expr in [
+            "this - this <= duration('1h') && this > this",
+            "this > this && this - this <= duration('1h')",
+            "this - this <= duration('1h') || this > this",
+        ] {
+            let (out, raises) = compile_raising(expr, CelType::Timestamp);
+            assert!(raises, "{expr}");
+            let s = rendered(&out.tokens);
+            assert!(s.contains("__cel_lhs_error"), "{s}");
+            assert!(s.contains("__cel_rhs_error"), "{s}");
+            assert!(s.contains("__cel_earlier"), "{s}");
+        }
+    }
+
+    #[test]
+    fn quantifiers_discard_errors_another_element_overrides() {
+        for expr in [
+            "this.all(d, d + d < duration('1h'))",
+            "this.exists(d, d + d < duration('1h'))",
+            "this.all(i, d, d + d < duration('1h'))",
+            "this.exists(i, d, d + d < duration('1h'))",
+        ] {
+            let (out, raises) = compile_raising(expr, CelType::List(Box::new(CelType::Duration)));
+            assert!(raises, "{expr}");
+            let s = rendered(&out.tokens);
+            assert!(s.contains("__cel_pending"), "{s}");
+        }
     }
 }

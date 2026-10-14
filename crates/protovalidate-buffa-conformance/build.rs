@@ -660,6 +660,140 @@ fn write_cel_emit_fixtures(out_dir: &std::path::Path) {
             extras: vec![],
             expect_ret: "bool",
         },
+        // --- timestamp and duration arithmetic, which can raise runtime errors
+        CelCheck {
+            name: "timestamp_difference_lt",
+            expr: "this - other < duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_le",
+            expr: "this - other <= duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_gt",
+            expr: "this - other > duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_ge",
+            expr: "this - other >= duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_eq",
+            expr: "this - other == duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_ne",
+            expr: "this - other != duration('25h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_plus_duration",
+            expr: "this + duration('1h') > other",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_plus_timestamp",
+            expr: "duration('1h') + this > other",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_minus_duration",
+            expr: "this - duration('1h') < other",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_sum_and_difference",
+            expr: "this + this - duration('1s') >= duration('0s')",
+            this_ty: CelType::Duration,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "now_minus_timestamp",
+            expr: "now - this < duration('1h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_ternary",
+            expr: "(this > other ? this - other : other - this) <= duration('1h')",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_and",
+            expr: "this - other <= duration('1h') && this > other",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "timestamp_difference_or",
+            expr: "this - other <= duration('1h') || !(this > other)",
+            this_ty: CelType::Timestamp,
+            extras: vec![("other", CelType::Timestamp, None)],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_list_all",
+            expr: "this.all(d, d + d < duration('1h'))",
+            this_ty: CelType::List(Box::new(CelType::Duration)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_list_exists",
+            expr: "this.exists(d, d - d != duration('0s'))",
+            this_ty: CelType::List(Box::new(CelType::Duration)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_list_two_var_all",
+            expr: "this.all(i, d, i >= 0 && d + d < duration('1h'))",
+            this_ty: CelType::List(Box::new(CelType::Duration)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_list_two_var_exists",
+            expr: "this.exists(i, d, d + d > duration('1h'))",
+            this_ty: CelType::List(Box::new(CelType::Duration)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
+        CelCheck {
+            name: "duration_list_filter_and_map",
+            expr: "this.filter(d, d + d < duration('1h')).map(d, d + d).all(d, d >= duration('0s'))",
+            this_ty: CelType::List(Box::new(CelType::Duration)),
+            extras: vec![],
+            expect_ret: "bool",
+        },
         // --- two-variable comprehensions
         CelCheck {
             name: "two_var_map_all",
@@ -1150,11 +1284,16 @@ fn write_cel_emit_fixtures(out_dir: &std::path::Path) {
                 check.name, e
             ),
         };
-        let now_prelude = if out.needs_now {
-            "let now = ::protovalidate_buffa::cel::now_local();".to_string()
-        } else {
-            String::new()
-        };
+        let mut prelude = String::new();
+        if out.needs_now {
+            prelude.push_str("let now = ::protovalidate_buffa::cel::now_local();");
+        }
+        if compiler.raises_runtime_errors() {
+            prelude.push_str(
+                "let __cel_error = \
+                 ::core::cell::Cell::new(::core::option::Option::<&'static str>::None);",
+            );
+        }
         let rust_param = rust_emit_param_type(&check.this_ty);
         let mut extras_params = String::new();
         for (name, ty, _) in check.extras.iter().filter(|(_, _, rc)| rc.is_none()) {
@@ -1165,7 +1304,7 @@ fn write_cel_emit_fixtures(out_dir: &std::path::Path) {
         writeln!(
             body,
             "pub fn _check_{name}(__this: {rust_param}{extras}) -> {ret} {{\n    \
-             {now_prelude}\
+             {prelude}\
              let __out: {ret} = {tokens};\n    \
              __out\n\
              }}\n",
@@ -1173,7 +1312,7 @@ fn write_cel_emit_fixtures(out_dir: &std::path::Path) {
             rust_param = rust_param,
             extras = extras_params,
             ret = check.expect_ret,
-            now_prelude = now_prelude,
+            prelude = prelude,
             tokens = body_tokens,
         )
         .unwrap();
@@ -1202,6 +1341,7 @@ fn rust_emit_param_type(ty: &CelType) -> &'static str {
             CelType::Bool => "&::std::vec::Vec<bool>",
             CelType::Str { .. } => "&::std::vec::Vec<::std::string::String>",
             CelType::Bytes { .. } => "&::std::vec::Vec<::std::vec::Vec<u8>>",
+            CelType::Duration => "&::std::vec::Vec<::chrono::Duration>",
             // Default: List<Int> — also covers `_` for any unmodeled
             // element type, treated as i64-bearing for the fixture.
             _ => "&::std::vec::Vec<i64>",
