@@ -1,5 +1,5 @@
 //! Explicit-presence enums enforce the same rules in owned messages and views.
-//! Regression: https://github.com/mathematic-inc/protovalidate-buffa/discussions/103
+//! Regression: <https://github.com/mathematic-inc/protovalidate-buffa/discussions/103>
 
 #![warn(rust_2018_idioms)]
 
