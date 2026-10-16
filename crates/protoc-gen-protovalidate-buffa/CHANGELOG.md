@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.4...protoc-gen-protovalidate-buffa-v0.10.5) (2026-10-16)
+
+
+### Bug Fixes
+
+* **codegen:** Validate explicit-presence enum fields ([#104](https://github.com/mathematic-inc/protovalidate-buffa/issues/104)) ([5ae2aaa](https://github.com/mathematic-inc/protovalidate-buffa/commit/5ae2aaa9eedbdae5d043c1e75049315f65057533))
+
 ## [0.10.4](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.3...protoc-gen-protovalidate-buffa-v0.10.4) (2026-10-14)
 
 
