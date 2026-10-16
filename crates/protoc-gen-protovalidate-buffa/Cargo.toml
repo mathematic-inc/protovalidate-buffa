@@ -40,7 +40,7 @@ buffa-types = "0.9.1"
 # chrono-based timestamp handling all live on the runtime side or get
 # transpiled away at codegen time, so the plugin can opt out of the
 # `regex` and `chrono` default features.
-cel = { version = "0.14", default-features = false }
+cel = { version = "0.15", default-features = false }
 prettyplease = "0.3"
 proc-macro2 = "1"
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.1" }
