@@ -201,10 +201,8 @@ pub(crate) fn emit(
         FieldKind::Optional(inner) => {
             // EXPLICIT-presence scalar: buffa generates `Option<T>`.
             // Emit all rules inside a guard that binds `v` without moving out
-            // of `self`. For Copy types we dereference; for String/Bytes we
-            // clone the inner so the downstream emitters that expect owned `v`
-            // continue to compile.
-            let inner_blocks = emit_optional_inner(&accessor, name_lit, inner, field);
+            // of `self`. Copy types bind by value; String/Bytes bind as slices.
+            let inner_blocks = emit_optional_inner(&accessor, name_lit, inner, field)?;
             if !inner_blocks.is_empty() {
                 match inner.as_ref() {
                     FieldKind::String => blocks.push(quote! {
@@ -581,7 +579,7 @@ fn emit_optional_inner(
     name_lit: &str,
     inner: &FieldKind,
     field: &FieldValidator,
-) -> Vec<TokenStream> {
+) -> Result<Vec<TokenStream>> {
     // For numeric kinds, emit metadata-bearing checks inline so the
     // conformance diff includes field_number + field_type.
     const fn num_fam_for(kind: &FieldKind) -> Option<NumFamily> {
@@ -914,7 +912,7 @@ fn emit_optional_inner(
             _ => {}
         }
         let _ = accessor;
-        return out;
+        return Ok(out);
     }
 
     match inner {
@@ -948,8 +946,6 @@ fn emit_optional_inner(
                 out.extend(emit_uint64_on(&v, name_lit, n));
             }
         }
-        // String/Bytes/Enum/Message/Bool/Repeated/Map/Optional with EXPLICIT
-        // presence are unusual and unsupported for now.
         FieldKind::String => {
             if let Some(s) = &field.standard.string {
                 out.extend(emit_string_checks_on(&v, name_lit, field.field_number, s));
@@ -965,8 +961,21 @@ fn emit_optional_inner(
                 out.extend(emit_bool_checks_on(&v, name_lit, field.field_number, b));
             }
         }
-        FieldKind::Enum { .. }
-        | FieldKind::Message { .. }
+        FieldKind::Enum { full_name } => {
+            if let Some(e) = &field.standard.enum_rules {
+                let checks = emit_enum_checks_on(&v, name_lit, field.field_number, e, full_name)?;
+                if !checks.is_empty() {
+                    out.push(quote! {
+                        // Closed enums use the trait method; open enums have
+                        // an inherent `EnumValue::to_i32` method.
+                        #[allow(unused_imports, reason = "only closed enums need the trait")]
+                        use ::buffa::Enumeration as _;
+                        #( #checks )*
+                    });
+                }
+            }
+        }
+        FieldKind::Message { .. }
         | FieldKind::Repeated(_)
         | FieldKind::Map { .. }
         | FieldKind::Optional(_)
@@ -974,7 +983,7 @@ fn emit_optional_inner(
     }
 
     let _ = accessor; // name_lit already embedded in inner
-    out
+    Ok(out)
 }
 
 pub(crate) fn emit_bytes_checks_on(

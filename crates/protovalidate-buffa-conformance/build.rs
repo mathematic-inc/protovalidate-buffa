@@ -42,6 +42,9 @@ fn main() {
     ];
     files.extend(module_tree_sources.iter().map(|name| proto_root.join(name)));
     let validation_sources = [
+        "validation/enum_presence/editions/enums.proto",
+        "validation/enum_presence/proto2/enums.proto",
+        "validation/enum_presence/proto3/enums.proto",
         "validation/string_presence/strings.proto",
         "acme/v1/predefined.proto",
         "acme/v1/rules.proto",
