@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package validation.enum_presence.proto3;
+
+import "buf/validate/validate.proto";
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+  COLOR_NEGATIVE = -1;
+}
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/103
+message EnumRules {
+  optional Color defined = 1 [(buf.validate.field).enum.defined_only = true];
+  optional Color constant = 2 [(buf.validate.field).enum.const = 1];
+  optional Color allowed = 3 [(buf.validate.field).enum = {
+    in: [1]
+  }];
+  optional Color disallowed = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional Color disabled = 5 [(buf.validate.field).enum = {
+    defined_only: false
+    not_in: [0]
+  }];
+  optional Color combined = 6 [(buf.validate.field).enum = {
+    const: 1
+    defined_only: true
+    in: [1]
+    not_in: [0]
+  }];
+  optional Color ignored = 7 [
+    (buf.validate.field).ignore = IGNORE_ALWAYS,
+    (buf.validate.field).enum.defined_only = true
+  ];
+  optional Color zero = 8 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).enum = {
+      not_in: [0]
+    }
+  ];
+}
+
+message RequiredEnum {
+  optional Color value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).enum = {
+      defined_only: true
+      not_in: [0]
+    }
+  ];
+}
