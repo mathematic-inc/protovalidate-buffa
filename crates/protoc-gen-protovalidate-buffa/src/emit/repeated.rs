@@ -828,6 +828,18 @@ fn emit_repeated_items_checks(
                         quote! { *#elem_ident != #c },
                     );
                 }
+                if f.finite {
+                    push(
+                        &mut out,
+                        "float",
+                        1,
+                        "finite",
+                        8,
+                        "Bool",
+                        "float.finite".to_string(),
+                        quote! { !::protovalidate_buffa::rules::float::is_finite_f32(*#elem_ident) },
+                    );
+                }
             }
         }
         FieldKind::Double => {
@@ -890,6 +902,18 @@ fn emit_repeated_items_checks(
                         "Double",
                         "double.const".to_string(),
                         quote! { *#elem_ident != #c },
+                    );
+                }
+                if d.finite {
+                    push(
+                        &mut out,
+                        "double",
+                        2,
+                        "finite",
+                        8,
+                        "Bool",
+                        "double.finite".to_string(),
+                        quote! { !::protovalidate_buffa::rules::float::is_finite_f64(*#elem_ident) },
                     );
                 }
             }

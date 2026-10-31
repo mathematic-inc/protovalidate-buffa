@@ -1,0 +1,75 @@
+edition = "2023";
+
+package validation.float_presence.editions2023;
+
+import "buf/validate/validate.proto";
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/111
+message FiniteRules {
+  float float_value = 1 [(buf.validate.field).float = {finite: true}];
+  double double_value = 2 [(buf.validate.field).double = {finite: true}];
+  repeated float float_items = 3 [(buf.validate.field).repeated.items.float = {finite: true}];
+  repeated double double_items = 4 [(buf.validate.field).repeated.items.double = {finite: true}];
+  float float_bounds = 5 [(buf.validate.field).float = {
+    finite: true
+    gt: 0
+  }];
+  double double_bounds = 6 [(buf.validate.field).double = {
+    finite: true
+    gt: 0
+  }];
+  repeated float float_bound_items = 7 [(buf.validate.field).repeated.items.float = {
+    finite: true
+    gte: 0
+  }];
+  repeated double double_bound_items = 8 [(buf.validate.field).repeated.items.double = {
+    finite: true
+    gte: 0
+  }];
+  float float_disabled = 9 [(buf.validate.field).float = {finite: false}];
+  double double_disabled = 10 [(buf.validate.field).double = {finite: false}];
+  float float_ignored = 11 [
+    (buf.validate.field).ignore = IGNORE_ALWAYS,
+    (buf.validate.field).float = {finite: true}
+  ];
+  double double_ignored = 12 [
+    (buf.validate.field).ignore = IGNORE_ALWAYS,
+    (buf.validate.field).double = {finite: true}
+  ];
+  float float_zero = 13 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).float = {
+      finite: true
+      gt: 0
+    }
+  ];
+  double double_zero = 14 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).double = {
+      finite: true
+      gt: 0
+    }
+  ];
+  repeated float float_ignored_items = 15 [
+    (buf.validate.field).repeated.items.ignore = IGNORE_ALWAYS,
+    (buf.validate.field).repeated.items.float = {finite: true}
+  ];
+  repeated double double_ignored_items = 16 [
+    (buf.validate.field).repeated.items.ignore = IGNORE_ALWAYS,
+    (buf.validate.field).repeated.items.double = {finite: true}
+  ];
+  repeated float float_zero_items = 17 [
+    (buf.validate.field).repeated.items.ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).repeated.items.float = {
+      finite: true
+      gt: 0
+    }
+  ];
+  repeated double double_zero_items = 18 [
+    (buf.validate.field).repeated.items.ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).repeated.items.double = {
+      finite: true
+      gt: 0
+    }
+  ];
+}
