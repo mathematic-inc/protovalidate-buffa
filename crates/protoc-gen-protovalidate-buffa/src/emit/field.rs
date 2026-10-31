@@ -631,6 +631,22 @@ fn emit_optional_inner(
                 }
             });
         };
+        let emit_finite = |condition: TokenStream| {
+            let field = field_path_expr.clone();
+            let rule =
+                rule_path_scalar(fam.family, fam.outer_number, "finite", INNER_FINITE, "Bool");
+            let rule_id = format!("{}.finite", fam.family);
+            quote! {
+                if #condition {
+                    violations.push(::protovalidate_buffa::Violation {
+                        field: #field, rule: #rule,
+                        rule_id: ::std::borrow::Cow::Borrowed(#rule_id),
+                        message: ::std::borrow::Cow::Borrowed("value must be finite"),
+                        for_key: false,
+                    });
+                }
+            }
+        };
         let std = &field.standard;
         match inner {
             FieldKind::Int32 | FieldKind::Sint32 | FieldKind::Sfixed32 => {
@@ -867,6 +883,11 @@ fn emit_optional_inner(
                             quote! { !(#v <= #hi) },
                         );
                     }
+                    if f.finite {
+                        out.push(emit_finite(quote! {
+                            !::protovalidate_buffa::rules::float::is_finite_f32(#v)
+                        }));
+                    }
                 }
             }
             FieldKind::Double => {
@@ -906,6 +927,11 @@ fn emit_optional_inner(
                             format!("{}.lte", fam.family),
                             quote! { !(#v <= #hi) },
                         );
+                    }
+                    if d.finite {
+                        out.push(emit_finite(quote! {
+                            !::protovalidate_buffa::rules::float::is_finite_f64(#v)
+                        }));
                     }
                 }
             }

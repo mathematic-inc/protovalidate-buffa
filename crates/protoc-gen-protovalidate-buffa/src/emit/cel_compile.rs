@@ -3346,6 +3346,8 @@ impl<'a> Compiler<'a> {
         };
         let elem_rust = element_binding_expr(&var_ident, &elem_ty);
         let iter_pat = quote! { #var_ident };
+        // `filter` receives `&&T`; keep element bindings at `&T`.
+        let filter_pat = quote! { &#var_ident };
         let elem_ty = Box::new(elem_ty);
         let saved = self.bindings.remove(&iter_var);
         self.bindings.insert(
@@ -3422,7 +3424,7 @@ impl<'a> Compiler<'a> {
                     tokens: quote! {
                         ({
                             let __cel_mapped: ::std::vec::Vec<_> = (#iter_t)
-                                .filter(|#iter_pat| (#filter_t))
+                                .filter(|#filter_pat| (#filter_t))
                                 .map(|#iter_pat| (#mapped_t))
                                 .collect();
                             __cel_mapped
@@ -3444,7 +3446,7 @@ impl<'a> Compiler<'a> {
                     tokens: quote! {
                         ({
                             let __cel_filtered: ::std::vec::Vec<_> = (#iter_t)
-                                .filter(|#iter_pat| (#pred_t))
+                                .filter(|#filter_pat| (#pred_t))
                                 .cloned()
                                 .collect();
                             __cel_filtered
@@ -3576,9 +3578,9 @@ enum ComprehensionKind {
     /// `.map(x, expr)` → `iter().map(|x| expr).collect()`. The mapped
     /// expression is the AST node we extract from the step.
     Map { mapped: IdedExpr },
-    /// `.map(x, filter, expr)` → `iter().filter(|x| filter).map(|x| expr).collect()`.
+    /// `.map(x, filter, expr)` → `iter().filter(|&x| filter).map(|x| expr).collect()`.
     MapFilter { filter: IdedExpr, mapped: IdedExpr },
-    /// `.filter(x, pred)` → `iter().filter(|x| pred).cloned().collect()`.
+    /// `.filter(x, pred)` → `iter().filter(|&x| pred).cloned().collect()`.
     Filter { pred: IdedExpr },
 }
 

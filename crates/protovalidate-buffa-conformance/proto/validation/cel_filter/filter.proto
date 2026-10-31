@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package validation.cel_filter;
+
+import "buf/validate/validate.proto";
+
+// https://github.com/mathematic-inc/protovalidate-buffa/discussions/110
+message FilteredScalars {
+  option (buf.validate.message).cel = {
+    id: "filter.bool_literal"
+    expression: "[this.primary, this.secondary, this.tertiary].filter(b, b).size() <= 1"
+  };
+  option (buf.validate.message).cel = {
+    id: "filter.bool_list"
+    expression: "this.flags.filter(b, b).size() <= 1"
+  };
+  option (buf.validate.message).cel = {
+    id: "filter.int_list"
+    expression: "this.amounts.filter(x, x < 0).size() == 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "filter.uint_list"
+    expression: "this.counts.filter(x, x > 5u).size() <= 1"
+  };
+  option (buf.validate.message).cel = {
+    id: "filter.double_list"
+    expression: "this.ratios.filter(x, x > 1.0).size() == 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.bool_list"
+    expression: "this.flags.map(b, b, 1).size() <= 1"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.int_list"
+    expression: "this.amounts.map(x, x > 0, x * 2).all(x, x <= 10)"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.uint_list"
+    expression: "this.counts.map(x, x > 0u, x * 2u).all(x, x <= 10u)"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.double_list"
+    expression: "this.ratios.map(x, x > 0.0, x * 2.0).all(x, x <= 2.0)"
+  };
+
+  bool primary = 1;
+  bool secondary = 2;
+  bool tertiary = 3;
+  repeated bool flags = 4;
+  repeated int64 amounts = 5;
+  repeated uint32 counts = 6;
+  repeated double ratios = 7;
+}
