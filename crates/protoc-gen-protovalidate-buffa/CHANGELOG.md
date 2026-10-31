@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.5...protoc-gen-protovalidate-buffa-v0.10.6) (2026-10-31)
+
+
+### Bug Fixes
+
+* **codegen:** Validate finite fields and scalar filters ([#112](https://github.com/mathematic-inc/protovalidate-buffa/issues/112)) ([f9f8444](https://github.com/mathematic-inc/protovalidate-buffa/commit/f9f8444b14ef069cdfa9e890bb6e7545ecf786af))
+
 ## [0.10.5](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.4...protoc-gen-protovalidate-buffa-v0.10.5) (2026-10-16)
 
 
