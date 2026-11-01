@@ -150,7 +150,7 @@ impl Wire {
     }
 }
 
-fn zigzag_i64(value: i64) -> u64 {
+const fn zigzag_i64(value: i64) -> u64 {
     ((value << 1) ^ (value >> 63)).cast_unsigned()
 }
 
@@ -1045,10 +1045,12 @@ where
     assert_cases_with(position, syntax, violations::<M>)
 }
 
+type ValidateWire = fn(&[u8]) -> Result<[Vec<Violation>; 2], buffa::DecodeError>;
+
 fn assert_cases_with(
     position: Position,
     syntax: &str,
-    validate: fn(&[u8]) -> Result<[Vec<Violation>; 2], buffa::DecodeError>,
+    validate: ValidateWire,
 ) -> Result<(), buffa::DecodeError> {
     let cases = CASES.iter().filter(|case| {
         position.supports(case) && !(syntax == "proto2" && case.rule == "enum.defined_only")
@@ -1107,7 +1109,7 @@ fn assert_cases_with(
                 }
                 Position::Keys => case.bad.assert_key(field.subscript.as_ref()),
                 Position::Values | Position::WrapperValues => {
-                    Str("k").assert_key(field.subscript.as_ref())
+                    Str("k").assert_key(field.subscript.as_ref());
                 }
                 _ => assert!(field.subscript.is_none(), "{field:?}"),
             }
@@ -1128,7 +1130,7 @@ static DESCRIPTORS: std::sync::LazyLock<FileDescriptorSet> = std::sync::LazyLock
     .expect("fixture descriptors")
 });
 
-fn field_type(kind: Type) -> FieldType {
+const fn field_type(kind: Type) -> FieldType {
     match kind {
         Type::TYPE_DOUBLE => FieldType::Double,
         Type::TYPE_FLOAT => FieldType::Float,
