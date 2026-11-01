@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.7](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.6...protoc-gen-protovalidate-buffa-v0.10.7) (2026-11-01)
+
+
+### Bug Fixes
+
+* **codegen:** Share rule emission across field positions ([#115](https://github.com/mathematic-inc/protovalidate-buffa/issues/115)) ([72dfdce](https://github.com/mathematic-inc/protovalidate-buffa/commit/72dfdce584f323ba1f474f632574d5518aca0400))
+
 ## [0.10.6](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.5...protoc-gen-protovalidate-buffa-v0.10.6) (2026-10-31)
 
 
