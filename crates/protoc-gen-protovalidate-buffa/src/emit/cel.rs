@@ -8,7 +8,7 @@
 //! runtime no longer needs an interpreter.
 
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 
 use crate::{
     emit::cel_compile::{
@@ -18,9 +18,7 @@ use crate::{
     scan::{FieldKind, FieldValidator, MessageValidators},
 };
 
-/// Emit the per-message `(message).cel`, `(field).cel`, and predefined CEL
-/// rules as native Rust checks plus the optional fallback runtime-error
-/// markers.
+/// Emit message-level CEL; field and item rules use the shared value engine.
 ///
 /// Returns `(statics, calls)` — statics go outside the impl block, calls go
 /// inside the `validate` body after field/oneof blocks.
@@ -56,190 +54,7 @@ pub(crate) fn emit_message_level(
             &format!("unsupported CEL: {}", rule.expression),
         ));
     }
-    // Field-level CEL rules (`(field).cel = {...}`): evaluate with `this` bound to
-    // the field value, not the outer message.
-    for f in &msg.field_rules {
-        if f.cel.is_empty() {
-            continue;
-        }
-        if f.oneof_name.is_some() {
-            continue;
-        }
-        if matches!(f.ignore, crate::scan::Ignore::Always) {
-            continue;
-        }
-        if is_unsupported_wkt_field_for_cel(&f.field_type) {
-            continue;
-        }
-        let field_ident = crate::emit::field_ident(&f.rust_name);
-        let field_name = &f.field_name;
-        let fnum = f.field_number;
-        // For repeated scalars the CEL rule path uses the element type; for
-        // messages it's Message (Group if proto3/editions TYPE_GROUP field).
-        // Optional<T> also unwraps to T.
-        let field_ty_variant = if f.is_group {
-            "Group"
-        } else {
-            match &f.field_type {
-                crate::scan::FieldKind::Repeated(inner)
-                | crate::scan::FieldKind::Optional(inner) => {
-                    crate::emit::field::kind_to_field_type(inner)
-                }
-                _ => crate::emit::field::kind_to_field_type(&f.field_type),
-            }
-        };
-        let ty_ident = format_ident!("{}", field_ty_variant);
-        let field_path = quote! {
-            ::protovalidate_buffa::FieldPath {
-                elements: ::std::vec![
-                    ::protovalidate_buffa::FieldPathElement {
-                        field_number: Some(#fnum),
-                        field_name: Some(::std::borrow::Cow::Borrowed(#field_name)),
-                        field_type: Some(::protovalidate_buffa::FieldType::#ty_ident),
-                        key_type: None,
-                        value_type: None,
-                        subscript: None,
-                    },
-                ],
-            }
-        };
-        let mut cel_idx: u64 = 0;
-        let mut expr_idx: u64 = 0;
-        for rule in &f.cel {
-            let fp = field_path.clone();
-            // `idx_lit` is the slot index in the rule path: `cel[idx]` or
-            // `cel_expression[idx]` depending on which list the rule came
-            // from.
-            let idx_lit = if rule.is_cel_expression {
-                let i = expr_idx;
-                expr_idx += 1;
-                i
-            } else {
-                let i = cel_idx;
-                cel_idx += 1;
-                i
-            };
-            // Try compile-time expansion first; on failure emit a
-            // runtime-error marker so the unsupported rule surfaces
-            // clearly at validate-time.
-            let call =
-                try_emit_native_field_cel(f, rule, &fp, idx_lit, &field_ident, schemas, shape)
-                    .unwrap_or_else(|| {
-                        emit_runtime_error_violation(
-                            &rule.id,
-                            &format!("unsupported CEL: {}", rule.expression),
-                        )
-                    });
-            calls.push(guard_ignored_zero_value(f, &field_ident, call));
-        }
-    }
-    // Predefined (extension-based) CEL rules.
-    for f in &msg.field_rules {
-        if f.standard.predefined.is_empty() {
-            continue;
-        }
-        if f.oneof_name.is_some() {
-            continue;
-        }
-        if matches!(f.ignore, crate::scan::Ignore::Always) {
-            continue;
-        }
-        let default_family = predef_family_for(&f.field_type);
-        let field_ident = crate::emit::field_ident(&f.rust_name);
-        let field_name = &f.field_name;
-        let fnum = f.field_number;
-        for rule in &f.standard.predefined {
-            let family = match rule.family_override {
-                Some((name, number)) => Family { name, number },
-                None => match default_family {
-                    Some(f) => f,
-                    None => continue,
-                },
-            };
-            let family_name = family.name;
-            let family_num = family.number;
-            let family_fty = format_ident!("Message");
-            let ext_fty = format_ident!("{}", rule.ext_field_type);
-            let ext_bracketed = format!("[{}]", rule.ext_name);
-            let ext_num = rule.ext_number;
-            // For Optional<T> (proto2 / editions explicit) or Repeated<T>,
-            // the field path uses inner scalar type. Wrapper/Map keep
-            // TYPE_MESSAGE.
-            let field_ty_variant = match &f.field_type {
-                crate::scan::FieldKind::Optional(inner)
-                | crate::scan::FieldKind::Repeated(inner) => {
-                    crate::emit::field::kind_to_field_type(inner)
-                }
-                _ => crate::emit::field::kind_to_field_type(&f.field_type),
-            };
-            let field_ty_ident = format_ident!("{}", field_ty_variant);
-            // Try compile-time expansion; emit a runtime-error marker when
-            // anything in the expression isn't transpilable.
-            let predef_rule_path = quote! {
-                ::protovalidate_buffa::FieldPath {
-                    elements: ::std::vec![
-                        ::protovalidate_buffa::FieldPathElement {
-                            field_number: Some(#family_num),
-                            field_name: Some(::std::borrow::Cow::Borrowed(#family_name)),
-                            field_type: Some(::protovalidate_buffa::FieldType::#family_fty),
-                            key_type: None, value_type: None, subscript: None,
-                        },
-                        ::protovalidate_buffa::FieldPathElement {
-                            field_number: Some(#ext_num),
-                            field_name: Some(::std::borrow::Cow::Borrowed(#ext_bracketed)),
-                            field_type: Some(::protovalidate_buffa::FieldType::#ext_fty),
-                            key_type: None, value_type: None, subscript: None,
-                        },
-                    ],
-                }
-            };
-            let predef_field_path = quote! {
-                ::protovalidate_buffa::FieldPath {
-                    elements: ::std::vec![
-                        ::protovalidate_buffa::FieldPathElement {
-                            field_number: Some(#fnum),
-                            field_name: Some(::std::borrow::Cow::Borrowed(#field_name)),
-                            field_type: Some(::protovalidate_buffa::FieldType::#field_ty_ident),
-                            key_type: None, value_type: None, subscript: None,
-                        },
-                    ],
-                }
-            };
-            let call = try_emit_native_predefined(
-                f,
-                rule,
-                &field_ident,
-                &predef_field_path,
-                &predef_rule_path,
-                shape,
-            )
-            .unwrap_or_else(|| {
-                emit_runtime_error_violation(
-                    &rule.id,
-                    &format!("unsupported CEL: {}", rule.expression),
-                )
-            });
-            calls.push(guard_ignored_zero_value(f, &field_ident, call));
-        }
-    }
     (statics, calls)
-}
-
-// https://github.com/mathematic-inc/protovalidate-buffa/discussions/84
-// IGNORE_IF_ZERO_VALUE applies to CEL and predefined rules, including fallbacks.
-fn guard_ignored_zero_value(
-    field: &FieldValidator,
-    accessor: &syn::Ident,
-    call: TokenStream,
-) -> TokenStream {
-    if matches!(field.ignore, crate::scan::Ignore::IfZeroValue)
-        && !field.is_legacy_required
-        && let Some(guard) = super::field::nonzero_guard(&field.field_type, accessor)
-    {
-        quote! { if #guard { #call } }
-    } else {
-        call
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -378,164 +193,6 @@ pub(crate) fn predef_family_for(kind: &crate::scan::FieldKind) -> Option<Family>
     }
 }
 
-fn is_unsupported_wkt_field_for_cel(kind: &FieldKind) -> bool {
-    match kind {
-        FieldKind::Message { full_name } => is_unsupported_wkt_for_cel(full_name),
-        FieldKind::Repeated(inner) | FieldKind::Optional(inner) => {
-            is_unsupported_wkt_field_for_cel(inner)
-        }
-        _ => false,
-    }
-}
-
-pub(crate) fn is_unsupported_wkt_for_cel(full_name: &str) -> bool {
-    full_name.starts_with("google.protobuf.") && !cel_supports_wkt(full_name)
-}
-
-/// True for the small set of `google.protobuf.*` well-known types that
-/// have first-class CEL semantics in protovalidate (`Any`, `Empty`,
-/// `FieldMask`, `Duration`, `Timestamp`). Other WKTs are skipped when
-/// emitting `(field).cel` / `(message).cel` rules.
-pub(crate) const fn cel_supports_wkt(full_name: &str) -> bool {
-    matches!(
-        full_name.as_bytes(),
-        b"google.protobuf.Any"
-            | b"google.protobuf.Empty"
-            | b"google.protobuf.FieldMask"
-            | b"google.protobuf.Timestamp"
-            | b"google.protobuf.Duration"
-    )
-}
-
-/// Attempt to emit a `(field).cel` rule as native Rust. Returns `None` if the
-/// expression can't be transpiled — the caller responds by emitting a
-/// `__cel_runtime_error__` violation marker via `emit_runtime_error_violation`.
-/// `Some(tokens)` splices straight into the validate body.
-pub(crate) fn try_emit_native_field_cel(
-    f: &FieldValidator,
-    rule: &crate::scan::CelRule,
-    field_path: &TokenStream,
-    idx_lit: u64,
-    field_ident: &syn::Ident,
-    schemas: &SchemaIndex,
-    shape: crate::emit::Shape,
-) -> Option<TokenStream> {
-    // First, try the message-typed `this` binding for fields whose type is
-    // a known sub-message (e.g., `optional Inner val = 1` with a CEL rule
-    // like `this.val == 'foo'`). Falls back to the scalar path below.
-    if let Some(out) =
-        try_emit_native_field_cel_message(f, rule, field_path, idx_lit, field_ident, schemas)
-    {
-        return Some(out);
-    }
-    let this_ty = scalar_this_for_with(&f.field_type, Some(schemas))?;
-    let access = field_this_access(f, field_ident, &this_ty, shape)?;
-    let mut compiler = Compiler::new().with_schemas(schemas);
-    compiler.bind(
-        "this",
-        Binding {
-            rust_expr: quote! { (__cel_this) },
-            ty: this_ty,
-            constant: None,
-        },
-    );
-    let CompileOutput {
-        tokens,
-        ty,
-        needs_now,
-    } = compiler.compile(&rule.expression).ok()?;
-    let now_prelude = if needs_now {
-        quote! { let now = ::protovalidate_buffa::cel::now_local(); }
-    } else {
-        quote! {}
-    };
-    let rule_path = rule_path_for_field_cel(rule.is_cel_expression, idx_lit);
-    let fp = field_path.clone();
-    let id_lit = &rule.id;
-    let msg_lit = &rule.message;
-    let check = match ty {
-        CelType::Bool => quote! {
-            if !(#tokens) {
-                violations.push(::protovalidate_buffa::Violation {
-                    field: #fp,
-                    rule: #rule_path,
-                    rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                    message: ::std::borrow::Cow::Borrowed(#msg_lit),
-                    for_key: false,
-                });
-            }
-        },
-        CelType::Str { owned: true } => quote! {
-            {
-                let __cel_result: ::std::string::String = (#tokens);
-                if !__cel_result.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_result)
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: #fp,
-                        rule: #rule_path,
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
-            }
-        },
-        CelType::Str { owned: false } => quote! {
-            {
-                let __cel_result: &str = (#tokens);
-                if !__cel_result.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_result.to_owned())
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: #fp,
-                        rule: #rule_path,
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
-            }
-        },
-        _ => return None,
-    };
-    let check = catch_runtime_errors(&compiler, &rule.id, check);
-    let body = quote! {
-        let __cel_this = #access;
-        #now_prelude
-        #check
-    };
-    Some(match &f.field_type {
-        FieldKind::Optional(_) => quote! {
-            if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_ref() {
-                #body
-            }
-        },
-        FieldKind::Wrapper(_) => quote! {
-            if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_option() {
-                #body
-            }
-        },
-        FieldKind::Message { full_name }
-            if full_name == "google.protobuf.Duration"
-                || full_name == "google.protobuf.Timestamp" =>
-        {
-            quote! {
-                if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_option() {
-                    #body
-                }
-            }
-        }
-        _ => quote! { { #body } },
-    })
-}
-
 /// Map a `FieldKind` to the underlying Rust scalar / wrapper type. Returns
 /// `None` for kinds that don't have a concrete scalar representation
 /// (messages, nested maps, optional wrappers).
@@ -558,7 +215,7 @@ const fn rust_scalar_for_kind(kind: &FieldKind) -> Option<RustScalar> {
 /// Decide whether a field's CEL `this` binding can be rendered as a scalar
 /// (not a message). For an Optional/Wrapper inner type, the binding pulls the
 /// inner value directly — code wrapping the access in `if let Some(...)` is
-/// handled separately by [`field_this_access`].
+/// handled by the caller.
 fn scalar_this_for(kind: &FieldKind) -> Option<CelType> {
     scalar_this_for_with(kind, None)
 }
@@ -625,83 +282,20 @@ fn scalar_this_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Opti
     Some(cel_ty)
 }
 
-/// Build the Rust expression that yields the CEL `this` binding's value for
-/// a given field. Optional/Wrapper presence is handled by the caller, which
-/// wraps the entire check in `if let Some(__cel_inner) = …`.
-fn field_this_access(
-    f: &FieldValidator,
-    field_ident: &syn::Ident,
-    cel_ty: &CelType,
-    shape: crate::emit::Shape,
-) -> Option<TokenStream> {
-    match &f.field_type {
-        FieldKind::Optional(inner) => Some(match (cel_ty, inner.as_ref()) {
-            (CelType::Str { .. }, _) => {
-                quote! { ::core::convert::AsRef::<str>::as_ref(__cel_inner) }
-            }
-            (CelType::Bytes { .. }, _) => {
-                quote! { ::core::convert::AsRef::<[u8]>::as_ref(__cel_inner) }
-            }
-            (CelType::Int, FieldKind::Enum { .. }) => quote! {
-                ({
-                    use ::buffa::Enumeration as _;
-                    (*__cel_inner).to_i32() as i64
-                })
-            },
-            (CelType::Int, _) => quote! { ((*__cel_inner) as i64) },
-            (CelType::UInt, _) => quote! { ((*__cel_inner) as u64) },
-            (CelType::Double, _) => quote! { ((*__cel_inner) as f64) },
-            (CelType::Bool, _) => quote! { (*__cel_inner) },
-            _ => return None,
-        }),
-        FieldKind::Wrapper(_) => Some(match cel_ty {
-            CelType::Str { .. } => {
-                quote! { ::core::convert::AsRef::<str>::as_ref(&__cel_inner.value) }
-            }
-            CelType::Bytes { .. } => {
-                quote! { ::core::convert::AsRef::<[u8]>::as_ref(&__cel_inner.value) }
-            }
-            CelType::Int => quote! { (__cel_inner.value as i64) },
-            CelType::UInt => quote! { (__cel_inner.value as u64) },
-            CelType::Double => quote! { (__cel_inner.value as f64) },
-            CelType::Bool => quote! { (__cel_inner.value) },
-            _ => return None,
-        }),
-        FieldKind::Enum { .. } => Some(quote! {
-            ({
-                use ::buffa::Enumeration as _;
-                self.#field_ident.to_i32() as i64
-            })
-        }),
-        FieldKind::String => {
-            Some(quote! { ::core::convert::AsRef::<str>::as_ref(&self.#field_ident) })
-        }
-        FieldKind::Bytes => {
-            Some(quote! { ::core::convert::AsRef::<[u8]>::as_ref(&self.#field_ident) })
-        }
-        FieldKind::Repeated(_) => Some(quote! { (&self.#field_ident) }),
-        FieldKind::Map { .. } => Some(shape.map_access(field_ident, f.field_number)),
-        FieldKind::Float
-        | FieldKind::Double
-        | FieldKind::Int32
-        | FieldKind::Int64
-        | FieldKind::Sint32
-        | FieldKind::Sint64
-        | FieldKind::Sfixed32
-        | FieldKind::Sfixed64
-        | FieldKind::Uint32
-        | FieldKind::Uint64
-        | FieldKind::Fixed32
-        | FieldKind::Fixed64
-        | FieldKind::Bool => Some(match cel_ty {
-            CelType::Int => quote! { (self.#field_ident as i64) },
-            CelType::UInt => quote! { (self.#field_ident as u64) },
-            CelType::Double => quote! { (self.#field_ident as f64) },
-            CelType::Bool => quote! { self.#field_ident },
-            _ => return None,
-        }),
-        FieldKind::Message { .. } => wkt_value(cel_ty, &quote! { __cel_inner }),
-    }
+/// Bind a whole collection for the shared custom-rule emitter.
+pub(super) fn collection_binding(
+    field: &FieldValidator,
+    accessor: &syn::Ident,
+    schemas: &SchemaIndex,
+    shape: super::Shape,
+) -> Option<(TokenStream, CelType)> {
+    let access = match field.field_type {
+        FieldKind::Repeated(_) => quote! { (&self.#accessor) },
+        FieldKind::Map { .. } => shape.map_access(accessor, field.field_number),
+        _ => return None,
+    };
+    let ty = scalar_this_for_with(&field.field_type, Some(schemas))?;
+    Some((access, ty))
 }
 
 /// Index of message schemas, including FieldMask, keyed by proto FQN.
@@ -727,105 +321,6 @@ pub fn build_schema_index(messages: &[MessageValidators]) -> SchemaIndex {
             }],
         });
     index
-}
-
-/// Try the message-typed `this` shape: when `(field).cel` targets a
-/// sub-message field, bind `this` to that message's schema so accesses like
-/// `this.foo` work natively.
-fn try_emit_native_field_cel_message(
-    f: &FieldValidator,
-    rule: &crate::scan::CelRule,
-    field_path: &TokenStream,
-    idx_lit: u64,
-    field_ident: &syn::Ident,
-    schemas: &SchemaIndex,
-) -> Option<TokenStream> {
-    let inner_full_name = match &f.field_type {
-        FieldKind::Message { full_name } => full_name.clone(),
-        FieldKind::Optional(inner) | FieldKind::Wrapper(inner) => match inner.as_ref() {
-            FieldKind::Message { full_name } => full_name.clone(),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    // FieldMask exposes ordinary message fields. Other well-known types
-    // retain their specialized CEL handling (e.g. Timestamp and Duration).
-    if inner_full_name.starts_with("google.protobuf.")
-        && inner_full_name != "google.protobuf.FieldMask"
-    {
-        return None;
-    }
-    let inner_schema = schemas.get(&inner_full_name)?.clone();
-    let mut compiler = Compiler::new().with_schemas(schemas);
-    compiler.bind(
-        "this",
-        Binding {
-            rust_expr: quote! { __cel_inner },
-            ty: CelType::Message(Box::new(inner_schema)),
-            constant: None,
-        },
-    );
-    let CompileOutput {
-        tokens,
-        ty,
-        needs_now,
-    } = compiler.compile(&rule.expression).ok()?;
-    let now_prelude = if needs_now {
-        quote! { let now = ::protovalidate_buffa::cel::now_local(); }
-    } else {
-        quote! {}
-    };
-    let rule_path = rule_path_for_field_cel(rule.is_cel_expression, idx_lit);
-    let fp = field_path.clone();
-    let id_lit = &rule.id;
-    let msg_lit = &rule.message;
-    let check = match ty {
-        CelType::Bool => quote! {
-            if !(#tokens) {
-                violations.push(::protovalidate_buffa::Violation {
-                    field: #fp,
-                    rule: #rule_path,
-                    rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                    message: ::std::borrow::Cow::Borrowed(#msg_lit),
-                    for_key: false,
-                });
-            }
-        },
-        CelType::Str { owned: true } => quote! {
-            {
-                let __cel_result: ::std::string::String = (#tokens);
-                if !__cel_result.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_result)
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: #fp,
-                        rule: #rule_path,
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
-            }
-        },
-        _ => return None,
-    };
-    let check = catch_runtime_errors(&compiler, &rule.id, check);
-    let body = quote! {
-        #now_prelude
-        #check
-    };
-    // For `Message`-typed fields buffa exposes `MessageField<T>`; for
-    // proto2/editions `optional Msg` it's also `MessageField<T>` (via
-    // `as_option()`). For both we gate on `.as_option()` to honor
-    // "skip on unset".
-    Some(quote! {
-        if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_option() {
-            #body
-        }
-    })
 }
 
 /// Emit a `__cel_runtime_error__` violation marker.
@@ -993,17 +488,6 @@ pub(crate) fn try_compile_cel_check(
 /// already producing a value of the field's underlying Rust type (e.g.
 /// `elem` for `&i32`, `self.foo` for direct access). Returns `None` when the
 /// field kind isn't transpilable as a scalar `this`.
-pub(crate) fn this_binding_for_kind(
-    kind: &FieldKind,
-    operand: &TokenStream,
-) -> Option<(TokenStream, CelType)> {
-    this_binding_for_kind_with(kind, operand, None)
-}
-
-/// Variant of [`this_binding_for_kind`] that resolves Message-typed
-/// elements against a `SchemaIndex`. When provided, items.cel / values.cel
-/// rules on repeated / map elements whose element type is a known
-/// sub-message bind `this` to that message's schema.
 pub(crate) fn this_binding_for_kind_with(
     kind: &FieldKind,
     operand: &TokenStream,
@@ -1042,7 +526,11 @@ pub(crate) fn this_binding_for_kind_with(
         )),
         FieldKind::Bool => Some((quote! { (#operand) }, CelType::Bool)),
         FieldKind::Enum { .. } => Some((
-            quote! { (::protovalidate_buffa::cel::CelScalar::cel_int(#operand)) },
+            quote! {{
+                #[allow(unused_imports, reason = "closed enums need the Enumeration trait")]
+                use ::buffa::Enumeration as _;
+                i64::from((#operand).to_i32())
+            }},
             CelType::Int,
         )),
         _ => None,
@@ -1215,160 +703,6 @@ fn try_emit_native_message_cel(
             #check
         }
     })
-}
-
-/// Attempt to emit a predefined-rule CEL expression natively. `rule` is
-/// bound from the extension's typed value (see `RuleConst`), `this` from the
-/// field's value. Returns `None` when the expression can't be transpiled —
-/// the caller then emits a `__cel_runtime_error__` violation marker.
-pub(crate) fn try_emit_native_predefined(
-    f: &FieldValidator,
-    rule: &crate::scan::PredefinedCel,
-    field_ident: &syn::Ident,
-    field_path: &TokenStream,
-    rule_path: &TokenStream,
-    shape: crate::emit::Shape,
-) -> Option<TokenStream> {
-    let rule_const = rule.rule_const.as_ref()?;
-    let this_ty = scalar_this_for(&f.field_type)?;
-    let access = field_this_access(f, field_ident, &this_ty, shape)?;
-    let mut compiler = Compiler::new();
-    compiler.bind(
-        "this",
-        Binding {
-            rust_expr: quote! { (__cel_this) },
-            ty: this_ty,
-            constant: None,
-        },
-    );
-    compiler.bind_rule_const("rule", rule_const);
-    // The runtime also exposes "rules" as a built-in alias in some
-    // protovalidate setups. Bind both so transpiled expressions work either
-    // way.
-    compiler.bind_rule_const("rules", rule_const);
-    let CompileOutput {
-        tokens,
-        ty,
-        needs_now,
-    } = compiler.compile(&rule.expression).ok()?;
-    let now_prelude = if needs_now {
-        quote! { let now = ::protovalidate_buffa::cel::now_local(); }
-    } else {
-        quote! {}
-    };
-    let fp = field_path.clone();
-    let rp = rule_path.clone();
-    let id_lit = &rule.id;
-    let msg_lit = &rule.message;
-    let check = match ty {
-        CelType::Bool => quote! {
-            if !(#tokens) {
-                violations.push(::protovalidate_buffa::Violation {
-                    field: #fp,
-                    rule: #rp,
-                    rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                    message: ::std::borrow::Cow::Borrowed(#msg_lit),
-                    for_key: false,
-                });
-            }
-        },
-        CelType::Str { owned: true } => quote! {
-            {
-                let __cel_result: ::std::string::String = (#tokens);
-                if !__cel_result.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_result)
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: #fp,
-                        rule: #rp,
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
-            }
-        },
-        CelType::Str { owned: false } => quote! {
-            {
-                let __cel_result: &str = (#tokens);
-                if !__cel_result.is_empty() {
-                    let __msg: ::std::borrow::Cow<'static, str> = if (#msg_lit as &str).is_empty() {
-                        ::std::borrow::Cow::Owned(__cel_result.to_owned())
-                    } else {
-                        ::std::borrow::Cow::Borrowed(#msg_lit)
-                    };
-                    violations.push(::protovalidate_buffa::Violation {
-                        field: #fp,
-                        rule: #rp,
-                        rule_id: ::std::borrow::Cow::Borrowed(#id_lit),
-                        message: __msg,
-                        for_key: false,
-                    });
-                }
-            }
-        },
-        _ => return None,
-    };
-    let check = catch_runtime_errors(&compiler, &rule.id, check);
-    let body = quote! {
-        let __cel_this = #access;
-        #now_prelude
-        #check
-    };
-    Some(match &f.field_type {
-        FieldKind::Optional(_) => quote! {
-            if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_ref() {
-                #body
-            }
-        },
-        FieldKind::Wrapper(_) => quote! {
-            if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_option() {
-                #body
-            }
-        },
-        FieldKind::Message { full_name }
-            if full_name == "google.protobuf.Duration"
-                || full_name == "google.protobuf.Timestamp" =>
-        {
-            quote! {
-                if let ::core::option::Option::Some(__cel_inner) = self.#field_ident.as_option() {
-                    #body
-                }
-            }
-        }
-        _ => quote! { { #body } },
-    })
-}
-
-fn rule_path_for_field_cel(is_cel_expression: bool, idx_lit: u64) -> TokenStream {
-    if is_cel_expression {
-        quote! {
-            ::protovalidate_buffa::FieldPath {
-                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                    field_number: Some(29),
-                    field_name: Some(::std::borrow::Cow::Borrowed("cel_expression")),
-                    field_type: Some(::protovalidate_buffa::FieldType::String),
-                    key_type: None, value_type: None,
-                    subscript: Some(::protovalidate_buffa::Subscript::Index(#idx_lit)),
-                }],
-            }
-        }
-    } else {
-        quote! {
-            ::protovalidate_buffa::FieldPath {
-                elements: ::std::vec![::protovalidate_buffa::FieldPathElement {
-                    field_number: Some(23),
-                    field_name: Some(::std::borrow::Cow::Borrowed("cel")),
-                    field_type: Some(::protovalidate_buffa::FieldType::Message),
-                    key_type: None, value_type: None,
-                    subscript: Some(::protovalidate_buffa::Subscript::Index(#idx_lit)),
-                }],
-            }
-        }
-    }
 }
 
 #[cfg(test)]

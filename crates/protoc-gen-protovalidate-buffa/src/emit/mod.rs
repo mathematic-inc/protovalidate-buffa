@@ -57,6 +57,10 @@ pub mod cel_compile;
 pub mod field;
 pub mod oneof;
 pub mod repeated;
+mod rule_site;
+mod scalar;
+mod value;
+mod wkt;
 
 /// Generated message representation targeted by a validation body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -459,6 +463,30 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let view_path =
         syn::parse_str::<syn::Type>(&format!("__buffa::view::{rust_path_str}View<'_>"))?;
 
+    let allows = gen_allows();
+    if let Some(reason) = &msg.compile_error {
+        let impls = [&rust_path, &view_path].map(|rust_path| {
+            quote! {
+                #allows
+                impl ::protovalidate_buffa::Validate for #rust_path {
+                    fn validate(
+                        &self,
+                    ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
+                        Err(::protovalidate_buffa::ValidationError {
+                            compile_error: ::core::option::Option::Some(
+                                ::std::string::String::from(#reason),
+                            ),
+                            ..::core::default::Default::default()
+                        })
+                    }
+                }
+            }
+        });
+        return Ok(quote! {
+            #( #impls )*
+        });
+    }
+
     // Fields listed in a `(buf.validate.message).oneof` get implicit
     // IGNORE_IF_ZERO_VALUE semantics: their rule checks only fire when the
     // field is set (non-default). Wrap those blocks in a zero-value guard.
@@ -467,11 +495,23 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .iter()
         .flat_map(|o| o.fields.iter().map(String::as_str))
         .collect();
+    let mut view_schemas = schemas.clone();
+    for schema in view_schemas.values_mut() {
+        for field in &mut schema.fields {
+            if let cel_compile::SchemaFieldKind::Oneof { view, .. } = &mut field.kind {
+                *view = true;
+            }
+        }
+    }
     let render_field_blocks = |shape| {
         msg.field_rules
             .iter()
             .map(|f| {
-                let inner = field::emit(f, schemas, shape)?;
+                let schema = match shape {
+                    Shape::Owned => schemas,
+                    Shape::View => &view_schemas,
+                };
+                let inner = field::emit(f, schema, shape)?;
                 if !inner.is_empty()
                     && implicit_ignore.contains(f.field_name.as_str())
                     && !matches!(f.ignore, crate::scan::Ignore::Always)
@@ -503,12 +543,12 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
-        .map(oneof::emit)
+        .map(|v| oneof::emit_with_schemas(v, Shape::Owned, schemas))
         .collect::<Result<_>>()?;
     let view_oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
-        .map(oneof::emit_view)
+        .map(|v| oneof::emit_with_schemas(v, Shape::View, &view_schemas))
         .collect::<Result<_>>()?;
 
     // `(buf.validate.message).oneof` — fields where at most one may be set.
@@ -528,29 +568,6 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let owned_map_bindings = canonical_map_bindings(msg, Shape::Owned);
     let view_map_bindings = canonical_map_bindings(msg, Shape::View);
 
-    let allows = gen_allows();
-    if let Some(reason) = &msg.compile_error {
-        let impls = [&rust_path, &view_path].map(|rust_path| {
-            quote! {
-                #allows
-                impl ::protovalidate_buffa::Validate for #rust_path {
-                    fn validate(
-                        &self,
-                    ) -> ::core::result::Result<(), ::protovalidate_buffa::ValidationError> {
-                        Err(::protovalidate_buffa::ValidationError {
-                            compile_error: ::core::option::Option::Some(
-                                ::std::string::String::from(#reason),
-                            ),
-                            ..::core::default::Default::default()
-                        })
-                    }
-                }
-            }
-        });
-        return Ok(quote! {
-            #( #impls )*
-        });
-    }
     // Wrap each static + impl in the same outer allow set.
     let statics_with_allows: Vec<TokenStream> = cel_statics
         .into_iter()

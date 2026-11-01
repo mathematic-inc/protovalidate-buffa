@@ -1168,7 +1168,11 @@ fn gather_message(
     // Validate impl with a compilation error marker.
     let compile_error = field_rules_out
         .iter()
-        .find_map(|f| check_rule_field_mismatch(&f.field_type, &f.standard))
+        .zip(&msg.field)
+        .find_map(|(validator, field)| {
+            let rules = field.options.as_option()?.extension(&FIELD)?;
+            check_rule_field_mismatch(&validator.field_type, &rules)
+        })
         .or_else(|| check_message_oneof_specs(&qualified_name, &message_oneofs, &field_rules_out))
         .or_else(|| check_message_cel_missing_fields(&message_cel, &field_rules_out))
         .or_else(|| check_message_cel_type_errors(&message_cel, &field_rules_out));
@@ -1194,78 +1198,90 @@ fn gather_message(
 
 /// Check whether the field's rule family matches its declared type.
 /// Returns `Some(reason)` when a mismatch is detected, else `None`.
-fn check_rule_field_mismatch(kind: &FieldKind, s: &StandardRules) -> Option<String> {
-    // Unwrap through Optional/Wrapper for the underlying scalar.
-    let underlying: &FieldKind = match kind {
-        FieldKind::Optional(inner) | FieldKind::Wrapper(inner) => inner,
-        other => other,
+fn check_rule_field_mismatch(kind: &FieldKind, rules: &FieldRules) -> Option<String> {
+    if rules
+        .ignore
+        .is_some_and(|ignore| map_ignore(ignore) == Ignore::Always)
+    {
+        return None;
+    }
+    if let FieldKind::Optional(inner) | FieldKind::Wrapper(inner) = kind {
+        return check_rule_field_mismatch(inner, rules);
+    }
+    if let FieldKind::Message { full_name } = kind
+        && let Some(inner) = wrapper_kind(full_name)
+    {
+        return check_rule_field_mismatch(&inner, rules);
+    }
+    // Check descriptors before numeric families are normalized into shared structs.
+    let (family, valid) = match rules.r#type.as_ref()? {
+        field_rules::Type::Float(_) => ("float", matches!(kind, FieldKind::Float)),
+        field_rules::Type::Double(_) => ("double", matches!(kind, FieldKind::Double)),
+        field_rules::Type::Int32(_) => ("int32", matches!(kind, FieldKind::Int32)),
+        field_rules::Type::Int64(_) => ("int64", matches!(kind, FieldKind::Int64)),
+        field_rules::Type::Uint32(_) => ("uint32", matches!(kind, FieldKind::Uint32)),
+        field_rules::Type::Uint64(_) => ("uint64", matches!(kind, FieldKind::Uint64)),
+        field_rules::Type::Sint32(_) => ("sint32", matches!(kind, FieldKind::Sint32)),
+        field_rules::Type::Sint64(_) => ("sint64", matches!(kind, FieldKind::Sint64)),
+        field_rules::Type::Fixed32(_) => ("fixed32", matches!(kind, FieldKind::Fixed32)),
+        field_rules::Type::Fixed64(_) => ("fixed64", matches!(kind, FieldKind::Fixed64)),
+        field_rules::Type::Sfixed32(_) => ("sfixed32", matches!(kind, FieldKind::Sfixed32)),
+        field_rules::Type::Sfixed64(_) => ("sfixed64", matches!(kind, FieldKind::Sfixed64)),
+        field_rules::Type::Bool(_) => ("bool", matches!(kind, FieldKind::Bool)),
+        field_rules::Type::String(_) => ("string", matches!(kind, FieldKind::String)),
+        field_rules::Type::Bytes(_) => ("bytes", matches!(kind, FieldKind::Bytes)),
+        field_rules::Type::Enum(_) => ("enum", matches!(kind, FieldKind::Enum { .. })),
+        field_rules::Type::Any(_) => (
+            "any",
+            matches!(kind, FieldKind::Message { full_name } if full_name == "google.protobuf.Any"),
+        ),
+        field_rules::Type::Duration(_) => (
+            "duration",
+            matches!(kind, FieldKind::Message { full_name } if full_name == "google.protobuf.Duration"),
+        ),
+        field_rules::Type::Timestamp(_) => (
+            "timestamp",
+            matches!(kind, FieldKind::Message { full_name } if full_name == "google.protobuf.Timestamp"),
+        ),
+        field_rules::Type::FieldMask(_) => (
+            "field_mask",
+            matches!(kind, FieldKind::Message { full_name } if full_name == "google.protobuf.FieldMask"),
+        ),
+        field_rules::Type::Repeated(repeated) => {
+            if let FieldKind::Repeated(inner) = kind {
+                if repeated.unique == Some(true)
+                    && matches!(
+                        inner.as_ref(),
+                        FieldKind::Message { .. } | FieldKind::Wrapper(_)
+                    )
+                {
+                    return Some("repeated.unique requires scalar or enum items".to_owned());
+                }
+                return repeated
+                    .items
+                    .as_option()
+                    .and_then(|items| check_rule_field_mismatch(inner, items))
+                    .map(|reason| format!("repeated.items: {reason}"));
+            }
+            ("repeated", false)
+        }
+        field_rules::Type::Map(map) => {
+            if let FieldKind::Map { key, value } = kind {
+                for (side, kind, rules) in
+                    [("keys", key, &map.keys), ("values", value, &map.values)]
+                {
+                    if let Some(rules) = rules.as_option()
+                        && let Some(reason) = check_rule_field_mismatch(kind, rules)
+                    {
+                        return Some(format!("map.{side}: {reason}"));
+                    }
+                }
+                return None;
+            }
+            ("map", false)
+        }
     };
-    // For each rule family that is Some, verify the underlying kind matches.
-    let mismatch = |family: &str| -> String {
-        format!("{family} rules on {} field", kind_family_name(underlying))
-    };
-    if s.float.is_some() && !matches!(underlying, FieldKind::Float) {
-        return Some(mismatch("float"));
-    }
-    if s.double.is_some() && !matches!(underlying, FieldKind::Double) {
-        return Some(mismatch("double"));
-    }
-    if s.int32.is_some()
-        && !matches!(
-            underlying,
-            FieldKind::Int32 | FieldKind::Sint32 | FieldKind::Sfixed32
-        )
-    {
-        return Some(mismatch("int32"));
-    }
-    if s.int64.is_some()
-        && !matches!(
-            underlying,
-            FieldKind::Int64 | FieldKind::Sint64 | FieldKind::Sfixed64
-        )
-    {
-        return Some(mismatch("int64"));
-    }
-    if s.uint32.is_some() && !matches!(underlying, FieldKind::Uint32 | FieldKind::Fixed32) {
-        return Some(mismatch("uint32"));
-    }
-    if s.uint64.is_some() && !matches!(underlying, FieldKind::Uint64 | FieldKind::Fixed64) {
-        return Some(mismatch("uint64"));
-    }
-    if s.bool_rules.is_some() && !matches!(underlying, FieldKind::Bool) {
-        return Some(mismatch("bool"));
-    }
-    if s.string.is_some() && !matches!(underlying, FieldKind::String) {
-        return Some(mismatch("string"));
-    }
-    if s.bytes.is_some() && !matches!(underlying, FieldKind::Bytes) {
-        return Some(mismatch("bytes"));
-    }
-    if s.enum_rules.is_some() && !matches!(underlying, FieldKind::Enum { .. }) {
-        return Some(mismatch("enum"));
-    }
-    if s.repeated.is_some() && !matches!(kind, FieldKind::Repeated(_)) {
-        return Some(mismatch("repeated"));
-    }
-    if s.map.is_some() && !matches!(kind, FieldKind::Map { .. }) {
-        return Some(mismatch("map"));
-    }
-    if s.any_rules.is_some()
-        && !matches!(underlying, FieldKind::Message { full_name } if full_name == "google.protobuf.Any")
-    {
-        return Some(mismatch("any"));
-    }
-    if s.duration.is_some()
-        && !matches!(underlying, FieldKind::Message { full_name } if full_name == "google.protobuf.Duration")
-    {
-        return Some(mismatch("duration"));
-    }
-    if s.timestamp.is_some()
-        && !matches!(underlying, FieldKind::Message { full_name } if full_name == "google.protobuf.Timestamp")
-    {
-        return Some(mismatch("timestamp"));
-    }
-    None
+    (!valid).then(|| format!("{family} rules on {} field", kind_family_name(kind)))
 }
 
 /// Scan message-level CEL expressions for top-level `this.<ident>` field
@@ -1649,24 +1665,29 @@ fn classify_field(
     // so the emitter unwraps `.as_option().map(|w| w.value)` before applying
     // the inner scalar rules.
     if let FieldKind::Message { ref full_name } = inner_kind {
-        let wrapper = match full_name.as_str() {
-            "google.protobuf.Int32Value" => Some(FieldKind::Int32),
-            "google.protobuf.Int64Value" => Some(FieldKind::Int64),
-            "google.protobuf.UInt32Value" => Some(FieldKind::Uint32),
-            "google.protobuf.UInt64Value" => Some(FieldKind::Uint64),
-            "google.protobuf.FloatValue" => Some(FieldKind::Float),
-            "google.protobuf.DoubleValue" => Some(FieldKind::Double),
-            "google.protobuf.BoolValue" => Some(FieldKind::Bool),
-            "google.protobuf.StringValue" => Some(FieldKind::String),
-            "google.protobuf.BytesValue" => Some(FieldKind::Bytes),
-            _ => None,
-        };
+        let wrapper = wrapper_kind(full_name);
         if let Some(w) = wrapper {
             return Ok(FieldKind::Wrapper(Box::new(w)));
         }
     }
 
     Ok(inner_kind)
+}
+
+/// Classify wrapper values at every field position.
+pub(crate) fn wrapper_kind(full_name: &str) -> Option<FieldKind> {
+    match full_name {
+        "google.protobuf.Int32Value" => Some(FieldKind::Int32),
+        "google.protobuf.Int64Value" => Some(FieldKind::Int64),
+        "google.protobuf.UInt32Value" => Some(FieldKind::Uint32),
+        "google.protobuf.UInt64Value" => Some(FieldKind::Uint64),
+        "google.protobuf.FloatValue" => Some(FieldKind::Float),
+        "google.protobuf.DoubleValue" => Some(FieldKind::Double),
+        "google.protobuf.BoolValue" => Some(FieldKind::Bool),
+        "google.protobuf.StringValue" => Some(FieldKind::String),
+        "google.protobuf.BytesValue" => Some(FieldKind::Bytes),
+        _ => None,
+    }
 }
 
 /// Look up the referenced type name as a map-entry nested type within the
