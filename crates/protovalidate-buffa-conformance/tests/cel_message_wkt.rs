@@ -355,8 +355,9 @@ fn field_mask_list_operations_preserve_presence_and_rule_paths() {
             if let Err(error) = result {
                 assert!(error.compile_error.is_none(), "{error:?}");
                 assert!(error.runtime_error.is_none(), "{error:?}");
+                // Field CEL now composes with the value's standard rules.
                 let scopes = if paths.is_some() {
-                    &["message", "field"][..]
+                    &["field", "message"][..]
                 } else {
                     &["message"][..]
                 };

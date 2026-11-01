@@ -227,10 +227,10 @@ fn explicit_presence_still_validates_selected_zero_values() -> Result<(), buffa:
         },
         &[
             "optional.cel",
+            "string.language_tag",
             "wrapper.cel",
+            "string.language_tag",
             "message.cel",
-            "string.language_tag",
-            "string.language_tag",
         ],
     )?;
     assert_owned_and_view(
@@ -281,9 +281,9 @@ fn predefined_rule_paths_preserve_package_and_enclosing_messages() -> Result<(),
         assert_eq!(
             paths,
             Err([
-                ("items[1]", "repeated.items.string.[acme.v1.language_tag]"),
                 ("direct", "string.[acme.v1.language_tag]"),
                 ("nested", "string.[acme.v1.Outer.Inner.language_tag]"),
+                ("items[1]", "repeated.items.string.[acme.v1.language_tag]"),
                 ("global", "string.[global_language_tag]"),
             ]
             .into_iter()

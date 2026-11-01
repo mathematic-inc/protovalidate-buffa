@@ -95,7 +95,7 @@ fn nested_and_repeated_oneofs_use_the_correct_representation() {
         let rules: &[&str] = if valid {
             &[]
         } else {
-            &["oneof.message_list", "oneof.field", "oneof.field_list"]
+            &["oneof.field", "oneof.field_list", "oneof.message_list"]
         };
         assert_rules(owned.validate(), rules);
         assert_rules(borrowed.validate(), rules);

@@ -2,6 +2,9 @@
 //! `impl Validate` blocks for the cases protos by invoking the
 //! `protoc-gen-protovalidate-buffa` plugin library in-process.
 
+#[path = "build/rule_matrix.rs"]
+mod rule_matrix;
+
 use std::{collections::BTreeMap, fmt::Write as _, path::PathBuf};
 
 use buffa::Message;
@@ -43,6 +46,7 @@ fn main() {
     files.extend(module_tree_sources.iter().map(|name| proto_root.join(name)));
     let validation_sources = [
         "validation/cel_filter/filter.proto",
+        "validation/collection_rules/proto3/collections.proto",
         "validation/float_presence/proto2/floats.proto",
         "validation/float_presence/proto3/floats.proto",
         "validation/float_presence/editions2023/floats.proto",
@@ -100,12 +104,14 @@ fn main() {
     assert!(status.success(), "protoc failed");
 
     let fds_bytes = std::fs::read(&fds_path).expect("read fds");
-    let fds = FileDescriptorSet::decode_from_slice(&fds_bytes).expect("decode fds");
+    let mut fds = FileDescriptorSet::decode_from_slice(&fds_bytes).expect("decode fds");
+    let matrix_sources = rule_matrix::extend(&mut fds);
+    std::fs::write(&fds_path, fds.encode_to_vec()).expect("write rule matrix descriptors");
 
     // Invoke buffa-build with our prebuilt FDS. Use a different include filename
     // so we can write our own merging one below.
     // buffa-build resolves `files` relative to the include search path.
-    let rel_files: Vec<String> = files
+    let mut rel_files: Vec<String> = files
         .iter()
         .map(|f| {
             f.strip_prefix(&proto_root)
@@ -116,6 +122,7 @@ fn main() {
                 )
         })
         .collect();
+    rel_files.extend(matrix_sources.iter().cloned());
     buffa_build::Config::new()
         .descriptor_set(&fds_path)
         .files(&rel_files)
@@ -134,6 +141,7 @@ fn main() {
         .iter()
         .map(|c| format!("buf/validate/conformance/cases/{c}"))
         .chain(validation_sources.iter().map(|name| (*name).to_string()))
+        .chain(matrix_sources)
         .collect();
     let request = CodeGeneratorRequest {
         file_to_generate: case_source_names,
@@ -428,6 +436,8 @@ fn write_merged_include(out_dir: &std::path::Path, emitted: &[(String, String)])
     // Parse `pub mod X { use super::*; include!(...); ... }` structure.
     // Simple state machine tracking the current module path.
     let mut out = String::from("// Merged include: buffa types + validator impls.\n");
+    // The large matrix is compiled only by its integration test.
+    let mut matrix = String::from("// Collection rule matrix.\n");
     let mut pkg_stack: Vec<String> = Vec::new();
     let by_pkg: BTreeMap<String, Vec<String>> = {
         let mut m: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -452,9 +462,14 @@ fn write_merged_include(out_dir: &std::path::Path, emitted: &[(String, String)])
             // the current package.
             let current_pkg = pkg_stack.join(".");
             if let Some(files) = by_pkg.get(&current_pkg) {
+                let target = if current_pkg.starts_with("validation.collection_rules.") {
+                    &mut matrix
+                } else {
+                    &mut out
+                };
                 for f in files {
                     writeln!(
-                        out,
+                        target,
                         "        include!(concat!(env!(\"OUT_DIR\"), \"/{f}\"));"
                     )
                     .unwrap();
@@ -462,11 +477,33 @@ fn write_merged_include(out_dir: &std::path::Path, emitted: &[(String, String)])
             }
             pkg_stack.pop();
         }
-        out.push_str(line);
-        out.push('\n');
+        if trimmed.starts_with("include!") {
+            if pkg_stack.join(".") == "google.protobuf" {
+                // Matrix message fields use the generated WKT definitions.
+                matrix.push_str(line);
+                matrix.push('\n');
+            }
+            let target = if pkg_stack
+                .join(".")
+                .starts_with("validation.collection_rules.")
+            {
+                &mut matrix
+            } else {
+                &mut out
+            };
+            target.push_str(line);
+            target.push('\n');
+        } else {
+            // Both trees retain their module scaffolding and parent imports.
+            out.push_str(line);
+            out.push('\n');
+            matrix.push_str(line);
+            matrix.push('\n');
+        }
     }
 
     std::fs::write(out_dir.join("_include.rs"), out).expect("write include");
+    std::fs::write(out_dir.join("_collection_include.rs"), matrix).expect("write matrix include");
 }
 
 fn write_dispatch_rs(
@@ -483,6 +520,9 @@ fn write_dispatch_rs(
     out.push_str("    match fqn {\n");
 
     for v in validators {
+        if v.package.starts_with("validation.collection_rules.") {
+            continue;
+        }
         // Proto name: fully qualified. Rust path: within `crate::generated`.
         // Lowercase every PascalCase parent segment that holds nested types
         // (buffa's convention); the leaf segment keeps its original case.

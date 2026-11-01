@@ -1,0 +1,975 @@
+syntax = "proto3";
+
+package validation.collection_rules.proto3;
+
+import "acme/v1/rules.proto";
+import "buf/validate/validate.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+enum MatrixEnum {
+  MATRIX_ENUM_UNSPECIFIED = 0;
+  MATRIX_ENUM_A = 1;
+  MATRIX_ENUM_B = 2;
+}
+
+// Co-update tests/validation_collection_rules.rs.
+// build/rule_matrix.rs expands these rules across positions and syntaxes.
+message Items {
+  repeated string string_const = 1 [(buf.validate.field).repeated.items = {
+    string: {const: "abc"}
+  }];
+  repeated string string_len = 2 [(buf.validate.field).repeated.items = {
+    string: {len: 3}
+  }];
+  repeated string string_min_len = 3 [(buf.validate.field).repeated.items = {
+    string: {min_len: 2}
+  }];
+  repeated string string_max_len = 4 [(buf.validate.field).repeated.items = {
+    string: {max_len: 3}
+  }];
+  repeated string string_len_bytes = 5 [(buf.validate.field).repeated.items = {
+    string: {len_bytes: 3}
+  }];
+  repeated string string_min_bytes = 6 [(buf.validate.field).repeated.items = {
+    string: {min_bytes: 2}
+  }];
+  repeated string string_max_bytes = 7 [(buf.validate.field).repeated.items = {
+    string: {max_bytes: 3}
+  }];
+  repeated string string_pattern = 8 [(buf.validate.field).repeated.items = {
+    string: {pattern: "^a+$"}
+  }];
+  repeated string string_prefix = 9 [(buf.validate.field).repeated.items = {
+    string: {prefix: "pre"}
+  }];
+  repeated string string_suffix = 10 [(buf.validate.field).repeated.items = {
+    string: {suffix: "fix"}
+  }];
+  repeated string string_contains = 11 [(buf.validate.field).repeated.items = {
+    string: {contains: "mid"}
+  }];
+  repeated string string_not_contains = 12 [(buf.validate.field).repeated.items = {
+    string: {not_contains: "bad"}
+  }];
+  repeated string string_in = 13 [(buf.validate.field).repeated.items = {
+    string: {
+      in: [
+        "a",
+        "b"
+      ]
+    }
+  }];
+  repeated string string_not_in = 14 [(buf.validate.field).repeated.items = {
+    string: {
+      not_in: ["x"]
+    }
+  }];
+  repeated string string_email = 15 [(buf.validate.field).repeated.items = {
+    string: {email: true}
+  }];
+  repeated string string_hostname = 16 [(buf.validate.field).repeated.items = {
+    string: {hostname: true}
+  }];
+  repeated string string_ip = 17 [(buf.validate.field).repeated.items = {
+    string: {ip: true}
+  }];
+  repeated string string_ipv4 = 18 [(buf.validate.field).repeated.items = {
+    string: {ipv4: true}
+  }];
+  repeated string string_ipv6 = 19 [(buf.validate.field).repeated.items = {
+    string: {ipv6: true}
+  }];
+  repeated string string_uri = 20 [(buf.validate.field).repeated.items = {
+    string: {uri: true}
+  }];
+  repeated string string_uri_ref = 21 [(buf.validate.field).repeated.items = {
+    string: {uri_ref: true}
+  }];
+  repeated string string_address = 22 [(buf.validate.field).repeated.items = {
+    string: {address: true}
+  }];
+  repeated string string_uuid = 23 [(buf.validate.field).repeated.items = {
+    string: {uuid: true}
+  }];
+  repeated string string_tuuid = 24 [(buf.validate.field).repeated.items = {
+    string: {tuuid: true}
+  }];
+  repeated string string_ip_with_prefixlen = 25 [(buf.validate.field).repeated.items = {
+    string: {ip_with_prefixlen: true}
+  }];
+  repeated string string_ipv4_with_prefixlen = 26 [(buf.validate.field).repeated.items = {
+    string: {ipv4_with_prefixlen: true}
+  }];
+  repeated string string_ipv6_with_prefixlen = 27 [(buf.validate.field).repeated.items = {
+    string: {ipv6_with_prefixlen: true}
+  }];
+  repeated string string_ip_prefix = 28 [(buf.validate.field).repeated.items = {
+    string: {ip_prefix: true}
+  }];
+  repeated string string_ipv4_prefix = 29 [(buf.validate.field).repeated.items = {
+    string: {ipv4_prefix: true}
+  }];
+  repeated string string_ipv6_prefix = 30 [(buf.validate.field).repeated.items = {
+    string: {ipv6_prefix: true}
+  }];
+  repeated string string_host_and_port = 31 [(buf.validate.field).repeated.items = {
+    string: {host_and_port: true}
+  }];
+  repeated string string_ulid = 32 [(buf.validate.field).repeated.items = {
+    string: {ulid: true}
+  }];
+  repeated string string_protobuf_fqn = 33 [(buf.validate.field).repeated.items = {
+    string: {protobuf_fqn: true}
+  }];
+  repeated string string_protobuf_dot_fqn = 34 [(buf.validate.field).repeated.items = {
+    string: {protobuf_dot_fqn: true}
+  }];
+  repeated string string_well_known_regex = 35 [(buf.validate.field).repeated.items = {
+    string: {well_known_regex: KNOWN_REGEX_HTTP_HEADER_NAME}
+  }];
+  repeated bytes bytes_const = 36 [(buf.validate.field).repeated.items = {
+    bytes: {const: "abc"}
+  }];
+  repeated bytes bytes_len = 37 [(buf.validate.field).repeated.items = {
+    bytes: {len: 3}
+  }];
+  repeated bytes bytes_min_len = 38 [(buf.validate.field).repeated.items = {
+    bytes: {min_len: 2}
+  }];
+  repeated bytes bytes_max_len = 39 [(buf.validate.field).repeated.items = {
+    bytes: {max_len: 3}
+  }];
+  repeated bytes bytes_pattern = 40 [(buf.validate.field).repeated.items = {
+    bytes: {pattern: "^a+$"}
+  }];
+  repeated bytes bytes_prefix = 41 [(buf.validate.field).repeated.items = {
+    bytes: {prefix: "pre"}
+  }];
+  repeated bytes bytes_suffix = 42 [(buf.validate.field).repeated.items = {
+    bytes: {suffix: "fix"}
+  }];
+  repeated bytes bytes_contains = 43 [(buf.validate.field).repeated.items = {
+    bytes: {contains: "mid"}
+  }];
+  repeated bytes bytes_in = 44 [(buf.validate.field).repeated.items = {
+    bytes: {
+      in: [
+        "a",
+        "b"
+      ]
+    }
+  }];
+  repeated bytes bytes_not_in = 45 [(buf.validate.field).repeated.items = {
+    bytes: {
+      not_in: ["x"]
+    }
+  }];
+  repeated bytes bytes_ip = 46 [(buf.validate.field).repeated.items = {
+    bytes: {ip: true}
+  }];
+  repeated bytes bytes_ipv4 = 47 [(buf.validate.field).repeated.items = {
+    bytes: {ipv4: true}
+  }];
+  repeated bytes bytes_ipv6 = 48 [(buf.validate.field).repeated.items = {
+    bytes: {ipv6: true}
+  }];
+  repeated bytes bytes_uuid = 49 [(buf.validate.field).repeated.items = {
+    bytes: {uuid: true}
+  }];
+  repeated int32 int32_const = 50 [(buf.validate.field).repeated.items = {
+    int32: {const: 5}
+  }];
+  repeated int32 int32_lt = 51 [(buf.validate.field).repeated.items = {
+    int32: {lt: 5}
+  }];
+  repeated int32 int32_lte = 52 [(buf.validate.field).repeated.items = {
+    int32: {lte: 5}
+  }];
+  repeated int32 int32_gt = 53 [(buf.validate.field).repeated.items = {
+    int32: {gt: 5}
+  }];
+  repeated int32 int32_gte = 54 [(buf.validate.field).repeated.items = {
+    int32: {gte: 5}
+  }];
+  repeated int32 int32_in = 55 [(buf.validate.field).repeated.items = {
+    int32: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated int32 int32_not_in = 56 [(buf.validate.field).repeated.items = {
+    int32: {
+      not_in: [7]
+    }
+  }];
+  repeated int64 int64_const = 57 [(buf.validate.field).repeated.items = {
+    int64: {const: 5}
+  }];
+  repeated int64 int64_lt = 58 [(buf.validate.field).repeated.items = {
+    int64: {lt: 5}
+  }];
+  repeated int64 int64_lte = 59 [(buf.validate.field).repeated.items = {
+    int64: {lte: 5}
+  }];
+  repeated int64 int64_gt = 60 [(buf.validate.field).repeated.items = {
+    int64: {gt: 5}
+  }];
+  repeated int64 int64_gte = 61 [(buf.validate.field).repeated.items = {
+    int64: {gte: 5}
+  }];
+  repeated int64 int64_in = 62 [(buf.validate.field).repeated.items = {
+    int64: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated int64 int64_not_in = 63 [(buf.validate.field).repeated.items = {
+    int64: {
+      not_in: [7]
+    }
+  }];
+  repeated uint32 uint32_const = 64 [(buf.validate.field).repeated.items = {
+    uint32: {const: 5}
+  }];
+  repeated uint32 uint32_lt = 65 [(buf.validate.field).repeated.items = {
+    uint32: {lt: 5}
+  }];
+  repeated uint32 uint32_lte = 66 [(buf.validate.field).repeated.items = {
+    uint32: {lte: 5}
+  }];
+  repeated uint32 uint32_gt = 67 [(buf.validate.field).repeated.items = {
+    uint32: {gt: 5}
+  }];
+  repeated uint32 uint32_gte = 68 [(buf.validate.field).repeated.items = {
+    uint32: {gte: 5}
+  }];
+  repeated uint32 uint32_in = 69 [(buf.validate.field).repeated.items = {
+    uint32: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated uint32 uint32_not_in = 70 [(buf.validate.field).repeated.items = {
+    uint32: {
+      not_in: [7]
+    }
+  }];
+  repeated uint64 uint64_const = 71 [(buf.validate.field).repeated.items = {
+    uint64: {const: 5}
+  }];
+  repeated uint64 uint64_lt = 72 [(buf.validate.field).repeated.items = {
+    uint64: {lt: 5}
+  }];
+  repeated uint64 uint64_lte = 73 [(buf.validate.field).repeated.items = {
+    uint64: {lte: 5}
+  }];
+  repeated uint64 uint64_gt = 74 [(buf.validate.field).repeated.items = {
+    uint64: {gt: 5}
+  }];
+  repeated uint64 uint64_gte = 75 [(buf.validate.field).repeated.items = {
+    uint64: {gte: 5}
+  }];
+  repeated uint64 uint64_in = 76 [(buf.validate.field).repeated.items = {
+    uint64: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated uint64 uint64_not_in = 77 [(buf.validate.field).repeated.items = {
+    uint64: {
+      not_in: [7]
+    }
+  }];
+  repeated sint32 sint32_const = 78 [(buf.validate.field).repeated.items = {
+    sint32: {const: 5}
+  }];
+  repeated sint32 sint32_lt = 79 [(buf.validate.field).repeated.items = {
+    sint32: {lt: 5}
+  }];
+  repeated sint32 sint32_lte = 80 [(buf.validate.field).repeated.items = {
+    sint32: {lte: 5}
+  }];
+  repeated sint32 sint32_gt = 81 [(buf.validate.field).repeated.items = {
+    sint32: {gt: 5}
+  }];
+  repeated sint32 sint32_gte = 82 [(buf.validate.field).repeated.items = {
+    sint32: {gte: 5}
+  }];
+  repeated sint32 sint32_in = 83 [(buf.validate.field).repeated.items = {
+    sint32: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated sint32 sint32_not_in = 84 [(buf.validate.field).repeated.items = {
+    sint32: {
+      not_in: [7]
+    }
+  }];
+  repeated sint64 sint64_const = 85 [(buf.validate.field).repeated.items = {
+    sint64: {const: 5}
+  }];
+  repeated sint64 sint64_lt = 86 [(buf.validate.field).repeated.items = {
+    sint64: {lt: 5}
+  }];
+  repeated sint64 sint64_lte = 87 [(buf.validate.field).repeated.items = {
+    sint64: {lte: 5}
+  }];
+  repeated sint64 sint64_gt = 88 [(buf.validate.field).repeated.items = {
+    sint64: {gt: 5}
+  }];
+  repeated sint64 sint64_gte = 89 [(buf.validate.field).repeated.items = {
+    sint64: {gte: 5}
+  }];
+  repeated sint64 sint64_in = 90 [(buf.validate.field).repeated.items = {
+    sint64: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated sint64 sint64_not_in = 91 [(buf.validate.field).repeated.items = {
+    sint64: {
+      not_in: [7]
+    }
+  }];
+  repeated fixed32 fixed32_const = 92 [(buf.validate.field).repeated.items = {
+    fixed32: {const: 5}
+  }];
+  repeated fixed32 fixed32_lt = 93 [(buf.validate.field).repeated.items = {
+    fixed32: {lt: 5}
+  }];
+  repeated fixed32 fixed32_lte = 94 [(buf.validate.field).repeated.items = {
+    fixed32: {lte: 5}
+  }];
+  repeated fixed32 fixed32_gt = 95 [(buf.validate.field).repeated.items = {
+    fixed32: {gt: 5}
+  }];
+  repeated fixed32 fixed32_gte = 96 [(buf.validate.field).repeated.items = {
+    fixed32: {gte: 5}
+  }];
+  repeated fixed32 fixed32_in = 97 [(buf.validate.field).repeated.items = {
+    fixed32: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated fixed32 fixed32_not_in = 98 [(buf.validate.field).repeated.items = {
+    fixed32: {
+      not_in: [7]
+    }
+  }];
+  repeated fixed64 fixed64_const = 99 [(buf.validate.field).repeated.items = {
+    fixed64: {const: 5}
+  }];
+  repeated fixed64 fixed64_lt = 100 [(buf.validate.field).repeated.items = {
+    fixed64: {lt: 5}
+  }];
+  repeated fixed64 fixed64_lte = 101 [(buf.validate.field).repeated.items = {
+    fixed64: {lte: 5}
+  }];
+  repeated fixed64 fixed64_gt = 102 [(buf.validate.field).repeated.items = {
+    fixed64: {gt: 5}
+  }];
+  repeated fixed64 fixed64_gte = 103 [(buf.validate.field).repeated.items = {
+    fixed64: {gte: 5}
+  }];
+  repeated fixed64 fixed64_in = 104 [(buf.validate.field).repeated.items = {
+    fixed64: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated fixed64 fixed64_not_in = 105 [(buf.validate.field).repeated.items = {
+    fixed64: {
+      not_in: [7]
+    }
+  }];
+  repeated sfixed32 sfixed32_const = 106 [(buf.validate.field).repeated.items = {
+    sfixed32: {const: 5}
+  }];
+  repeated sfixed32 sfixed32_lt = 107 [(buf.validate.field).repeated.items = {
+    sfixed32: {lt: 5}
+  }];
+  repeated sfixed32 sfixed32_lte = 108 [(buf.validate.field).repeated.items = {
+    sfixed32: {lte: 5}
+  }];
+  repeated sfixed32 sfixed32_gt = 109 [(buf.validate.field).repeated.items = {
+    sfixed32: {gt: 5}
+  }];
+  repeated sfixed32 sfixed32_gte = 110 [(buf.validate.field).repeated.items = {
+    sfixed32: {gte: 5}
+  }];
+  repeated sfixed32 sfixed32_in = 111 [(buf.validate.field).repeated.items = {
+    sfixed32: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated sfixed32 sfixed32_not_in = 112 [(buf.validate.field).repeated.items = {
+    sfixed32: {
+      not_in: [7]
+    }
+  }];
+  repeated sfixed64 sfixed64_const = 113 [(buf.validate.field).repeated.items = {
+    sfixed64: {const: 5}
+  }];
+  repeated sfixed64 sfixed64_lt = 114 [(buf.validate.field).repeated.items = {
+    sfixed64: {lt: 5}
+  }];
+  repeated sfixed64 sfixed64_lte = 115 [(buf.validate.field).repeated.items = {
+    sfixed64: {lte: 5}
+  }];
+  repeated sfixed64 sfixed64_gt = 116 [(buf.validate.field).repeated.items = {
+    sfixed64: {gt: 5}
+  }];
+  repeated sfixed64 sfixed64_gte = 117 [(buf.validate.field).repeated.items = {
+    sfixed64: {gte: 5}
+  }];
+  repeated sfixed64 sfixed64_in = 118 [(buf.validate.field).repeated.items = {
+    sfixed64: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated sfixed64 sfixed64_not_in = 119 [(buf.validate.field).repeated.items = {
+    sfixed64: {
+      not_in: [7]
+    }
+  }];
+  repeated float float_const = 120 [(buf.validate.field).repeated.items = {
+    float: {const: 5}
+  }];
+  repeated float float_lt = 121 [(buf.validate.field).repeated.items = {
+    float: {lt: 5}
+  }];
+  repeated float float_lte = 122 [(buf.validate.field).repeated.items = {
+    float: {lte: 5}
+  }];
+  repeated float float_gt = 123 [(buf.validate.field).repeated.items = {
+    float: {gt: 5}
+  }];
+  repeated float float_gte = 124 [(buf.validate.field).repeated.items = {
+    float: {gte: 5}
+  }];
+  repeated float float_in = 125 [(buf.validate.field).repeated.items = {
+    float: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated float float_not_in = 126 [(buf.validate.field).repeated.items = {
+    float: {
+      not_in: [7]
+    }
+  }];
+  repeated float float_finite = 127 [(buf.validate.field).repeated.items = {
+    float: {finite: true}
+  }];
+  repeated double double_const = 128 [(buf.validate.field).repeated.items = {
+    double: {const: 5}
+  }];
+  repeated double double_lt = 129 [(buf.validate.field).repeated.items = {
+    double: {lt: 5}
+  }];
+  repeated double double_lte = 130 [(buf.validate.field).repeated.items = {
+    double: {lte: 5}
+  }];
+  repeated double double_gt = 131 [(buf.validate.field).repeated.items = {
+    double: {gt: 5}
+  }];
+  repeated double double_gte = 132 [(buf.validate.field).repeated.items = {
+    double: {gte: 5}
+  }];
+  repeated double double_in = 133 [(buf.validate.field).repeated.items = {
+    double: {
+      in: [
+        5,
+        6
+      ]
+    }
+  }];
+  repeated double double_not_in = 134 [(buf.validate.field).repeated.items = {
+    double: {
+      not_in: [7]
+    }
+  }];
+  repeated double double_finite = 135 [(buf.validate.field).repeated.items = {
+    double: {finite: true}
+  }];
+  repeated bool bool_const = 136 [(buf.validate.field).repeated.items = {
+    bool: {const: true}
+  }];
+
+  repeated MatrixEnum enum_const = 137 [(buf.validate.field).repeated.items = {
+    enum: {const: 1}
+  }];
+  repeated MatrixEnum enum_defined_only = 138 [(buf.validate.field).repeated.items = {
+    enum: {defined_only: true}
+  }];
+  repeated MatrixEnum enum_in = 139 [(buf.validate.field).repeated.items = {
+    enum: {
+      in: [1]
+    }
+  }];
+  repeated MatrixEnum enum_not_in = 140 [(buf.validate.field).repeated.items = {
+    enum: {
+      not_in: [2]
+    }
+  }];
+  repeated google.protobuf.Duration duration_const = 141 [(buf.validate.field).repeated.items = {
+    duration: {
+      const: {seconds: 1}
+    }
+  }];
+  repeated google.protobuf.Duration duration_lt = 142 [(buf.validate.field).repeated.items = {
+    duration: {
+      lt: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Duration duration_lte = 143 [(buf.validate.field).repeated.items = {
+    duration: {
+      lte: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Duration duration_gt = 144 [(buf.validate.field).repeated.items = {
+    duration: {
+      gt: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Duration duration_gte = 145 [(buf.validate.field).repeated.items = {
+    duration: {
+      gte: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Duration duration_in = 146 [(buf.validate.field).repeated.items = {
+    duration: {
+      in: [
+        {seconds: 1}
+      ]
+    }
+  }];
+  repeated google.protobuf.Duration duration_not_in = 147 [(buf.validate.field).repeated.items = {
+    duration: {
+      not_in: [
+        {seconds: 2}
+      ]
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_const = 148 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      const: {seconds: 1}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_lt = 149 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      lt: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_lte = 150 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      lte: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_gt = 151 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      gt: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_gte = 152 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      gte: {seconds: 2}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_lt_now = 153 [(buf.validate.field).repeated.items = {
+    timestamp: {lt_now: true}
+  }];
+  repeated google.protobuf.Timestamp timestamp_gt_now = 154 [(buf.validate.field).repeated.items = {
+    timestamp: {gt_now: true}
+  }];
+  repeated google.protobuf.Timestamp timestamp_within = 155 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      within: {seconds: 60}
+    }
+  }];
+  repeated google.protobuf.Any any_in = 156 [(buf.validate.field).repeated.items = {
+    any: {
+      in: ["allowed"]
+    }
+  }];
+  repeated google.protobuf.Any any_not_in = 157 [(buf.validate.field).repeated.items = {
+    any: {
+      not_in: ["denied"]
+    }
+  }];
+  repeated google.protobuf.FieldMask field_mask_const = 158 [(buf.validate.field).repeated.items = {
+    field_mask: {
+      const: {
+        paths: ["a"]
+      }
+    }
+  }];
+  repeated google.protobuf.FieldMask field_mask_in = 159 [(buf.validate.field).repeated.items = {
+    field_mask: {
+      in: ["a"]
+    }
+  }];
+  repeated google.protobuf.FieldMask field_mask_not_in = 160 [(buf.validate.field).repeated.items = {
+    field_mask: {
+      not_in: ["b"]
+    }
+  }];
+  repeated google.protobuf.Duration duration_mixed = 161 [(buf.validate.field).repeated.items = {
+    duration: {
+      gte: {seconds: 0}
+      lt: {seconds: 10}
+    }
+  }];
+  repeated google.protobuf.Duration duration_inverted = 162 [(buf.validate.field).repeated.items = {
+    duration: {
+      gte: {seconds: 10}
+      lt: {seconds: 0}
+    }
+  }];
+  repeated google.protobuf.Duration duration_range_const = 163 [(buf.validate.field).repeated.items = {
+    duration: {
+      const: {seconds: 5}
+      gte: {seconds: 0}
+      lte: {seconds: 10}
+    }
+  }];
+  repeated google.protobuf.Duration duration_range_in = 164 [(buf.validate.field).repeated.items = {
+    duration: {
+      in: [
+        {seconds: 5}
+      ]
+      gte: {seconds: 0}
+      lte: {seconds: 10}
+    }
+  }];
+  repeated google.protobuf.Timestamp timestamp_future_within = 165 [(buf.validate.field).repeated.items = {
+    timestamp: {
+      gt_now: true
+      within: {seconds: 60}
+    }
+  }];
+  repeated float float_nan = 166 [(buf.validate.field).repeated.items = {
+    float: {gt: 0}
+  }];
+  repeated double double_range_in = 167 [(buf.validate.field).repeated.items = {
+    double: {
+      gte: 0
+      lte: 10
+      in: [5]
+    }
+  }];
+  repeated string relaxed_header = 168 [(buf.validate.field).repeated.items.string = {
+    well_known_regex: KNOWN_REGEX_HTTP_HEADER_NAME
+    strict: false
+  }];
+  repeated int32 int32_reversed_mixed = 169 [(buf.validate.field).repeated.items.int32 = {
+    gte: 10
+    lt: 0
+  }];
+  repeated int64 int64_mixed = 170 [(buf.validate.field).repeated.items.int64 = {
+    gt: 0
+    lte: 10
+  }];
+  repeated uint64 uint64_range_const = 171 [(buf.validate.field).repeated.items.uint64 = {
+    gte: 0
+    lte: 10
+    const: 5
+  }];
+  repeated uint32 uint32_range_not_in = 172 [(buf.validate.field).repeated.items.uint32 = {
+    gt: 0
+    lt: 10
+    not_in: [5]
+  }];
+  repeated float float_range_finite = 173 [(buf.validate.field).repeated.items.float = {
+    gte: 1
+    lte: inf
+    finite: true
+  }];
+  repeated double double_infinite_bound = 174 [(buf.validate.field).repeated.items.double.lt = inf];
+  repeated float float_negative_infinite_bound = 175 [(buf.validate.field).repeated.items.float.gt = -inf];
+  repeated sint64 sint64_min = 176 [(buf.validate.field).repeated.items.sint64.const = -9223372036854775808];
+  repeated fixed64 fixed64_max = 177 [(buf.validate.field).repeated.items.fixed64.const = 18446744073709551615];
+  repeated string unicode_chars = 178 [(buf.validate.field).repeated.items.string.len = 2];
+  repeated string unicode_bytes = 179 [(buf.validate.field).repeated.items.string.max_bytes = 3];
+  repeated double double_reversed_nan = 180 [(buf.validate.field).repeated.items.double = {
+    gte: 10
+    lt: 0
+  }];
+}
+
+// Explicit scalar presence.
+message Presence {
+  optional int32 code = 1 [(buf.validate.field).int32 = {
+    in: [
+      1,
+      2
+    ]
+  }];
+  optional uint64 big = 2 [(buf.validate.field).uint64 = {
+    not_in: [7]
+  }];
+  optional float ratio = 3 [(buf.validate.field).float.const = 1];
+  optional double scale = 4 [(buf.validate.field).double.const = 2];
+}
+
+// Rules on wrapper values.
+message Wrappers {
+  google.protobuf.StringValue name = 1 [(buf.validate.field).string.max_bytes = 3];
+  google.protobuf.BytesValue blob = 2 [(buf.validate.field).bytes.prefix = "p"];
+  google.protobuf.Int32Value code = 3 [(buf.validate.field).int32 = {
+    in: [
+      1,
+      2
+    ]
+  }];
+  google.protobuf.DoubleValue ratio = 4 [(buf.validate.field).double.finite = true];
+  google.protobuf.UInt64Value big = 5 [(buf.validate.field).uint64 = {
+    not_in: [7]
+  }];
+}
+
+message ItemCel {
+  repeated string ids = 1 [(buf.validate.field).repeated.items = {
+    string: {min_len: 1}
+    cel: {
+      id: "ids.no_space"
+      message: "must not contain spaces"
+      expression: "!this.contains(' ')"
+    }
+  }];
+}
+
+// Rules on explicit-presence scalars.
+message ItemMessages {
+  double weight = 1 [(buf.validate.field).double = {
+    gte: 0
+    finite: true
+  }];
+  repeated double weights = 2 [(buf.validate.field).repeated.items.double = {
+    gte: 0
+    finite: true
+  }];
+}
+
+// Item CEL rules still apply when standard item rules are set.
+message Composed {
+  repeated string items = 1 [(buf.validate.field).repeated.items = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  map<string, string> keys = 2 [(buf.validate.field).map.keys = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  map<string, string> values = 3 [(buf.validate.field).map.values = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  repeated google.protobuf.StringValue wrappers = 4 [(buf.validate.field).repeated.items = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  map<string, google.protobuf.StringValue> wrapper_values = 5 [(buf.validate.field).map.values = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  optional string present = 6 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  google.protobuf.StringValue wrapped = 7 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {
+      min_len: 3
+      [acme.v1.language_tag]: true
+    }
+    cel: {
+      id: "no_space"
+      expression: "!this.contains(' ')"
+    }
+    cel_expression: ["this != 'bad'"]
+  }];
+  oneof choice {
+    string selected = 8 [(buf.validate.field) = {
+      ignore: IGNORE_IF_ZERO_VALUE
+      string: {
+        min_len: 3
+        [acme.v1.language_tag]: true
+      }
+      cel: {
+        id: "no_space"
+        expression: "!this.contains(' ')"
+      }
+      cel_expression: ["this != 'bad'"]
+    }];
+  }
+}
+
+message BadSchema {
+  string value = 1 [(buf.validate.field).int32.gt = 0];
+}
+message BadEvaluation {
+  string value = 1 [(buf.validate.field).cel = {
+    id: "unsupported"
+    expression: "this.unknownFunction()"
+  }];
+}
+message InvalidValue {
+  string value = 1 [(buf.validate.field).string.const = "valid"];
+}
+message SchemaParents {
+  BadSchema single = 1;
+  repeated BadSchema items = 2;
+  map<string, BadSchema> entries = 3;
+  oneof choice {
+    BadSchema selected = 4;
+  }
+}
+message EvaluationParents {
+  BadEvaluation single = 1;
+  repeated BadEvaluation items = 2;
+  map<string, BadEvaluation> entries = 3;
+  oneof choice {
+    BadEvaluation selected = 4;
+  }
+}
+message IgnoredChildren {
+  InvalidValue single = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+  repeated InvalidValue items = 2 [(buf.validate.field).repeated.items.ignore = IGNORE_ALWAYS];
+  map<string, InvalidValue> entries = 3 [(buf.validate.field).map.values.ignore = IGNORE_ALWAYS];
+  oneof choice {
+    InvalidValue selected = 4 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+  }
+}
+message IgnoredItemsSize {
+  repeated InvalidValue items = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    items: {ignore: IGNORE_ALWAYS}
+  }];
+}
+message InvalidItemRules {
+  repeated string items = 1 [(buf.validate.field).repeated.items.int32.gt = 0];
+}
+message InvalidKeyRules {
+  map<string, string> values = 1 [(buf.validate.field).map.keys.bytes.min_len = 1];
+}
+message InvalidValueRules {
+  map<string, string> values = 1 [(buf.validate.field).map.values.timestamp.gt_now = true];
+}
+
+message InvalidEncodedRules {
+  repeated sint32 items = 1 [(buf.validate.field).repeated.items.int32.gt = 0];
+}
+message IgnoredInvalidRules {
+  repeated string items = 1 [(buf.validate.field).repeated.items = {
+    ignore: IGNORE_ALWAYS
+    int32: {gt: 0}
+  }];
+}
+
+message UniqueNumbers {
+  repeated float floats = 1 [(buf.validate.field).repeated.unique = true];
+  repeated double doubles = 2 [(buf.validate.field).repeated.unique = true];
+}
+message InvalidUnique {
+  repeated InvalidValue items = 1 [(buf.validate.field).repeated.unique = true];
+}
+
+message IgnoreEnums {
+  repeated MatrixEnum items = 1 [(buf.validate.field).repeated.items = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    enum: {const: 2}
+  }];
+  map<string, MatrixEnum> values = 2 [(buf.validate.field).map.values = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    enum: {const: 2}
+  }];
+  optional MatrixEnum present = 3 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    enum: {const: 2}
+  }];
+  oneof choice {
+    MatrixEnum selected = 4 [(buf.validate.field) = {
+      ignore: IGNORE_IF_ZERO_VALUE
+      enum: {const: 2}
+    }];
+  }
+}
