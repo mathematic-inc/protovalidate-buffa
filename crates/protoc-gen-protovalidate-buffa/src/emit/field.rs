@@ -147,7 +147,7 @@ pub(crate) fn emit(
             field,
             &site,
             schemas,
-            super::cel::collection_binding(field, &accessor, schemas, shape),
+            super::cel::collection_binding(field, &accessor, schemas, shape).as_ref(),
         ));
     }
 

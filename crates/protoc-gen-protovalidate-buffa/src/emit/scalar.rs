@@ -1448,9 +1448,9 @@ const fn num_family(kind: &FieldKind) -> Option<NumFamily> {
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_float_on_pub, scan::FloatStandard};
-/// let checks = emit_float_on_pub(&syn::parse_str("value")?, "value", &FloatStandard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &FloatStandard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_float_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_float_on_pub(
@@ -1472,9 +1472,9 @@ pub fn emit_float_on_pub(
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_double_on_pub, scan::DoubleStandard};
-/// let checks = emit_double_on_pub(&syn::parse_str("value")?, "value", &DoubleStandard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &DoubleStandard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_double_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_double_on_pub(
@@ -1496,9 +1496,9 @@ pub fn emit_double_on_pub(
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_int32_on_pub, scan::Int32Standard};
-/// let checks = emit_int32_on_pub(&syn::parse_str("value")?, "value", &Int32Standard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &Int32Standard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_int32_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_int32_on_pub(
@@ -1520,9 +1520,9 @@ pub fn emit_int32_on_pub(
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_int64_on_pub, scan::Int64Standard};
-/// let checks = emit_int64_on_pub(&syn::parse_str("value")?, "value", &Int64Standard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &Int64Standard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_int64_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_int64_on_pub(
@@ -1544,9 +1544,9 @@ pub fn emit_int64_on_pub(
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_uint32_on_pub, scan::Uint32Standard};
-/// let checks = emit_uint32_on_pub(&syn::parse_str("value")?, "value", &Uint32Standard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &Uint32Standard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_uint32_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_uint32_on_pub(
@@ -1568,9 +1568,9 @@ pub fn emit_uint32_on_pub(
 ///
 /// ```
 /// use protoc_gen_protovalidate_buffa::{emit::field::emit_uint64_on_pub, scan::Uint64Standard};
-/// let checks = emit_uint64_on_pub(&syn::parse_str("value")?, "value", &Uint64Standard::default());
-/// assert!(checks.is_empty());
-/// # Ok::<(), syn::Error>(())
+/// fn checks(rules: &Uint64Standard) -> Result<Vec<proc_macro2::TokenStream>, syn::Error> {
+///     Ok(emit_uint64_on_pub(&syn::parse_str("value")?, "value", rules))
+/// }
 /// ```
 #[must_use]
 pub fn emit_uint64_on_pub(

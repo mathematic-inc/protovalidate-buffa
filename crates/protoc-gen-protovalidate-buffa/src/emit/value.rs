@@ -64,7 +64,7 @@ pub(super) fn emit(
             rules,
             site,
             schemas,
-            cel::this_binding_for_kind_with(inner, &access, Some(schemas)),
+            cel::this_binding_for_kind_with(inner, &access, Some(schemas)).as_ref(),
         ));
     }
     if matches!(kind, FieldKind::Message { full_name } if !full_name.starts_with("google.protobuf."))
@@ -95,7 +95,7 @@ pub(super) fn emit_custom(
     rules: &FieldValidator,
     site: &RuleSite,
     schemas: &cel::SchemaIndex,
-    binding: Option<(TokenStream, super::cel_compile::CelType)>,
+    binding: Option<&(TokenStream, super::cel_compile::CelType)>,
 ) -> Vec<TokenStream> {
     let mut checks = Vec::new();
     let field = site.field_path();
@@ -111,7 +111,7 @@ pub(super) fn emit_custom(
             cel_index += 1;
             (super::rule_site::CelList::Rule, index)
         };
-        let check = binding.clone().and_then(|(this, ty)| {
+        let check = binding.cloned().and_then(|(this, ty)| {
             cel::try_compile_cel_check(
                 &rule.expression,
                 &rule.id,
@@ -145,7 +145,7 @@ pub(super) fn emit_custom(
                 rule.ext_number,
                 &rule.ext_field_type,
             );
-            let (this, ty) = binding.clone()?;
+            let (this, ty) = binding.cloned()?;
             cel::try_compile_cel_check(
                 &rule.expression,
                 &rule.id,
