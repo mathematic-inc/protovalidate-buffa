@@ -1,7 +1,6 @@
 [package]
 name = "protovalidate-buffa-conformance"
 version = "0.0.26"
-authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Conformance executor for the upstream protovalidate-conformance harness."

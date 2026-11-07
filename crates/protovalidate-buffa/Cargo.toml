@@ -1,7 +1,6 @@
 [package]
 name = "protovalidate-buffa"
 version = "0.7.2"
-authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."

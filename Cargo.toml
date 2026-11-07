@@ -10,7 +10,6 @@ members = [
 ]
 
 [workspace.package]
-authors = ["Mathematic Inc"]
 edition = "2024"
 rust-version = "1.89"
 homepage = "https://github.com/mathematic-inc/protovalidate-buffa"

@@ -1,7 +1,6 @@
 [package]
 name = "protoc-gen-protovalidate-buffa"
 version = "0.10.7"
-authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "protoc plugin that emits static Rust Validate impls from buf.validate annotations for buffa-generated messages. CEL expressions are transpiled to native Rust at codegen time — no runtime interpreter."

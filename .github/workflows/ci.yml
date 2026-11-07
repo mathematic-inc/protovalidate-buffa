@@ -70,4 +70,4 @@ jobs:
     permissions:
       contents: read
     name: Verify prebuilt distribution
-    uses: ./.github/workflows/prebuilt.yml # zizmor: ignore[self-repository] -- actionlint requires relative paths.
+    uses: $/.github/workflows/prebuilt.yml

@@ -115,7 +115,7 @@ jobs:
       contents: read
     needs: [meta, build-and-test]
     if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
-    uses: ./.github/workflows/prebuilt.yml # zizmor: ignore[self-repository] -- actionlint requires relative paths.
+    uses: $/.github/workflows/prebuilt.yml
 
   create-release:
     name: Publish GitHub Release
@@ -224,6 +224,6 @@ jobs:
     name: Verify published installations
     needs: [meta, publish-crate]
     if: needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa'
-    uses: ./.github/workflows/prebuilt.yml # zizmor: ignore[self-repository] -- actionlint requires relative paths.
+    uses: $/.github/workflows/prebuilt.yml
     with:
       verify-install: true
