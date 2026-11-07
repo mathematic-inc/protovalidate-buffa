@@ -92,7 +92,7 @@ Compared to reflection-based implementations, the codegen approach has two chara
 ## Compatibility
 
 This workspace currently targets **buffa 0.9.1**, **connectrpc 0.9**, and
-**Rust 1.88+** (edition 2024).
+**Rust 1.89+** (edition 2024).
 
 The emitted validators reference buffa's generated-code shape directly (field
 placement, map and view types), so the plugin and your `buffa-build` output must
