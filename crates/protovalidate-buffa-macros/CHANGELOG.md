@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.4.1...protovalidate-buffa-macros-v0.4.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** Update dependencies across the stack ([#117](https://github.com/mathematic-inc/protovalidate-buffa/issues/117)) ([5079853](https://github.com/mathematic-inc/protovalidate-buffa/commit/507985310c1cd4f6db88b8b8cf549406c20b1030))
+
 ## [0.4.1](https://github.com/mathematic-inc/protovalidate-buffa/compare/protovalidate-buffa-macros-v0.4.0...protovalidate-buffa-macros-v0.4.1) (2026-09-07)
 
 
