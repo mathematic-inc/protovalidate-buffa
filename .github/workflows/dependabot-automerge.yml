@@ -44,7 +44,7 @@ jobs:
               .check_runs as $runs
               | ([
                   ["Test", 15368],
-                  ["Rust 1.88.0", 15368],
+                  ["Rust 1.89.0", 15368],
                   ["Check", 15368],
                   ["CodeQL", 57789],
                   ["Analyze (actions)", 15368],

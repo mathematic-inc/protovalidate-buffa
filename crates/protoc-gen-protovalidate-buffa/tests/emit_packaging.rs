@@ -203,7 +203,7 @@ fn empty_generation_emits_no_files_in_flat_mode() {
     request.file_to_generate.clear();
     let response = invoke_plugin(&request);
     assert!(response.error.is_none(), "{:?}", response.error);
-    assert!(response.file.is_empty());
+    assert_eq!(response.file, []);
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn invalid_file_per_package_returns_error_without_files() {
                 .unwrap()
                 .contains("file_per_package must be true or false")
         );
-        assert!(response.file.is_empty());
+        assert_eq!(response.file, []);
     }
 }
 
