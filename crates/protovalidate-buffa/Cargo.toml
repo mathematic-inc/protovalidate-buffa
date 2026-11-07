@@ -1,6 +1,6 @@
 [package]
 name = "protovalidate-buffa"
-version = "0.7.2"
+version = "0.7.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."
@@ -21,8 +21,8 @@ fluent-uri = "0.4.1"
 http = "1.5.0"
 ipnet = "2.12.2"
 percent-encoding = "2.3.2"
-protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.1" }
-protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.1", optional = true }
+protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.2" }
+protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.2", optional = true }
 regex = "1.13.1"
 ulid = "3.0.0"
 uuid = "1.29.1"

@@ -1,6 +1,6 @@
 [package]
 name = "protovalidate-buffa-packaging-examples"
-version = "0.0.8"
+version = "0.0.9"
 edition.workspace = true
 rust-version.workspace = true
 description = "Runnable examples of validators mounted beside Buffa message types."
@@ -13,13 +13,13 @@ publish = false
 
 [dependencies]
 buffa = "0.9.2"
-protovalidate-buffa = { path = "../../crates/protovalidate-buffa", version = "0.7.2", default-features = false }
+protovalidate-buffa = { path = "../../crates/protovalidate-buffa", version = "0.7.3", default-features = false }
 
 [build-dependencies]
 anyhow = "1.0.104"
 buffa = "0.9.2"
 buffa-codegen = "0.9.2"
-protoc-gen-protovalidate-buffa = { path = "../../crates/protoc-gen-protovalidate-buffa", version = "0.10.7" }
+protoc-gen-protovalidate-buffa = { path = "../../crates/protoc-gen-protovalidate-buffa", version = "0.10.8" }
 
 [lints]
 workspace = true

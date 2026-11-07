@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.3](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.2...v0.7.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** Update dependencies across the stack ([#117](https://github.com/mathematic-inc/protovalidate-buffa/issues/117)) ([5079853](https://github.com/mathematic-inc/protovalidate-buffa/commit/507985310c1cd4f6db88b8b8cf549406c20b1030))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * protovalidate-buffa-macros bumped from 0.4.1 to 0.4.2
+    * protovalidate-buffa-protos bumped from 0.7.1 to 0.7.2
+
 ## [0.7.2](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.1...v0.7.2) (2026-09-07)
 
 
