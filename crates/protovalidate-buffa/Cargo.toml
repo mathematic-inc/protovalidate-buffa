@@ -1,7 +1,6 @@
 [package]
 name = "protovalidate-buffa"
 version = "0.7.2"
-authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Runtime for protoc-gen-protovalidate-buffa — Validate trait, ValidationError types, rule helpers, and the CelScalar / Duration / Timestamp helpers that compile-time-expanded CEL rules call into. No CEL interpreter at runtime."
@@ -12,29 +11,29 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-base64 = { version = "0.23", optional = true }
-buffa = "0.9.1"
-buffa-descriptor = { version = "0.9.1", optional = true }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-chrono-tz = { version = "0.10", optional = true }
-connectrpc = { version = "0.9", default-features = false, optional = true }
-fluent-uri = "0.4"
-http = "1"
-ipnet = "2"
-percent-encoding = "2"
+base64 = { version = "0.23.1", optional = true }
+buffa = "0.9.2"
+buffa-descriptor = { version = "0.9.2", optional = true }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+chrono-tz = { version = "0.10.4", optional = true }
+connectrpc = { version = "0.9.1", default-features = false, optional = true }
+fluent-uri = "0.4.1"
+http = "1.5.0"
+ipnet = "2.12.2"
+percent-encoding = "2.3.2"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.1" }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.1", optional = true }
-regex = "1"
-ulid = "3"
-uuid = "1"
+regex = "1.13.1"
+ulid = "3.0.0"
+uuid = "1.29.1"
 
 [dev-dependencies]
-buffa-types = { version = "0.9.1", features = ["json"] }
-connectrpc = { version = "0.9", default-features = false, features = ["client", "json"] }
-http-body-util = "0.1"
-serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt"] }
-tower = { version = "0.5", features = ["util"] }
+buffa-types = { version = "0.9.2", features = ["json"] }
+connectrpc = { version = "0.9.1", default-features = false, features = ["client", "json"] }
+http-body-util = "0.1.5"
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["macros", "rt"] }
+tower = { version = "0.5.3", features = ["util"] }
 
 [features]
 default = ["connect"]
