@@ -35,9 +35,7 @@ pub(crate) fn emit_message_level(
     if matches!(shape, crate::emit::Shape::View) {
         for schema in std::iter::once(&mut msg_schema).chain(shaped_schemas.values_mut()) {
             for entry in &mut schema.fields {
-                if let SchemaFieldKind::Oneof { view, .. } = &mut entry.kind {
-                    *view = true;
-                }
+                entry.kind.set_view();
             }
         }
     }
@@ -558,6 +556,7 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
                     enumeration: super::oneof::to_pascal_case(&oneof.name),
                     variant: super::oneof::to_pascal_case(&field.field_name),
                     view: false,
+                    member: Box::new(entry.kind.clone()),
                 };
             }
             Some(entry)
@@ -604,7 +603,10 @@ fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
                 proto_fqn: Some(full_name.clone()),
             },
         ),
-        FieldKind::Map { .. } => (CelType::Dyn, SchemaFieldKind::Message { proto_fqn: None }),
+        FieldKind::Map { .. } => (
+            scalar_this_for(&f.field_type).unwrap_or(CelType::Dyn),
+            SchemaFieldKind::Map { view: false },
+        ),
     };
     Some(MessageFieldEntry {
         proto_name,

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/conformance/cases/cel_oneof.proto";
+import "buf/validate/validate.proto";
+
+// Message-level CEL reads a map field, with canonical map semantics in views.
+message CelMessageMap {
+  option (buf.validate.message).cel = {
+    id: "map.size"
+    expression: "size(this.labels) == this.want_size"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.has"
+    expression: "has(this.labels) == (this.want_size > 0)"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.lookup"
+    expression: "!('k' in this.labels) || this.labels['k'] == this.want_k"
+  };
+
+  map<string, string> labels = 1;
+  int64 want_size = 2;
+  string want_k = 3;
+}
+
+// A rule across a map and a oneof alternative's message fields.
+message CelMessageCrossField {
+  option (buf.validate.message).cel = {
+    id: "cross_field"
+    expression: "size(this.labels) == 0 || !has(this.child) || this.child.id == ''"
+  };
+
+  map<string, string> labels = 1;
+  oneof choice {
+    CelOneofChild child = 2;
+    string text = 3;
+  }
+}

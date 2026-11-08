@@ -72,6 +72,75 @@ fn selected_oneof_defaults_have_presence() {
 }
 
 #[test]
+fn message_cel_reads_the_selected_oneof_value_or_its_default() {
+    use generated::{
+        buf::validate::conformance::cases::{CelOneofColor, CelOneofValue},
+        google::protobuf::Timestamp,
+    };
+    use oneof::cel_oneof_value::Choice;
+
+    /// An alternative, its rule, and what the rule must read for it.
+    type Case = (Choice, &'static str, fn(&mut CelOneofValue));
+
+    fn stamp() -> Timestamp {
+        Timestamp {
+            seconds: 5,
+            ..Default::default()
+        }
+    }
+    let red = CelOneofColor::CEL_ONEOF_COLOR_RED;
+    let child = CelOneofChild {
+        id: "c".to_owned(),
+        ..Default::default()
+    };
+    let cases: [Case; 9] = [
+        (Choice::Number(7), "oneof.number", |m| m.want_number = 7),
+        (Choice::Count(8), "oneof.count", |m| m.want_count = 8),
+        (Choice::Ratio(0.5), "oneof.ratio", |m| m.want_ratio = 0.5),
+        (Choice::Flag(true), "oneof.flag", |m| m.want_flag = true),
+        (Choice::Color(red.into()), "oneof.color", |m| {
+            m.want_color = CelOneofColor::CEL_ONEOF_COLOR_RED.into();
+        }),
+        (Choice::Text("a".to_owned()), "oneof.text", |m| {
+            m.want_text = "a".to_owned();
+        }),
+        (Choice::Data(b"b".to_vec()), "oneof.data", |m| {
+            m.want_data = b"b".to_vec();
+        }),
+        (Choice::Child(child.into()), "oneof.child", |m| {
+            m.want_child_id = "c".to_owned();
+        }),
+        (Choice::Stamp(stamp().into()), "oneof.stamp", |m| {
+            m.want_stamp = stamp().into();
+        }),
+    ];
+    for (choice, rule, expect) in cases {
+        let mut want = CelOneofValue::default();
+        expect(&mut want);
+        let selected = CelOneofValue {
+            choice: Some(choice.clone()),
+            ..want.clone()
+        };
+        let expecting_the_default = CelOneofValue {
+            choice: Some(choice),
+            ..Default::default()
+        };
+        for (message, rules) in [
+            (selected, &[][..]),
+            // The selected value isn't the default.
+            (expecting_the_default, &[rule][..]),
+            // Nothing selected reads as the default, which isn't the value.
+            (want, &[rule][..]),
+        ] {
+            let bytes = message.encode_to_vec();
+            let borrowed = view::CelOneofValueView::decode_view(&bytes).unwrap();
+            assert_rules(message.validate(), rules);
+            assert_rules(borrowed.validate(), rules);
+        }
+    }
+}
+
+#[test]
 fn nested_and_repeated_oneofs_use_the_correct_representation() {
     use oneof::cel_oneof_presence::Choice;
 

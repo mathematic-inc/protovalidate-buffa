@@ -220,6 +220,8 @@ pub enum SchemaFieldKind {
         enumeration: String,
         variant: String,
         view: bool,
+        /// The alternative's own kind, which decides how its value is read.
+        member: Box<Self>,
     },
     /// Singular scalar / enum / bool — `has()` returns true iff non-default.
     Scalar,
@@ -236,6 +238,18 @@ pub enum SchemaFieldKind {
     Wrapper,
     /// `Vec<T>` — `has()` returns true iff non-empty.
     Repeated,
+    /// `map<K, V>` — `has()` returns true iff non-empty. A view reads it
+    /// through `CanonicalMap`, which keeps the last value of a repeated key.
+    Map { view: bool },
+}
+
+impl SchemaFieldKind {
+    /// Read the field from a borrowed view rather than an owned message.
+    pub(crate) const fn set_view(&mut self) {
+        if let Self::Oneof { view, .. } | Self::Map { view } = self {
+            *view = true;
+        }
+    }
 }
 
 impl CelType {
@@ -4165,11 +4179,7 @@ fn select_message_field(
         .ok_or_else(|| FallbackReason::new(format!("unknown field: {field}")))?;
     let rust_ident = crate::emit::field_ident(&entry.rust_ident);
     let access = match &entry.kind {
-        SchemaFieldKind::Oneof { .. } => {
-            return Err(FallbackReason::new(
-                "oneof value access requires a variant projection",
-            ));
-        }
+        SchemaFieldKind::Oneof { .. } => return select_oneof_member(operand, entry),
         SchemaFieldKind::StringLike => match &entry.ty {
             CelType::Str { .. } => {
                 quote! { (::core::convert::AsRef::<str>::as_ref(&#operand.#rust_ident)) }
@@ -4218,7 +4228,12 @@ fn select_message_field(
                 }
             }
         }
-        SchemaFieldKind::Repeated => quote! { (&#operand.#rust_ident) },
+        SchemaFieldKind::Repeated | SchemaFieldKind::Map { view: false } => {
+            quote! { (&#operand.#rust_ident) }
+        }
+        SchemaFieldKind::Map { view: true } => quote! {
+            (&::protovalidate_buffa::__private::CanonicalMap::from_view(&#operand.#rust_ident))
+        },
         SchemaFieldKind::Wrapper => match &entry.ty {
             CelType::Int => {
                 quote! { (#operand.#rust_ident.as_option().map_or(0i64, |w| ::protovalidate_buffa::cel::CelScalar::cel_int(w.value))) }
@@ -4273,6 +4288,113 @@ fn select_message_field(
     })
 }
 
+/// The path of a oneof alternative's enum variant, owned or view.
+fn oneof_variant(
+    parent_msg_name: &str,
+    enumeration: &str,
+    variant: &str,
+    view: bool,
+) -> TokenStream {
+    let module = super::oneof::module_path(parent_msg_name);
+    let enumeration = crate::emit::field_ident(enumeration);
+    let variant = crate::emit::field_ident(variant);
+    let root = if view {
+        quote! { __buffa::view::oneof }
+    } else {
+        quote! { __buffa::oneof }
+    };
+    quote! { #root::#module::#enumeration::#variant }
+}
+
+/// Emit `<operand>.<alternative>` for a oneof alternative: its value while
+/// selected, else its default, as CEL reads an unset field.
+fn select_oneof_member(
+    operand: &TokenStream,
+    entry: &MessageFieldEntry,
+) -> Result<Compiled, FallbackReason> {
+    let SchemaFieldKind::Oneof {
+        accessor,
+        parent_msg_name,
+        enumeration,
+        variant,
+        view,
+        member,
+    } = &entry.kind
+    else {
+        return Err(FallbackReason::new("not a oneof alternative"));
+    };
+    let accessor = crate::emit::field_ident(accessor);
+    let variant = oneof_variant(parent_msg_name, enumeration, variant, *view);
+    let (value, default) = match (member.as_ref(), &entry.ty) {
+        (SchemaFieldKind::StringLike, CelType::Str { .. }) => (
+            quote! { ::core::convert::AsRef::<str>::as_ref(__cel_value) },
+            quote! { "" },
+        ),
+        (SchemaFieldKind::StringLike, CelType::Bytes { .. }) => (
+            quote! { ::core::convert::AsRef::<[u8]>::as_ref(__cel_value) },
+            quote! { &[][..] },
+        ),
+        (SchemaFieldKind::Scalar, CelType::Int) => (
+            quote! { ::protovalidate_buffa::cel::CelScalar::cel_int(*__cel_value) },
+            quote! { 0i64 },
+        ),
+        (SchemaFieldKind::Scalar, CelType::UInt) => (
+            quote! { ::protovalidate_buffa::cel::CelScalar::cel_uint(*__cel_value) },
+            quote! { 0u64 },
+        ),
+        (SchemaFieldKind::Scalar, CelType::Double) => (
+            quote! { ::protovalidate_buffa::cel::CelScalar::cel_double(*__cel_value) },
+            quote! { 0f64 },
+        ),
+        (SchemaFieldKind::Scalar, CelType::Bool) => (quote! { *__cel_value }, quote! { false }),
+        // An unselected message alternative reads as its default instance.
+        (SchemaFieldKind::Message { .. }, _) => (
+            quote! { &**__cel_value },
+            if *view {
+                quote! { ::buffa::DefaultViewInstance::default_view_instance() }
+            } else {
+                quote! { ::buffa::DefaultInstance::default_instance() }
+            },
+        ),
+        _ => {
+            return Err(FallbackReason::new(format!(
+                "oneof alternative {} of unsupported kind",
+                entry.proto_name
+            )));
+        }
+    };
+    let tokens = quote! {
+        (match &#operand.#accessor {
+            ::core::option::Option::Some(#variant(__cel_value)) => #value,
+            _ => #default,
+        })
+    };
+    let ty = match member.as_ref() {
+        SchemaFieldKind::Message { proto_fqn } => {
+            if let Some(tokens) = wkt_value(&entry.ty, &tokens) {
+                return Ok(Compiled {
+                    tokens,
+                    ty: entry.ty.clone(),
+                    constant: None,
+                });
+            }
+            let Some(fqn) = proto_fqn else {
+                return Err(FallbackReason::new(format!(
+                    "message field {} has no proto FQN",
+                    entry.proto_name
+                )));
+            };
+            CelType::MessageRef(fqn.clone())
+        }
+        _ => entry.ty.clone(),
+    };
+    Ok(Compiled {
+        tokens,
+        ty,
+        constant: None,
+    })
+}
+
 fn has_message_field(
     operand: &TokenStream,
     schema: &MessageSchema,
@@ -4291,17 +4413,11 @@ fn has_message_field(
             enumeration,
             variant,
             view,
+            ..
         } => {
             let accessor = crate::emit::field_ident(accessor);
-            let module = super::oneof::module_path(parent_msg_name);
-            let enumeration = crate::emit::field_ident(enumeration);
-            let variant = crate::emit::field_ident(variant);
-            let root = if *view {
-                quote! { __buffa::view::oneof }
-            } else {
-                quote! { __buffa::oneof }
-            };
-            quote! { matches!(&#operand.#accessor, Some(#root::#module::#enumeration::#variant(_))) }
+            let variant = oneof_variant(parent_msg_name, enumeration, variant, *view);
+            quote! { matches!(&#operand.#accessor, Some(#variant(_))) }
         }
         SchemaFieldKind::Scalar => match &entry.ty {
             CelType::Int => {
@@ -4325,7 +4441,9 @@ fn has_message_field(
         SchemaFieldKind::Message { .. } | SchemaFieldKind::Wrapper => {
             quote! { (#operand.#rust_ident.is_set()) }
         }
-        SchemaFieldKind::Repeated => quote! { (!#operand.#rust_ident.is_empty()) },
+        SchemaFieldKind::Repeated | SchemaFieldKind::Map { .. } => {
+            quote! { (!#operand.#rust_ident.is_empty()) }
+        }
     };
     Ok(Compiled {
         tokens,
@@ -4376,6 +4494,7 @@ mod tests {
                         enumeration: "Origin".to_owned(),
                         variant: "Produced".to_owned(),
                         view,
+                        member: Box::new(SchemaFieldKind::Message { proto_fqn: None }),
                     },
                 }],
             };
@@ -4386,6 +4505,143 @@ mod tests {
             assert!(code.contains("oneof :: batch :: source :: Origin :: Produced"));
             assert_eq!(code.contains("__buffa :: view :: oneof"), view);
             assert!(!code.contains("produced . is_set"));
+        }
+    }
+
+    fn oneof_entry(
+        name: &str,
+        ty: CelType,
+        member: SchemaFieldKind,
+        view: bool,
+    ) -> MessageFieldEntry {
+        MessageFieldEntry {
+            proto_name: name.to_owned(),
+            rust_ident: name.to_owned(),
+            ty,
+            kind: SchemaFieldKind::Oneof {
+                accessor: "choice".to_owned(),
+                parent_msg_name: "Pick".to_owned(),
+                enumeration: "Choice".to_owned(),
+                variant: name[..1].to_uppercase() + &name[1..],
+                view,
+                member: Box::new(member),
+            },
+        }
+    }
+
+    #[test]
+    fn oneof_alternatives_read_the_selected_value_or_their_default() {
+        for view in [false, true] {
+            let child = oneof_entry(
+                "child",
+                CelType::MessageRef("test.v1.Child".to_owned()),
+                SchemaFieldKind::Message {
+                    proto_fqn: Some("test.v1.Child".to_owned()),
+                },
+                view,
+            );
+            let pick = MessageSchema {
+                fields: vec![
+                    oneof_entry(
+                        "text",
+                        CelType::Str { owned: false },
+                        SchemaFieldKind::StringLike,
+                        view,
+                    ),
+                    oneof_entry("number", CelType::Int, SchemaFieldKind::Scalar, view),
+                    child,
+                ],
+            };
+            let index = BTreeMap::from([(
+                "test.v1.Child".to_owned(),
+                MessageSchema {
+                    fields: vec![MessageFieldEntry {
+                        proto_name: "id".to_owned(),
+                        rust_ident: "id".to_owned(),
+                        ty: CelType::Str { owned: false },
+                        kind: SchemaFieldKind::StringLike,
+                    }],
+                },
+            )]);
+            let mut c = Compiler::new().with_schemas(&index);
+            c.bind(
+                "this",
+                Binding {
+                    rust_expr: quote! { __this },
+                    ty: CelType::Message(Box::new(pick)),
+                    constant: None,
+                },
+            );
+            for (expr, variant, default) in [
+                ("this.text == ''", "Text", "\"\""),
+                ("this.number == 0", "Number", "0i64"),
+                (
+                    "this.child.id == ''",
+                    "Child",
+                    if view {
+                        ":: buffa :: DefaultViewInstance :: default_view_instance ()"
+                    } else {
+                        ":: buffa :: DefaultInstance :: default_instance ()"
+                    },
+                ),
+            ] {
+                let out = c.compile(expr).expect("expected successful compile");
+                assert_parses_as_expr(&out.tokens, expr);
+                let code = out.tokens.to_string();
+                assert!(code.contains("match & __this . choice"), "{code}");
+                assert!(
+                    code.contains(&format!(
+                        "oneof :: pick :: Choice :: {variant} (__cel_value)"
+                    )),
+                    "{code}"
+                );
+                assert!(code.contains(&format!("_ => {default}")), "{code}");
+                assert_eq!(code.contains("__buffa :: view :: oneof"), view);
+            }
+        }
+    }
+
+    #[test]
+    fn oneof_wrapper_alternative_values_fall_back() {
+        let schema = MessageSchema {
+            fields: vec![oneof_entry(
+                "wrapped",
+                CelType::Int,
+                SchemaFieldKind::Wrapper,
+                false,
+            )],
+        };
+        let err = compile_fails("this.wrapped == 0", CelType::Message(Box::new(schema)));
+        assert_eq!(err.kind, FallbackKind::Unsupported);
+    }
+
+    #[test]
+    fn map_fields_read_through_a_canonical_map_in_views() {
+        for view in [false, true] {
+            let schema = MessageSchema {
+                fields: vec![MessageFieldEntry {
+                    proto_name: "labels".to_owned(),
+                    rust_ident: "labels".to_owned(),
+                    ty: CelType::Map(Box::new(MapTy {
+                        key_cel: CelType::Str { owned: false },
+                        value_cel: CelType::Str { owned: false },
+                        key_rust: RustScalar::Str,
+                        value_rust: RustScalar::Str,
+                    })),
+                    kind: SchemaFieldKind::Map { view },
+                }],
+            };
+            let this = CelType::Message(Box::new(schema));
+            let size = compile_with_this("size(this.labels) == 0", this.clone())
+                .tokens
+                .to_string();
+            assert!(size.contains("__this . labels"), "{size}");
+            assert!(size.contains(". len ()"), "{size}");
+            assert_eq!(size.contains("CanonicalMap :: from_view"), view);
+            let has = compile_with_this("has(this.labels)", this)
+                .tokens
+                .to_string();
+            assert!(has.contains("! __this . labels . is_empty ()"), "{has}");
         }
     }
 

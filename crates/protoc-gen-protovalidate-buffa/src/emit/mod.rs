@@ -498,9 +498,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let mut view_schemas = schemas.clone();
     for schema in view_schemas.values_mut() {
         for field in &mut schema.fields {
-            if let cel_compile::SchemaFieldKind::Oneof { view, .. } = &mut field.kind {
-                *view = true;
-            }
+            field.kind.set_view();
         }
     }
     let render_field_blocks = |shape| {
