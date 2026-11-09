@@ -44,8 +44,8 @@ protos = ["dep:buffa-descriptor", "dep:protovalidate-buffa-protos"]
 # accessors (`t.getHours("America/New_York")`). chrono-tz ships the
 # full IANA database (~4 MiB), so it's opt-in — rules that only use
 # the no-arg accessor forms have no reason to pay the cost. When the
-# feature is off, generated code that references the tz arg fails to
-# compile with a clear "chrono_tz" missing-module error.
+# feature is off, generated code that uses the tz arg fails to compile
+# because `cel::in_time_zone` is missing.
 tz = ["dep:chrono-tz"]
 
 [lints]

@@ -110,9 +110,17 @@ impl<E: buffa::Enumeration + Copy> CelScalar for buffa::EnumValue<E> {
 /// Used by codegen-emitted CEL bodies when binding `this` to a
 /// `MessageField<Duration>` value or when constructing a literal via
 /// `duration("…")`.
+///
+/// Out-of-range values saturate, as Go's `durationpb.AsDuration` does.
 #[must_use]
 pub fn duration_from_secs_nanos(seconds: i64, nanos: i32) -> chrono::Duration {
-    chrono::Duration::seconds(seconds) + chrono::Duration::nanoseconds(i64::from(nanos))
+    chrono::Duration::try_seconds(seconds)
+        .and_then(|duration| duration.checked_add(&chrono::Duration::nanoseconds(i64::from(nanos))))
+        .unwrap_or(if seconds < 0 {
+            chrono::Duration::MIN
+        } else {
+            chrono::Duration::MAX
+        })
 }
 
 /// Construct a `chrono::DateTime<chrono::FixedOffset>` from a
@@ -160,6 +168,9 @@ fn split_unit(rest: &str) -> Option<(&str, &'static str)> {
 /// / `h`. Returns `None` on any parse error so the caller can decide
 /// whether to map that to a CEL runtime error.
 ///
+/// cel-go parses with Go's `time.ParseDuration`, which also takes a
+/// sequence such as `1h30m` and a bare `0`; both are `None` here.
+///
 /// Used by codegen for `duration(this.field)` where `this.field` isn't
 /// a compile-time-known string literal; literal-arg paths fold the parse
 /// into `duration_from_secs_nanos(secs, nanos)` at codegen time and do
@@ -205,4 +216,35 @@ pub fn parse_duration(s: &str) -> Option<chrono::Duration> {
 #[must_use]
 pub fn parse_timestamp(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
     chrono::DateTime::parse_from_rfc3339(s).ok()
+}
+
+/// `t` in the time zone `tz`, as CEL's timestamp accessors take it: an IANA
+/// name, a `±HH:MM` offset, or empty for UTC. `None` for anything else.
+#[cfg(feature = "tz")]
+#[must_use]
+pub fn in_time_zone(
+    t: chrono::DateTime<chrono::FixedOffset>,
+    tz: &str,
+) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    let Some((hours, minutes)) = tz.split_once(':') else {
+        // Go's `time.LoadLocation`, which cel-go calls, reads "" as UTC.
+        let zone = if tz.is_empty() {
+            chrono_tz::Tz::UTC
+        } else {
+            tz.parse().ok()?
+        };
+        return Some(t.with_timezone(&zone).fixed_offset());
+    };
+    let hours: i32 = hours.parse().ok()?;
+    let minutes: i32 = minutes.parse().ok()?;
+    if !(-23..=23).contains(&hours) || !(0..=59).contains(&minutes) {
+        return None;
+    }
+    // `-00:30` is behind UTC although its hours parse as 0.
+    let offset = if tz.starts_with('-') {
+        hours * 60 - minutes
+    } else {
+        hours * 60 + minutes
+    };
+    Some(t.with_timezone(&chrono::FixedOffset::east_opt(offset * 60)?))
 }

@@ -152,6 +152,28 @@ message CelTemporalOverflow {
   google.protobuf.Duration shift = 3;
 }
 
+// A string that isn't a duration, a timestamp or a time zone is a runtime
+// error.
+message CelTemporalParse {
+  option (buf.validate.message).cel = {
+    id: "duration"
+    expression: "duration(this.duration) >= duration('0s')"
+  };
+  option (buf.validate.message).cel = {
+    id: "timestamp"
+    expression: "timestamp(this.timestamp) >= timestamp('1970-01-01T00:00:00Z')"
+  };
+  option (buf.validate.message).cel = {
+    id: "zone"
+    expression: "this.at.getHours(this.zone) == this.hours"
+  };
+  string duration = 1;
+  string timestamp = 2;
+  google.protobuf.Timestamp at = 3;
+  string zone = 4;
+  int64 hours = 5;
+}
+
 // An operand that decides && or || on its own discards an error from the
 // other operand, as CEL specifies.
 message CelTemporalLogicalErrors {

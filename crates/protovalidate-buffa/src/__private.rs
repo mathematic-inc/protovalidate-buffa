@@ -37,7 +37,7 @@ where
 
     /// Return the last value associated with `key`.
     #[must_use]
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q>(&self, key: &Q) -> Option<&'view V>
     where
         K: Borrow<Q>,
         Q: PartialEq + ?Sized,
@@ -56,12 +56,30 @@ where
     }
 
     /// Iterate over distinct keys at their last wire position.
-    pub fn keys(&self) -> impl Iterator<Item = &K> {
+    pub fn keys(&self) -> impl Iterator<Item = &'view K> + use<'view, 'buffer, K, V> {
         self.view.iter_unique().map(|(key, _)| key)
     }
 
     /// Iterate over distinct key/value pairs at their last wire position.
-    pub fn iter(&self) -> impl Iterator<Item = &(K, V)> {
+    pub fn iter(&self) -> impl Iterator<Item = &'view (K, V)> + use<'view, 'buffer, K, V> {
         self.view.iter_unique()
     }
 }
+
+/// The default payload of a tuple variant, such as an unselected oneof
+/// alternative's value.
+#[must_use]
+pub fn variant_default<T: Default, R>(_variant: fn(T) -> R) -> T {
+    T::default()
+}
+
+/// Borrows a value through any references to it. Method lookup on `&&T`
+/// stops at `T`, the first `Default` type, since references aren't.
+pub trait Referent: Default {
+    /// Borrow the value itself.
+    fn referent(&self) -> &Self {
+        self
+    }
+}
+
+impl<T: Default> Referent for T {}

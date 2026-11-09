@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases.other_package;
+
+// A oneof that message-level CEL in another package reads.
+message CelOneof {
+  oneof choice {
+    string text = 1;
+    int32 number = 2;
+  }
+}

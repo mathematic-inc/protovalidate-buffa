@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+
+// Message-level CEL reads a map field. A repeated key counts once, and its
+// last value wins.
+message CelMessageMap {
+  option (buf.validate.message).cel = {
+    id: "map.size"
+    expression: "size(this.labels) == this.want_size"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.has"
+    expression: "has(this.labels) == (this.want_size > 0)"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.lookup"
+    expression: "!('k' in this.labels) || this.labels['k'] == this.want_k"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.keys"
+    expression: "this.labels.map(k, k).all(k, k != '')"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.values"
+    expression: "this.labels.map(k, this.labels[k]).all(v, v != '')"
+  };
+
+  map<string, string> labels = 1;
+  int64 want_size = 2;
+  string want_k = 3;
+}
+
+// Indexing a missing key is a runtime error, in message and field rules.
+message CelMessageMapIndex {
+  option (buf.validate.message).cel = {
+    id: "map.index"
+    expression: "this.labels['k'] == 'v'"
+  };
+
+  map<string, string> labels = 1;
+}
+
+message CelMessageMapFieldIndex {
+  message Child {
+    string id = 1;
+  }
+
+  map<string, Child> children = 1 [(buf.validate.field).cel = {
+    id: "map.message_index"
+    expression: "this['k'].id != 'x'"
+  }];
+}

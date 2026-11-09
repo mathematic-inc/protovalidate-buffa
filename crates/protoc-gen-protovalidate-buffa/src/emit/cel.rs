@@ -13,7 +13,7 @@ use quote::quote;
 use crate::{
     emit::cel_compile::{
         Binding, CelType, CompileOutput, Compiler, FallbackKind, MapTy, MessageFieldEntry,
-        MessageSchema, RustScalar, SchemaFieldKind, wkt_value,
+        MessageSchema, RustScalar, SchemaFieldKind, enum_value, wkt_value,
     },
     scan::{FieldKind, FieldValidator, MessageValidators},
 };
@@ -22,28 +22,19 @@ use crate::{
 ///
 /// Returns `(statics, calls)` — statics go outside the impl block, calls go
 /// inside the `validate` body after field/oneof blocks.
+///
+/// `schemas` come from [`schemas_for`] for the message and the shape it
+/// validates.
 #[must_use]
 pub(crate) fn emit_message_level(
     msg: &MessageValidators,
     schemas: &SchemaIndex,
-    shape: crate::emit::Shape,
 ) -> (Vec<TokenStream>, Vec<TokenStream>) {
     let statics = Vec::new();
     let mut calls = Vec::new();
-    let mut msg_schema = build_message_schema(msg);
-    let mut shaped_schemas = schemas.clone();
-    if matches!(shape, crate::emit::Shape::View) {
-        for schema in std::iter::once(&mut msg_schema).chain(shaped_schemas.values_mut()) {
-            for entry in &mut schema.fields {
-                if let SchemaFieldKind::Oneof { view, .. } = &mut entry.kind {
-                    *view = true;
-                }
-            }
-        }
-    }
-    let schemas = &shaped_schemas;
+    let msg_schema = &schemas[&msg.proto_name];
     for rule in &msg.message_cel {
-        if let Some(native) = try_emit_native_message_cel(rule, &msg_schema, schemas) {
+        if let Some(native) = try_emit_native_message_cel(rule, msg_schema, schemas) {
             calls.push(native);
             continue;
         }
@@ -207,24 +198,23 @@ const fn rust_scalar_for_kind(kind: &FieldKind) -> Option<RustScalar> {
         FieldKind::Float => RustScalar::F32,
         FieldKind::Double => RustScalar::F64,
         FieldKind::Bool => RustScalar::Bool,
-        FieldKind::Enum { .. } => RustScalar::I32,
+        FieldKind::Enum { .. } => RustScalar::Enum,
         _ => return None,
     })
 }
 
-/// Decide whether a field's CEL `this` binding can be rendered as a scalar
-/// (not a message). For an Optional/Wrapper inner type, the binding pulls the
-/// inner value directly — code wrapping the access in `if let Some(...)` is
-/// handled by the caller.
-fn scalar_this_for(kind: &FieldKind) -> Option<CelType> {
-    scalar_this_for_with(kind, None)
+/// The CEL type of a field's value, or `None` if the kind has none. For
+/// `Optional` and `Wrapper`, the inner type; the caller handles the
+/// `Some(...)` wrapping.
+fn cel_type_for(kind: &FieldKind) -> Option<CelType> {
+    cel_type_for_with(kind, None)
 }
 
-/// Variant of [`scalar_this_for`] that resolves Message-typed contents
+/// Variant of [`cel_type_for`] that resolves Message-typed contents
 /// against a `SchemaIndex`. With `Some(schemas)`, Message-typed repeated /
 /// map elements become `CelType::Message(<schema>)` so the transpiler can
 /// emit nested field selects.
-fn scalar_this_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Option<CelType> {
+fn cel_type_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Option<CelType> {
     let inner = match kind {
         FieldKind::Optional(i) | FieldKind::Wrapper(i) => i.as_ref(),
         FieldKind::Message { full_name } if full_name == "google.protobuf.Duration" => {
@@ -242,13 +232,11 @@ fn scalar_this_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Opti
             ));
         }
         FieldKind::Map { key, value } => {
-            let key_cel = scalar_this_for_with(key, schemas)?;
-            let value_cel = scalar_this_for_with(value, schemas)?;
+            let key_cel = cel_type_for_with(key, schemas)?;
+            let value_cel = cel_type_for_with(value, schemas)?;
             let key_rust = rust_scalar_for_kind(key)?;
-            // Map values may be messages, in which case the rust kind
-            // lookup returns None. Use a sentinel so the index op can
-            // still emit access.
-            let value_rust = rust_scalar_for_kind(value).unwrap_or(RustScalar::Bool);
+            // Any other value is a message.
+            let value_rust = rust_scalar_for_kind(value).unwrap_or(RustScalar::Message);
             return Some(CelType::Map(Box::new(MapTy {
                 key_cel,
                 value_cel,
@@ -274,7 +262,7 @@ fn scalar_this_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Opti
         FieldKind::Bool => CelType::Bool,
         FieldKind::Enum { .. } => CelType::Int,
         FieldKind::Repeated(elem) => {
-            let elem_ty = scalar_this_for_with(elem, schemas)?;
+            let elem_ty = cel_type_for_with(elem, schemas)?;
             CelType::List(Box::new(elem_ty))
         }
         _ => return None,
@@ -294,7 +282,7 @@ pub(super) fn collection_binding(
         FieldKind::Map { .. } => shape.map_access(accessor, field.field_number),
         _ => return None,
     };
-    let ty = scalar_this_for_with(&field.field_type, Some(schemas))?;
+    let ty = cel_type_for_with(&field.field_type, Some(schemas))?;
     Some((access, ty))
 }
 
@@ -319,7 +307,32 @@ pub fn build_schema_index(messages: &[MessageValidators]) -> SchemaIndex {
                 ty: CelType::List(Box::new(CelType::Str { owned: false })),
                 kind: SchemaFieldKind::Repeated,
             }],
+            view: false,
         });
+    index
+}
+
+/// `schemas` as the validators of a message in `package` read them, from
+/// owned messages or views.
+pub(crate) fn schemas_for(
+    schemas: &SchemaIndex,
+    package: &str,
+    shape: crate::emit::Shape,
+) -> SchemaIndex {
+    let mut index = schemas.clone();
+    for schema in index.values_mut() {
+        schema.view = shape == crate::emit::Shape::View;
+        for entry in &mut schema.fields {
+            if let SchemaFieldKind::Oneof {
+                package: declaring_package,
+                ..
+            } = &mut entry.kind
+                && declaring_package.as_deref() == Some(package)
+            {
+                *declaring_package = None;
+            }
+        }
+    }
     index
 }
 
@@ -493,7 +506,7 @@ pub(crate) fn this_binding_for_kind_with(
     operand: &TokenStream,
     schemas: Option<&SchemaIndex>,
 ) -> Option<(TokenStream, CelType)> {
-    if let Some(ty) = scalar_this_for(kind)
+    if let Some(ty) = cel_type_for(kind)
         && let Some(value) = wkt_value(&ty, operand)
     {
         return Some((value, ty));
@@ -525,14 +538,7 @@ pub(crate) fn this_binding_for_kind_with(
             CelType::Double,
         )),
         FieldKind::Bool => Some((quote! { (#operand) }, CelType::Bool)),
-        FieldKind::Enum { .. } => Some((
-            quote! {{
-                #[allow(unused_imports, reason = "closed enums need the Enumeration trait")]
-                use ::buffa::Enumeration as _;
-                i64::from((#operand).to_i32())
-            }},
-            CelType::Int,
-        )),
+        FieldKind::Enum { .. } => Some((enum_value(operand), CelType::Int)),
         _ => None,
     }
 }
@@ -554,16 +560,21 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
             }) {
                 entry.kind = SchemaFieldKind::Oneof {
                     accessor: oneof.rust_name.clone(),
+                    // The unnamed package has no path to root the oneof at.
+                    package: (!msg.package.is_empty()).then(|| msg.package.clone()),
                     parent_msg_name: oneof.parent_msg_name.clone(),
                     enumeration: super::oneof::to_pascal_case(&oneof.name),
                     variant: super::oneof::to_pascal_case(&field.field_name),
-                    view: false,
+                    alternative_kind: Box::new(entry.kind.clone()),
                 };
             }
             Some(entry)
         })
         .collect();
-    MessageSchema { fields }
+    MessageSchema {
+        fields,
+        view: false,
+    }
 }
 
 fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
@@ -583,28 +594,28 @@ fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
         }
         FieldKind::Float | FieldKind::Double => (CelType::Double, SchemaFieldKind::Scalar),
         FieldKind::Bool => (CelType::Bool, SchemaFieldKind::Scalar),
-        FieldKind::Enum { .. } => (CelType::Int, SchemaFieldKind::Scalar),
+        FieldKind::Enum { .. } => (CelType::Int, SchemaFieldKind::Enum),
         FieldKind::Optional(inner) => {
-            let inner_ty = scalar_this_for(inner)?;
+            let inner_ty = cel_type_for(inner)?;
             (inner_ty, SchemaFieldKind::Optional)
         }
         FieldKind::Wrapper(inner) => {
-            let inner_ty = scalar_this_for(inner)?;
+            let inner_ty = cel_type_for(inner)?;
             (inner_ty, SchemaFieldKind::Wrapper)
         }
         FieldKind::Repeated(inner) => {
-            let elem = scalar_this_for(inner)?;
+            let elem = cel_type_for(inner)?;
             (CelType::List(Box::new(elem)), SchemaFieldKind::Repeated)
         }
         // Preserve message presence for `has()`, including WKTs whose CEL
         // values are timestamps or durations rather than message references.
         FieldKind::Message { full_name } => (
-            scalar_this_for(&f.field_type).unwrap_or(CelType::Dyn),
+            cel_type_for(&f.field_type).unwrap_or(CelType::Dyn),
             SchemaFieldKind::Message {
-                proto_fqn: Some(full_name.clone()),
+                proto_fqn: full_name.clone(),
             },
         ),
-        FieldKind::Map { .. } => (CelType::Dyn, SchemaFieldKind::Message { proto_fqn: None }),
+        FieldKind::Map { .. } => (cel_type_for(&f.field_type)?, SchemaFieldKind::Map),
     };
     Some(MessageFieldEntry {
         proto_name,
@@ -714,7 +725,7 @@ mod tests {
         let kind = FieldKind::Repeated(Box::new(FieldKind::Message {
             full_name: "test.Child".to_owned(),
         }));
-        let ty = scalar_this_for(&kind).expect("repeated message is a CEL list");
+        let ty = cel_type_for(&kind).expect("repeated message is a CEL list");
         assert_eq!(
             ty,
             CelType::List(Box::new(CelType::MessageRef("test.Child".to_owned())))
@@ -726,6 +737,7 @@ mod tests {
                 ty: CelType::Str { owned: false },
                 kind: SchemaFieldKind::StringLike,
             }],
+            view: false,
         };
         let parent = MessageSchema {
             fields: vec![MessageFieldEntry {
@@ -734,6 +746,7 @@ mod tests {
                 ty,
                 kind: SchemaFieldKind::Repeated,
             }],
+            view: false,
         };
         let schemas = SchemaIndex::from([("test.Child".to_owned(), child)]);
         for expression in [

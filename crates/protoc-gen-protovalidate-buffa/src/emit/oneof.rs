@@ -54,14 +54,16 @@ fn emit_for(
 
     let accessor = crate::emit::field_ident(&v.rust_name);
     let name_lit = &v.name;
-
-    // These are constant across all variants, so derive them once and pass them
-    // down to the per-variant emitters.
-    let module = module_path(&v.parent_msg_name);
-    let oneof_enum_ident = crate::emit::field_ident(&to_pascal_case(&v.name));
-    let oneof_root = match representation {
-        Representation::Owned => quote! { __buffa::oneof },
-        Representation::View => quote! { __buffa::view::oneof },
+    let enumeration = to_pascal_case(&v.name);
+    let view = matches!(representation, Representation::View);
+    let variant_of = |f: &FieldValidator| {
+        variant_path(
+            None,
+            &v.parent_msg_name,
+            &enumeration,
+            &to_pascal_case(&f.field_name),
+            view,
+        )
     };
 
     let none_arm = if has_required {
@@ -95,15 +97,14 @@ fn emit_for(
     let some_arms: Vec<TokenStream> = v
         .fields
         .iter()
-        .map(|f| emit_variant_arm(f, &oneof_root, &module, &oneof_enum_ident, schemas))
+        .map(|f| emit_variant_arm(f, &variant_of(f), schemas))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .filter(|ts| !ts.is_empty())
         .collect();
 
     // Compute required_variant_blocks early so they survive all early-return paths.
-    let required_variant_blocks =
-        emit_required_variant_blocks(v, &accessor, &oneof_root, &module, &oneof_enum_ident);
+    let required_variant_blocks = emit_required_variant_blocks(v, &accessor, variant_of);
 
     // If no variant has rules, we only need the None check (already handled above).
     if some_arms.is_empty() && !has_required && !has_required_variants {
@@ -166,9 +167,7 @@ fn emit_for(
 fn emit_required_variant_blocks(
     v: &OneofValidator,
     accessor: &syn::Ident,
-    oneof_root: &TokenStream,
-    module: &TokenStream,
-    oneof_enum_ident: &syn::Ident,
+    variant_of: impl Fn(&FieldValidator) -> TokenStream,
 ) -> Vec<TokenStream> {
     let mut out: Vec<TokenStream> = Vec::new();
     for f in &v.fields {
@@ -178,8 +177,7 @@ fn emit_required_variant_blocks(
         if matches!(f.ignore, crate::scan::Ignore::Always) {
             continue;
         }
-        let variant_name_str = to_pascal_case(&f.field_name);
-        let variant_ident = crate::emit::field_ident(&variant_name_str);
+        let variant = variant_of(f);
         let name_lit = &f.field_name;
         let fnum = f.field_number;
         let field_ty = match f.field_type {
@@ -203,7 +201,7 @@ fn emit_required_variant_blocks(
             _ => quote!(Message),
         };
         out.push(quote! {
-            if !matches!(&self.#accessor, Some(#oneof_root::#module::#oneof_enum_ident::#variant_ident(_))) {
+            if !matches!(&self.#accessor, Some(#variant(_))) {
                 violations.push(::protovalidate_buffa::Violation {
                     field: ::protovalidate_buffa::FieldPath {
                         elements: ::std::vec![
@@ -242,12 +240,9 @@ fn emit_required_variant_blocks(
 /// Emit a `Some(Variant(v)) => { ... }` match arm for a single oneof field.
 fn emit_variant_arm(
     f: &FieldValidator,
-    oneof_root: &TokenStream,
-    module: &TokenStream,
-    oneof_enum_ident: &syn::Ident,
+    variant: &TokenStream,
     schemas: &super::cel::SchemaIndex,
 ) -> Result<TokenStream> {
-    let variant_ident = crate::emit::field_ident(&to_pascal_case(&f.field_name));
     let value = super::value::element_value(&f.field_type, &format_ident!("v"));
     let ty = if f.is_group {
         "Group"
@@ -267,8 +262,31 @@ fn emit_variant_arm(
         return Ok(TokenStream::new());
     }
     Ok(quote! {
-        Some(#oneof_root::#module::#oneof_enum_ident::#variant_ident(v)) => { #checks }
+        Some(#variant(v)) => { #checks }
     })
+}
+
+/// A oneof variant's path. `package` roots it at another package.
+pub(super) fn variant_path(
+    package: Option<&str>,
+    parent_msg_name: &str,
+    enumeration: &str,
+    variant: &str,
+    view: bool,
+) -> TokenStream {
+    let package = package
+        .into_iter()
+        .flat_map(|package| package.split('.'))
+        .map(crate::emit::field_ident);
+    let oneof = if view {
+        quote! { view::oneof }
+    } else {
+        quote! { oneof }
+    };
+    let module = module_path(parent_msg_name);
+    let enumeration = crate::emit::field_ident(enumeration);
+    let variant = crate::emit::field_ident(variant);
+    quote! { #(#package::)* __buffa::#oneof::#module::#enumeration::#variant }
 }
 
 /// The module buffa generates for a message's oneof enums: one snake_case

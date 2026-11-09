@@ -1,0 +1,35 @@
+syntax = "proto2";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+
+// Message-level CEL reads closed enums, which buffa stores without
+// `EnumValue`. An unselected alternative reads as its enum's first value.
+message CelClosedEnum {
+  option (buf.validate.message).cel = {
+    id: "closed_enum.oneof"
+    expression: "this.level == this.want"
+  };
+  // Reads each value by iteration, index and optional index.
+  option (buf.validate.message).cel = {
+    id: "closed_enum.map"
+    expression: "this.shades.all(k, v, v == this.want && this.shades[k] == v && this.shades[?k].orValue(0) == v)"
+  };
+
+  optional int32 want = 1;
+  map<string, CelClosedShade> shades = 2;
+  oneof choice {
+    CelClosedLevel level = 3;
+  }
+}
+
+enum CelClosedLevel {
+  CEL_CLOSED_LEVEL_LOW = 1;
+  CEL_CLOSED_LEVEL_HIGH = 2;
+}
+
+enum CelClosedShade {
+  CEL_CLOSED_SHADE_UNSPECIFIED = 0;
+  CEL_CLOSED_SHADE_DARK = 1;
+}

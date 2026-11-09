@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+
+// Integer overflow, division by zero and a negative shift are runtime
+// errors.
+message CelIntegerArithmetic {
+  int64 sum = 1 [(buf.validate.field).cel = {
+    id: "int.add"
+    expression: "this + 1 > this"
+  }];
+  int64 divisor = 2 [(buf.validate.field).cel = {
+    id: "int.div"
+    expression: "100 / this != 0"
+  }];
+  int64 modulus = 3 [(buf.validate.field).cel = {
+    id: "int.mod"
+    expression: "100 % this == 0"
+  }];
+  int64 dividend = 4 [(buf.validate.field).cel = {
+    id: "int.div_overflow"
+    expression: "this / -1 != 0"
+  }];
+  int64 negated = 5 [(buf.validate.field).cel = {
+    id: "int.neg"
+    expression: "-this != 1"
+  }];
+  uint64 difference = 6 [(buf.validate.field).cel = {
+    id: "uint.sub"
+    expression: "this - 1u < this"
+  }];
+  int64 shift = 7 [(buf.validate.field).cel = {
+    id: "int.shift"
+    expression: "math.bitShiftLeft(1, this) >= 0"
+  }];
+}

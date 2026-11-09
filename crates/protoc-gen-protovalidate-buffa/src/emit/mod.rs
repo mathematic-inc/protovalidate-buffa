@@ -495,20 +495,14 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .iter()
         .flat_map(|o| o.fields.iter().map(String::as_str))
         .collect();
-    let mut view_schemas = schemas.clone();
-    for schema in view_schemas.values_mut() {
-        for field in &mut schema.fields {
-            if let cel_compile::SchemaFieldKind::Oneof { view, .. } = &mut field.kind {
-                *view = true;
-            }
-        }
-    }
+    let owned_schemas = cel::schemas_for(schemas, &msg.package, Shape::Owned);
+    let view_schemas = cel::schemas_for(schemas, &msg.package, Shape::View);
     let render_field_blocks = |shape| {
         msg.field_rules
             .iter()
             .map(|f| {
                 let schema = match shape {
-                    Shape::Owned => schemas,
+                    Shape::Owned => &owned_schemas,
                     Shape::View => &view_schemas,
                 };
                 let inner = field::emit(f, schema, shape)?;
@@ -543,7 +537,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
-        .map(|v| oneof::emit_with_schemas(v, Shape::Owned, schemas))
+        .map(|v| oneof::emit_with_schemas(v, Shape::Owned, &owned_schemas))
         .collect::<Result<_>>()?;
     let view_oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
@@ -563,8 +557,8 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .map(|spec| emit_message_oneof(msg, spec, Shape::View))
         .collect();
 
-    let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, schemas, Shape::Owned);
-    let (_, view_cel_calls) = cel::emit_message_level(msg, schemas, Shape::View);
+    let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, &owned_schemas);
+    let (_, view_cel_calls) = cel::emit_message_level(msg, &view_schemas);
     let owned_map_bindings = canonical_map_bindings(msg, Shape::Owned);
     let view_map_bindings = canonical_map_bindings(msg, Shape::View);
 
@@ -666,19 +660,14 @@ fn emit_message_oneof(
                     .iter()
                     .find(|oneof| &oneof.name == oneof_name)?;
                 let accessor = field_ident(&oneof.rust_name);
-                let module = oneof::module_path(&oneof.parent_msg_name);
-                let enumeration = field_ident(&oneof::to_pascal_case(oneof_name));
-                let variant = field_ident(&oneof::to_pascal_case(&fv.field_name));
-                let oneof_root = match shape {
-                    Shape::Owned => quote! { __buffa::oneof },
-                    Shape::View => quote! { __buffa::view::oneof },
-                };
-                quote! {
-                    matches!(
-                        &self.#accessor,
-                        Some(#oneof_root::#module::#enumeration::#variant(_))
-                    )
-                }
+                let variant = oneof::variant_path(
+                    None,
+                    &oneof.parent_msg_name,
+                    &oneof::to_pascal_case(oneof_name),
+                    &oneof::to_pascal_case(&fv.field_name),
+                    shape == Shape::View,
+                );
+                quote! { matches!(&self.#accessor, Some(#variant(_))) }
             } else {
                 match &fv.field_type {
                     FieldKind::Message { .. } | FieldKind::Wrapper(_) => {

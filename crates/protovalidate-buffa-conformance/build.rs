@@ -373,11 +373,6 @@ fn walk_protos(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
 }
 
 fn enabled_case_files() -> Vec<String> {
-    // Curated list. Expand as the plugin & runtime grow rule coverage.
-    // Files we don't enable yet (broken at codegen / runtime):
-    //   custom_rules/, predefined_rules_*, groups_*, messages, oneofs,
-    //   kitchen_sink, wkt_*, library, ignore_*, required_field_*,
-    //   filename-with-dash, other_package/, subdirectory/, yet_another_package/.
     [
         "bool.proto",
         "numbers.proto",
@@ -391,6 +386,7 @@ fn enabled_case_files() -> Vec<String> {
         "required_field_proto3.proto",
         "repeated.proto",
         "other_package/embed.proto",
+        "other_package/cel_oneof.proto",
         "yet_another_package/embed2.proto",
         "maps.proto",
         "messages.proto",
@@ -403,6 +399,10 @@ fn enabled_case_files() -> Vec<String> {
         "wkt_timestamp.proto",
         "wkt_field_mask.proto",
         "wkt_nested.proto",
+        "cel_arithmetic.proto",
+        "cel_closed_enum.proto",
+        "cel_index.proto",
+        "cel_message_map.proto",
         "cel_message_wkt.proto",
         "cel_oneof.proto",
         "ignore_proto2.proto",
