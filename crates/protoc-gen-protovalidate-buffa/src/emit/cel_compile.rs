@@ -406,23 +406,29 @@ impl<'a> Compiler<'a> {
         self.runtime_error_sites > 0
     }
 
-    /// Unwrap `value`, an `Option<T>` expression. `None` records `reason` in
-    /// `__cel_error`, unless an earlier error is recorded, and evaluates to
-    /// `placeholder` so the rest of the expression can still run.
+    /// Record `reason` in `__cel_error`, unless an earlier error is recorded,
+    /// and evaluate to `placeholder` so the rest of the expression can still
+    /// run.
+    fn raise(&mut self, reason: &str, placeholder: &TokenStream) -> TokenStream {
+        self.runtime_error_sites += 1;
+        quote! {{
+            __cel_error.set(__cel_error.get().or(::core::option::Option::Some(#reason)));
+            #placeholder
+        }}
+    }
+
+    /// Unwrap `value`, an `Option<T>` expression, raising `reason` on `None`.
     fn raise_on_none(
         &mut self,
         value: &TokenStream,
         reason: &str,
         placeholder: &TokenStream,
     ) -> TokenStream {
-        self.runtime_error_sites += 1;
+        let raised = self.raise(reason, placeholder);
         quote! {
             match #value {
                 ::core::option::Option::Some(__cel_ok) => __cel_ok,
-                ::core::option::Option::None => {
-                    __cel_error.set(__cel_error.get().or(::core::option::Option::Some(#reason)));
-                    #placeholder
-                }
+                ::core::option::Option::None => #raised,
             }
         }
     }
@@ -768,12 +774,9 @@ impl<'a> Compiler<'a> {
     /// `duration("10s")` constructor. Pattern: protobuf duration accepts a
     /// signed decimal with one of `ns`, `us`, `µs`, `ms`, `s`, `m`, `h`
     /// suffixes. Literal arg folds at codegen time into a
-    /// `duration_from_secs_nanos` call; dynamic arg falls back to a
-    /// runtime parse via `protovalidate_buffa::cel::parse_duration`.
-    /// Parse failure at runtime panics — CEL spec maps it to a runtime
-    /// error, but emitting a structured error here would require
-    /// violation-construction context the inner expression doesn't have.
-    fn duration_ctor(&self, arg: &Compiled) -> Result<Compiled, FallbackReason> {
+    /// `duration_from_secs_nanos` call; dynamic arg is parsed at runtime
+    /// via `protovalidate_buffa::cel::parse_duration`.
+    fn duration_ctor(&mut self, arg: &Compiled) -> Result<Compiled, FallbackReason> {
         if let Some(ConstValue::Str(s)) = &arg.constant {
             let parsed = parse_cel_duration(s)
                 .ok_or_else(|| FallbackReason::new(format!("duration() parse: {s}")))?;
@@ -793,17 +796,19 @@ impl<'a> Compiler<'a> {
             )));
         }
         let s_tok = string_as_str(arg);
+        let duration = self.raise_on_none(
+            &quote! { ::protovalidate_buffa::cel::parse_duration(#s_tok) },
+            "type conversion error from 'string' to 'google.protobuf.Duration'",
+            &placeholder(&CelType::Duration).expect("durations have a placeholder"),
+        );
         Ok(Compiled {
-            tokens: quote! {
-                ::protovalidate_buffa::cel::parse_duration(#s_tok)
-                    .expect("CEL duration() parse")
-            },
+            tokens: quote! { (#duration) },
             ty: CelType::Duration,
             constant: None,
         })
     }
 
-    fn timestamp_ctor(&self, arg: &Compiled) -> Result<Compiled, FallbackReason> {
+    fn timestamp_ctor(&mut self, arg: &Compiled) -> Result<Compiled, FallbackReason> {
         if let Some(ConstValue::Str(s)) = &arg.constant {
             // Literal: cache the parse in a `OnceLock` so it runs once.
             let s_lit = s.clone();
@@ -829,11 +834,13 @@ impl<'a> Compiler<'a> {
             )));
         }
         let s_tok = string_as_str(arg);
+        let timestamp = self.raise_on_none(
+            &quote! { ::protovalidate_buffa::cel::parse_timestamp(#s_tok) },
+            "invalid RFC 3339 timestamp",
+            &placeholder(&CelType::Timestamp).expect("timestamps have a placeholder"),
+        );
         Ok(Compiled {
-            tokens: quote! {
-                ::protovalidate_buffa::cel::parse_timestamp(#s_tok)
-                    .expect("CEL timestamp() parse")
-            },
+            tokens: quote! { (#timestamp) },
             ty: CelType::Timestamp,
             constant: None,
         })
@@ -1588,11 +1595,6 @@ impl<'a> Compiler<'a> {
                 })
             }
             ("bitShiftLeft" | "bitShiftRight", [a, b]) => {
-                let op = if name == "bitShiftLeft" {
-                    quote! { << }
-                } else {
-                    quote! { >> }
-                };
                 if !matches!(a.ty, CelType::Int | CelType::UInt) {
                     return Err(FallbackReason::new(format!("math.{name} lhs {:?}", a.ty)));
                 }
@@ -1600,9 +1602,37 @@ impl<'a> Compiler<'a> {
                     return Err(FallbackReason::new(format!("math.{name} rhs {:?}", b.ty)));
                 }
                 let at = a.tokens.clone();
-                let bt = numeric_cast(b, &CelType::UInt);
+                let bt = b.tokens.clone();
+                // As in cel-go, a shift of 64 or more gives 0, and an int
+                // shifts right as a uint.
+                let shifted = match (name, &a.ty) {
+                    ("bitShiftLeft", _) => quote! { __cel_value.checked_shl(__cel_bits) },
+                    (_, CelType::Int) => quote! {
+                        (__cel_value as u64).checked_shr(__cel_bits).map(|__v| __v as i64)
+                    },
+                    _ => quote! { __cel_value.checked_shr(__cel_bits) },
+                };
+                let shifted = quote! {{
+                    let __cel_bits = u32::try_from(__cel_bits).unwrap_or(u32::MAX);
+                    #shifted.unwrap_or(0)
+                }};
+                let shifted = if b.ty == CelType::Int {
+                    let negative = self.raise(
+                        &format!("math.{name}() negative offset"),
+                        &placeholder(&a.ty).expect("ints have a placeholder"),
+                    );
+                    quote! { if __cel_bits < 0 { #negative } else #shifted }
+                } else {
+                    shifted
+                };
                 Ok(Compiled {
-                    tokens: quote! { ((#at) #op ((#bt) as u32)) },
+                    tokens: quote! {
+                        ({
+                            let __cel_value = #at;
+                            let __cel_bits = #bt;
+                            #shifted
+                        })
+                    },
                     ty: a.ty.clone(),
                     constant: None,
                 })
@@ -2098,7 +2128,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn dur_accessor(
-        &self,
+        &mut self,
         name: &str,
         target: &Compiled,
         args: &[Compiled],
@@ -2127,34 +2157,24 @@ impl<'a> Compiler<'a> {
                 arg.ty
             )));
         }
-        // Compute (ts_expr, ts_ty_path) — `ts_expr` is the DateTime the
-        // accessor reads from, `ts_ty_path` is its concrete Rust type
-        // (used as the receiver-type in UFCS so we don't need traits in
-        // scope). With a tz arg, convert to chrono_tz::Tz; otherwise use
-        // the stored FixedOffset.
-        let (ts_expr, ts_ty_path) = args.first().map_or_else(
-            || match &target.ty {
-                CelType::Timestamp => (
-                    t.clone(),
-                    quote! { ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset> },
-                ),
-                _ => (t.clone(), quote! {}),
-            },
+        // `ts_expr` is the DateTime the accessor reads from, in the tz
+        // arg's zone if there is one. `ts_ty_path` is its Rust type, the
+        // receiver type in UFCS so no traits need to be in scope.
+        let ts_expr = args.first().map_or_else(
+            || t.clone(),
             |tz_arg| {
-                let tz_tok = string_as_str(tz_arg);
-                let converted = quote! {
-                    {
-                        let __cel_tz: ::protovalidate_buffa::chrono_tz::Tz =
-                            (#tz_tok).parse().expect("CEL timestamp accessor: tz parse");
-                        (#t).with_timezone(&__cel_tz)
-                    }
-                };
-                (
-                    converted,
-                    quote! { ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono_tz::Tz> },
-                )
+                let tz = string_as_str(tz_arg);
+                let zoned = self.raise_on_none(
+                    &quote! { ::protovalidate_buffa::cel::in_time_zone(#t, #tz) },
+                    "unknown time zone",
+                    &placeholder(&CelType::Timestamp).expect("timestamps have a placeholder"),
+                );
+                quote! { (#zoned) }
             },
         );
+        let ts_ty_path = quote! {
+            ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset>
+        };
         let body = match (name, &target.ty) {
             // --- Duration (no tz arg path) ---
             ("getSeconds", CelType::Duration) => quote! { (#t).num_seconds() },
@@ -2274,25 +2294,29 @@ impl<'a> Compiler<'a> {
         }
         let a = self.expr(&args[0])?;
         let t = a.tokens;
-        match a.ty {
-            CelType::Int => Ok(Compiled {
-                tokens: quote! { (-(#t)) },
-                ty: CelType::Int,
-                constant: None,
-            }),
-            CelType::Double => Ok(Compiled {
-                tokens: quote! { (-(#t)) },
-                ty: CelType::Double,
-                constant: None,
-            }),
-            CelType::UInt => Ok(Compiled {
-                // CEL unary minus on uint coerces to int per spec.
-                tokens: quote! { (-(#t as i64)) },
-                ty: CelType::Int,
-                constant: None,
-            }),
-            _ => Err(FallbackReason::new("negate non-numeric")),
-        }
+        let int = match a.ty {
+            CelType::Int => t,
+            CelType::Double => {
+                return Ok(Compiled {
+                    tokens: quote! { (-(#t)) },
+                    ty: CelType::Double,
+                    constant: None,
+                });
+            }
+            // CEL unary minus on uint coerces to int per spec.
+            CelType::UInt => quote! { (#t as i64) },
+            _ => return Err(FallbackReason::new("negate non-numeric")),
+        };
+        let negated = self.raise_on_none(
+            &quote! { (#int).checked_neg() },
+            "integer overflow",
+            &placeholder(&CelType::Int).expect("ints have a placeholder"),
+        );
+        Ok(Compiled {
+            tokens: quote! { (#negated) },
+            ty: CelType::Int,
+            constant: None,
+        })
     }
 
     fn op_arith(&mut self, name: &str, args: &[IdedExpr]) -> Result<Compiled, FallbackReason> {
@@ -2333,16 +2357,53 @@ impl<'a> Compiler<'a> {
         let result_ty = promote_numeric(&lhs.ty, &rhs.ty)?;
         let lt = numeric_cast(&lhs, &result_ty);
         let rt = numeric_cast(&rhs, &result_ty);
-        let op_tok = match name {
-            op::ADD => quote! { + },
-            op::SUBSTRACT => quote! { - },
-            op::MULTIPLY => quote! { * },
-            op::DIVIDE => quote! { / },
-            op::MODULO => quote! { % },
+        if result_ty == CelType::Double {
+            let op_tok = match name {
+                op::ADD => quote! { + },
+                op::SUBSTRACT => quote! { - },
+                op::MULTIPLY => quote! { * },
+                op::DIVIDE => quote! { / },
+                op::MODULO => quote! { % },
+                _ => unreachable!(),
+            };
+            return Ok(Compiled {
+                tokens: quote! { ((#lt) #op_tok (#rt)) },
+                ty: result_ty,
+                constant: None,
+            });
+        }
+        let overflow = if result_ty == CelType::UInt {
+            "unsigned integer overflow"
+        } else {
+            "integer overflow"
+        };
+        let placeholder = placeholder(&result_ty)
+            .ok_or_else(|| FallbackReason::new(format!("arith on {result_ty:?}")))?;
+        let checked = match name {
+            op::ADD => quote! { __cel_lhs.checked_add(__cel_rhs) },
+            op::SUBSTRACT => quote! { __cel_lhs.checked_sub(__cel_rhs) },
+            op::MULTIPLY => quote! { __cel_lhs.checked_mul(__cel_rhs) },
+            op::DIVIDE => quote! { __cel_lhs.checked_div(__cel_rhs) },
+            op::MODULO => quote! { __cel_lhs.checked_rem(__cel_rhs) },
             _ => unreachable!(),
         };
+        let mut value = self.raise_on_none(&checked, overflow, &placeholder);
+        if let Some(by_zero) = match name {
+            op::DIVIDE => Some("division by zero"),
+            op::MODULO => Some("modulus by zero"),
+            _ => None,
+        } {
+            let by_zero = self.raise(by_zero, &placeholder);
+            value = quote! { if __cel_rhs == 0 { #by_zero } else { #value } };
+        }
         Ok(Compiled {
-            tokens: quote! { ((#lt) #op_tok (#rt)) },
+            tokens: quote! {
+                ({
+                    let __cel_lhs = #lt;
+                    let __cel_rhs = #rt;
+                    #value
+                })
+            },
             ty: result_ty,
             constant: None,
         })
@@ -4601,7 +4662,7 @@ mod tests {
         let out = compile_with_this("this % 2 == 0", CelType::Int);
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        assert!(s.contains("% "), "expected modulo in: {s}");
+        assert!(s.contains("checked_rem"), "expected modulo in: {s}");
         assert!(s.contains("== "), "expected equality in: {s}");
     }
 
@@ -4960,7 +5021,7 @@ mod tests {
         let out = compile_with_this("this % 2u == 0u", CelType::UInt);
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        assert!(s.contains("% "), "expected modulo: {s}");
+        assert!(s.contains("checked_rem"), "expected modulo: {s}");
     }
 
     #[test]
@@ -4975,7 +5036,7 @@ mod tests {
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
         assert!(
-            s.contains("+ ") && s.contains("* "),
+            s.contains("checked_add") && s.contains("checked_mul"),
             "expected + and *: {s}"
         );
     }
@@ -5949,8 +6010,7 @@ mod tests {
         );
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        assert!(s.contains("chrono_tz"), "expected chrono_tz tz parse: {s}");
-        assert!(s.contains("with_timezone"), "expected with_timezone: {s}");
+        assert!(s.contains("in_time_zone"), "expected a time zone read: {s}");
     }
 
     #[test]

@@ -49,11 +49,9 @@ mod connect;
 pub use buffa;
 /// Date/time types and traits used by generated CEL timestamp expressions.
 pub use chrono;
-/// IANA timezone database, re-exported so generated code can reference
-/// `::protovalidate_buffa::chrono_tz::Tz` when a CEL rule uses the
-/// timezone-argument form of a timestamp accessor
-/// (`t.getHours("America/New_York")`). Only exported when the `tz`
-/// feature is enabled — rules without tz args don't need this dep.
+/// IANA timezone database behind the timezone argument of CEL timestamp
+/// accessors (`t.getHours("America/New_York")`). Only exported when the
+/// `tz` feature is enabled — rules without tz args don't need this dep.
 #[cfg(feature = "tz")]
 pub use chrono_tz;
 #[cfg(feature = "connect")]

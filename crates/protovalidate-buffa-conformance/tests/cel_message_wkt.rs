@@ -626,6 +626,13 @@ fn timestamp_and_duration_overflow_is_a_runtime_error() {
             runtime_error("shifted", "timestamp overflow"),
         ),
         ((0, 0), (0, 0), half_max, failed(&[])),
+        // A duration message past chrono's range saturates.
+        (
+            (0, 0),
+            (0, 0),
+            (i64::MAX, 0),
+            runtime_error("shifted", "timestamp overflow"),
+        ),
         (
             (0, 0),
             (0, 0),
@@ -643,6 +650,75 @@ fn timestamp_and_duration_overflow_is_a_runtime_error() {
             }
         );
         assert_eq!(actual, expected, "{start:?} {end:?} {shift:?}");
+    }
+}
+
+#[test]
+fn unparsable_temporal_strings_are_runtime_errors() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalParseView, CelTemporalParse,
+    };
+
+    let valid = CelTemporalParse {
+        duration: "1s".to_owned(),
+        timestamp: "2020-01-01T00:00:00Z".to_owned(),
+        at: timestamp(0, 0).into(),
+        zone: "America/New_York".to_owned(),
+        hours: 19,
+        ..Default::default()
+    };
+    for (message, expected) in [
+        (valid.clone(), failed(&[])),
+        (
+            CelTemporalParse {
+                zone: "+05:30".to_owned(),
+                hours: 5,
+                ..valid.clone()
+            },
+            failed(&[]),
+        ),
+        (
+            CelTemporalParse {
+                zone: "-01:00".to_owned(),
+                hours: 23,
+                ..valid.clone()
+            },
+            failed(&[]),
+        ),
+        (
+            CelTemporalParse {
+                hours: 0,
+                ..valid.clone()
+            },
+            failed(&["zone"]),
+        ),
+        (
+            CelTemporalParse {
+                duration: "bogus".to_owned(),
+                ..valid.clone()
+            },
+            runtime_error(
+                "duration",
+                "type conversion error from 'string' to 'google.protobuf.Duration'",
+            ),
+        ),
+        (
+            CelTemporalParse {
+                timestamp: "2020-01-01".to_owned(),
+                ..valid.clone()
+            },
+            runtime_error("timestamp", "invalid RFC 3339 timestamp"),
+        ),
+        (
+            CelTemporalParse {
+                zone: "Mars/Olympus".to_owned(),
+                ..valid
+            },
+            runtime_error("zone", "unknown time zone"),
+        ),
+    ] {
+        let actual = validate_both!(CelTemporalParseView, message.clone());
+        assert_eq!(actual, expected, "{message:?}");
     }
 }
 

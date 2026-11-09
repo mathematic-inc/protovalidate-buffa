@@ -519,6 +519,84 @@ fn field_cel_value_of_a_missing_optional_is_a_runtime_error() {
 }
 
 #[test]
+fn field_cel_integer_errors_are_runtime_errors() {
+    use generated::buf::validate::conformance::cases::CelIntegerArithmetic;
+
+    let valid = CelIntegerArithmetic {
+        divisor: 1,
+        modulus: 10,
+        dividend: 1,
+        difference: 1,
+        ..Default::default()
+    };
+    for (message, error) in [
+        (valid.clone(), None),
+        (
+            CelIntegerArithmetic {
+                shift: 64,
+                ..valid.clone()
+            },
+            None,
+        ),
+        (
+            CelIntegerArithmetic {
+                sum: i64::MAX,
+                ..valid.clone()
+            },
+            Some(("int.add", "integer overflow")),
+        ),
+        (
+            CelIntegerArithmetic {
+                divisor: 0,
+                ..valid.clone()
+            },
+            Some(("int.div", "division by zero")),
+        ),
+        (
+            CelIntegerArithmetic {
+                modulus: 0,
+                ..valid.clone()
+            },
+            Some(("int.mod", "modulus by zero")),
+        ),
+        (
+            CelIntegerArithmetic {
+                dividend: i64::MIN,
+                ..valid.clone()
+            },
+            Some(("int.div_overflow", "integer overflow")),
+        ),
+        (
+            CelIntegerArithmetic {
+                negated: i64::MIN,
+                ..valid.clone()
+            },
+            Some(("int.neg", "integer overflow")),
+        ),
+        (
+            CelIntegerArithmetic {
+                difference: 0,
+                ..valid.clone()
+            },
+            Some(("uint.sub", "unsigned integer overflow")),
+        ),
+        (
+            CelIntegerArithmetic { shift: -1, ..valid },
+            Some(("int.shift", "math.bitShiftLeft() negative offset")),
+        ),
+    ] {
+        let bytes = message.encode_to_vec();
+        let borrowed = view::CelIntegerArithmeticView::decode_view(&bytes).unwrap();
+        for result in [message.validate(), borrowed.validate()] {
+            match error {
+                None => assert_rules(result, &[]),
+                Some((rule, reason)) => assert_runtime_error(result, rule, reason),
+            }
+        }
+    }
+}
+
+#[test]
 fn message_cel_reads_closed_enums() {
     use generated::buf::validate::conformance::cases::{
         CelClosedEnum, CelClosedLevel, CelClosedShade,

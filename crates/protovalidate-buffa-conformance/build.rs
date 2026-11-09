@@ -399,6 +399,7 @@ fn enabled_case_files() -> Vec<String> {
         "wkt_timestamp.proto",
         "wkt_field_mask.proto",
         "wkt_nested.proto",
+        "cel_arithmetic.proto",
         "cel_closed_enum.proto",
         "cel_index.proto",
         "cel_message_map.proto",
