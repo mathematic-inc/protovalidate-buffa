@@ -168,6 +168,9 @@ pub enum CelType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageSchema {
     pub fields: Vec<MessageFieldEntry>,
+    /// Whether validators read the message from a borrowed view, not an
+    /// owned message.
+    pub view: bool,
 }
 
 /// Static type of a map: the CEL key/value types plus a "raw Rust" hint that
@@ -195,10 +198,8 @@ pub enum RustScalar {
     Bytes,
     /// A buffa enum: a bare `E` when closed, an `EnumValue<E>` when open.
     Enum,
-    /// An owned message.
+    /// A message.
     Message,
-    /// A message view.
-    MessageView,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -227,7 +228,6 @@ pub enum SchemaFieldKind {
         parent_msg_name: String,
         enumeration: String,
         variant: String,
-        view: bool,
         alternative_kind: Box<Self>,
     },
     /// Singular scalar / bool — `has()` returns true iff non-default.
@@ -249,28 +249,7 @@ pub enum SchemaFieldKind {
     /// `map<K, V>` — `has()` returns true iff non-empty. A view's field
     /// reads use `CanonicalMap`, which keeps only the last value of a
     /// repeated key.
-    Map { view: bool },
-}
-
-impl SchemaFieldKind {
-    /// Mark the field as read by validators in `package`, from a borrowed
-    /// view or an owned message.
-    pub(crate) fn set_reader(&mut self, package: &str, from_view: bool) {
-        match self {
-            Self::Oneof {
-                package: declaring_package,
-                view,
-                ..
-            } => {
-                if declaring_package.as_deref() == Some(package) {
-                    *declaring_package = None;
-                }
-                *view = from_view;
-            }
-            Self::Map { view } => *view = from_view,
-            _ => {}
-        }
-    }
+    Map,
 }
 
 impl CelType {
@@ -745,7 +724,7 @@ impl<'a> Compiler<'a> {
                 if target.is_some()
                     && matches!(target.as_ref().unwrap().ty, CelType::Optional(_)) =>
             {
-                Self::optional_method(name, target.as_ref().unwrap(), &args)
+                self.optional_method(name, target.as_ref().unwrap(), &args)
             }
             // --- list / string reverse + distinct ---
             "reverse" if target.is_some() && args.is_empty() => {
@@ -1706,6 +1685,7 @@ impl<'a> Compiler<'a> {
     /// an `Optional<T>` receiver. The static type of the receiver carries
     /// the inner `T`, which we use to type-check `orValue`'s default.
     fn optional_method(
+        &mut self,
         name: &str,
         target: &Compiled,
         args: &[Compiled],
@@ -1732,11 +1712,17 @@ impl<'a> Compiler<'a> {
                     constant: None,
                 })
             }
-            ("value", 0) => Ok(Compiled {
-                tokens: quote! { ((#t).expect("CEL optional.value() on None")) },
-                ty: inner_ty,
-                constant: None,
-            }),
+            ("value", 0) => {
+                let placeholder = placeholder(&inner_ty).ok_or_else(|| {
+                    FallbackReason::new(format!("optional.value() of {inner_ty:?}"))
+                })?;
+                let value = self.raise_on_none(&t, "optional.none() dereference", &placeholder);
+                Ok(Compiled {
+                    tokens: quote! { (#value) },
+                    ty: inner_ty,
+                    constant: None,
+                })
+            }
             _ => Err(FallbackReason::new(format!(
                 "optional.{name}({} args) on receiver",
                 args.len()
@@ -2398,11 +2384,12 @@ impl<'a> Compiler<'a> {
             }
             _ => return None,
         };
+        let placeholder = placeholder(&ty)?;
         let checked = if ty == Duration {
             self.raise_on_none(
                 &quote! { (#value).filter(|__cel_d| __cel_d.num_nanoseconds().is_some()) },
                 "duration overflow",
-                &quote! { ::protovalidate_buffa::chrono::Duration::zero() },
+                &placeholder,
             )
         } else {
             self.raise_on_none(
@@ -2412,7 +2399,7 @@ impl<'a> Compiler<'a> {
                     })
                 },
                 "timestamp overflow",
-                &quote! { ::protovalidate_buffa::cel::timestamp_from_secs_nanos(0, 0) },
+                &placeholder,
             )
         };
         let l = &lhs.tokens;
@@ -2530,60 +2517,47 @@ impl<'a> Compiler<'a> {
                 let lookup = quote! { (#op_t).get(#key_lookup) };
                 // String, bytes and message values are borrowed, scalars
                 // copied. A missing key is CEL's `no such key` error.
-                let (value, placeholder, ty) = match val_ty {
+                let (value, ty) = match val_ty {
                     CelType::Str { .. } => (
                         quote! { #lookup.map(::core::convert::AsRef::<str>::as_ref) },
-                        quote! { "" },
                         CelType::Str { owned: false },
                     ),
                     CelType::Bytes { .. } => (
                         quote! { #lookup.map(::core::convert::AsRef::<[u8]>::as_ref) },
-                        quote! { &[][..] },
                         CelType::Bytes { owned: false },
                     ),
                     CelType::Int if *value_rust == RustScalar::Enum => {
                         let value = enum_value(&quote! { __v });
-                        (
-                            quote! { #lookup.map(|__v| #value) },
-                            quote! { 0i64 },
-                            CelType::Int,
-                        )
+                        (quote! { #lookup.map(|__v| #value) }, CelType::Int)
                     }
                     CelType::Int => (
                         quote! {
                             #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_int(*__v))
                         },
-                        quote! { 0i64 },
                         CelType::Int,
                     ),
                     CelType::UInt => (
                         quote! {
                             #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_uint(*__v))
                         },
-                        quote! { 0u64 },
                         CelType::UInt,
                     ),
                     CelType::Double => (
                         quote! {
                             #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_double(*__v))
                         },
-                        quote! { 0f64 },
                         CelType::Double,
                     ),
-                    CelType::Bool => (quote! { #lookup.copied() }, quote! { false }, CelType::Bool),
-                    CelType::Message(schema) => (
-                        quote! { #lookup },
-                        if *value_rust == RustScalar::MessageView {
-                            quote! { ::buffa::DefaultViewInstance::default_view_instance() }
-                        } else {
-                            quote! { ::buffa::DefaultInstance::default_instance() }
-                        },
-                        CelType::Message(schema.clone()),
-                    ),
+                    CelType::Bool => (quote! { #lookup.copied() }, CelType::Bool),
+                    CelType::Message(schema) => {
+                        (quote! { #lookup }, CelType::Message(schema.clone()))
+                    }
                     _ => {
                         return Err(FallbackReason::new(format!("index on map<_, {val_ty:?}>")));
                     }
                 };
+                let placeholder = placeholder(&ty)
+                    .ok_or_else(|| FallbackReason::new(format!("index on map<_, {val_ty:?}>")))?;
                 let value = self.raise_on_none(&value, "no such key", &placeholder);
                 Ok(Compiled {
                     tokens: quote! { (#value) },
@@ -2592,55 +2566,49 @@ impl<'a> Compiler<'a> {
                 })
             }
             CelType::List(elem_ty) => {
-                // CEL `xs[i]` is an int-indexed lookup. An index out of
-                // range panics here, where CEL raises a runtime error.
                 let key_t = coerce(&key, &CelType::Int)?;
                 let op_t = operand.tokens;
-                // List of `T` is emitted either as `&[T]` (from a literal
-                // via `[…].as_slice()`) or as `&Vec<T>` (from a field
-                // access). Both support indexing by `usize`; cast the i64
-                // CEL index here.
-                let idx_t = quote! { ((#key_t) as usize) };
-                let (tokens, ty) = match elem_ty.as_ref() {
+                // A negative index converts to `usize::MAX`, so it misses
+                // like one past the end.
+                let lookup = quote! {
+                    (#op_t).get(::core::convert::TryFrom::try_from(#key_t).unwrap_or(usize::MAX))
+                };
+                let (value, ty) = match elem_ty.as_ref() {
                     CelType::Str { .. } => (
-                        quote! {
-                            ({
-                                let __cel_v = &(#op_t)[#idx_t];
-                                ::core::convert::AsRef::<str>::as_ref(__cel_v)
-                            })
-                        },
+                        quote! { #lookup.map(|__v| ::core::convert::AsRef::<str>::as_ref(__v)) },
                         CelType::Str { owned: false },
                     ),
                     CelType::Bytes { .. } => (
-                        quote! {
-                            ({
-                                let __cel_v = &(#op_t)[#idx_t];
-                                ::core::convert::AsRef::<[u8]>::as_ref(__cel_v)
-                            })
-                        },
+                        quote! { #lookup.map(|__v| ::core::convert::AsRef::<[u8]>::as_ref(__v)) },
                         CelType::Bytes { owned: false },
                     ),
                     CelType::Int => (
                         quote! {
-                            (::protovalidate_buffa::cel::CelScalar::cel_int((#op_t)[#idx_t]))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_int(*__v))
                         },
                         CelType::Int,
                     ),
                     CelType::UInt => (
                         quote! {
-                            (::protovalidate_buffa::cel::CelScalar::cel_uint((#op_t)[#idx_t]))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_uint(*__v))
                         },
                         CelType::UInt,
                     ),
                     CelType::Double => (
                         quote! {
-                            (::protovalidate_buffa::cel::CelScalar::cel_double((#op_t)[#idx_t]))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_double(*__v))
                         },
                         CelType::Double,
                     ),
-                    CelType::Bool => (quote! { ((#op_t)[#idx_t]) }, CelType::Bool),
+                    CelType::Bool => (quote! { #lookup.copied() }, CelType::Bool),
+                    // A projection's list holds references to its messages.
                     CelType::Message(schema) => (
-                        quote! { (&(#op_t)[#idx_t]) },
+                        quote! {
+                            #lookup.map(|__v| {
+                                use ::protovalidate_buffa::__private::Referent as _;
+                                __v.referent()
+                            })
+                        },
                         CelType::Message(schema.clone()),
                     ),
                     other => {
@@ -2649,8 +2617,12 @@ impl<'a> Compiler<'a> {
                         )));
                     }
                 };
+                let placeholder = placeholder(&ty).ok_or_else(|| {
+                    FallbackReason::new(format!("list index on element type {ty:?}"))
+                })?;
+                let value = self.raise_on_none(&value, "index out of range", &placeholder);
                 Ok(Compiled {
-                    tokens,
+                    tokens: quote! { (#value) },
                     ty,
                     constant: None,
                 })
@@ -4191,6 +4163,30 @@ pub(crate) fn enum_value(value: &TokenStream) -> TokenStream {
     }}
 }
 
+/// A value of type `ty` that stands in for one a CEL runtime error left
+/// undefined, or `None` if the type has none.
+fn placeholder(ty: &CelType) -> Option<TokenStream> {
+    Some(match ty {
+        CelType::Int => quote! { 0i64 },
+        CelType::UInt => quote! { 0u64 },
+        CelType::Double => quote! { 0f64 },
+        CelType::Bool => quote! { false },
+        CelType::Str { owned: false } => quote! { "" },
+        CelType::Str { owned: true } => quote! { ::std::string::String::new() },
+        CelType::Bytes { owned: false } => quote! { &[][..] },
+        CelType::Bytes { owned: true } => quote! { ::std::vec::Vec::new() },
+        CelType::Duration => quote! { ::protovalidate_buffa::chrono::Duration::zero() },
+        CelType::Timestamp => {
+            quote! { ::protovalidate_buffa::cel::timestamp_from_secs_nanos(0, 0) }
+        }
+        CelType::Message(schema) if schema.view => {
+            quote! { ::buffa::DefaultViewInstance::default_view_instance() }
+        }
+        CelType::Message(_) => quote! { ::buffa::DefaultInstance::default_instance() },
+        _ => return None,
+    })
+}
+
 /// Convert a protobuf Timestamp or Duration into its native CEL value.
 pub(crate) fn wkt_value(ty: &CelType, operand: &TokenStream) -> Option<TokenStream> {
     let constructor = match ty {
@@ -4224,7 +4220,6 @@ fn select_message_field(
             parent_msg_name,
             enumeration,
             variant,
-            view,
             alternative_kind,
         } => {
             let variant = super::oneof::variant_path(
@@ -4232,7 +4227,7 @@ fn select_message_field(
                 parent_msg_name,
                 enumeration,
                 variant,
-                *view,
+                schema.view,
             );
             return select_oneof_alternative(
                 operand,
@@ -4240,7 +4235,7 @@ fn select_message_field(
                 accessor,
                 &variant,
                 alternative_kind,
-                *view,
+                schema.view,
             );
         }
         SchemaFieldKind::StringLike => match &entry.ty {
@@ -4295,12 +4290,12 @@ fn select_message_field(
                 }
             }
         }
-        SchemaFieldKind::Repeated | SchemaFieldKind::Map { view: false } => {
-            quote! { (&#operand.#rust_ident) }
-        }
-        SchemaFieldKind::Map { view: true } => quote! {
+        SchemaFieldKind::Map if schema.view => quote! {
             (&::protovalidate_buffa::__private::CanonicalMap::from_view(&#operand.#rust_ident))
         },
+        SchemaFieldKind::Repeated | SchemaFieldKind::Map => {
+            quote! { (&#operand.#rust_ident) }
+        }
         SchemaFieldKind::Wrapper => match &entry.ty {
             CelType::Int => {
                 quote! { (#operand.#rust_ident.as_option().map_or(0i64, |w| ::protovalidate_buffa::cel::CelScalar::cel_int(w.value))) }
@@ -4433,7 +4428,6 @@ fn has_message_field(
             parent_msg_name,
             enumeration,
             variant,
-            view,
             ..
         } => {
             let accessor = crate::emit::field_ident(accessor);
@@ -4442,7 +4436,7 @@ fn has_message_field(
                 parent_msg_name,
                 enumeration,
                 variant,
-                *view,
+                schema.view,
             );
             quote! { matches!(&#operand.#accessor, Some(#variant(_))) }
         }
@@ -4472,7 +4466,7 @@ fn has_message_field(
         SchemaFieldKind::Message { .. } | SchemaFieldKind::Wrapper => {
             quote! { (#operand.#rust_ident.is_set()) }
         }
-        SchemaFieldKind::Repeated | SchemaFieldKind::Map { .. } => {
+        SchemaFieldKind::Repeated | SchemaFieldKind::Map => {
             quote! { (!#operand.#rust_ident.is_empty()) }
         }
     };
@@ -4525,12 +4519,12 @@ mod tests {
                         parent_msg_name: "Batch.Source".to_owned(),
                         enumeration: "Origin".to_owned(),
                         variant: "Produced".to_owned(),
-                        view,
                         alternative_kind: Box::new(SchemaFieldKind::Message {
                             proto_fqn: "Batch.Produced".to_owned(),
                         }),
                     },
                 }],
+                view,
             };
             let output =
                 compile_with_this("has(this.produced)", CelType::Message(Box::new(schema)));
@@ -4810,6 +4804,7 @@ mod tests {
                 ty: CelType::Int,
                 kind: SchemaFieldKind::Scalar,
             }],
+            view: false,
         };
         let mut c = Compiler::new();
         c.bind(
@@ -4841,6 +4836,7 @@ mod tests {
                 ty: CelType::Int,
                 kind: SchemaFieldKind::Scalar,
             }],
+            view: false,
         };
         let mut c = Compiler::new();
         c.bind(
@@ -5133,6 +5129,7 @@ mod tests {
                 ty,
                 kind,
             }],
+            view: false,
         }
     }
 
@@ -5290,6 +5287,7 @@ mod tests {
                     proto_fqn: "Missing".to_string(),
                 },
             }],
+            view: false,
         };
         let index: BTreeMap<String, MessageSchema> = BTreeMap::new();
         let mut c = Compiler::new().with_schemas(&index);
@@ -5315,6 +5313,7 @@ mod tests {
                 ty: CelType::Int,
                 kind: SchemaFieldKind::Scalar,
             }],
+            view: false,
         };
         let mid = MessageSchema {
             fields: vec![MessageFieldEntry {
@@ -5325,6 +5324,7 @@ mod tests {
                     proto_fqn: "Leaf".to_string(),
                 },
             }],
+            view: false,
         };
         let outer = MessageSchema {
             fields: vec![MessageFieldEntry {
@@ -5335,6 +5335,7 @@ mod tests {
                     proto_fqn: "Mid".to_string(),
                 },
             }],
+            view: false,
         };
         let mut index: BTreeMap<String, MessageSchema> = BTreeMap::new();
         index.insert("Leaf".to_string(), leaf);
@@ -5383,6 +5384,7 @@ mod tests {
                     },
                 },
             ],
+            view: false,
         };
         let mut index: BTreeMap<String, MessageSchema> = BTreeMap::new();
         index.insert("A".to_string(), a.clone());
@@ -5858,7 +5860,10 @@ mod tests {
         let out = compile_with_this("this[0] == 1", CelType::List(Box::new(CelType::Int)));
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        assert!(s.contains("as usize"), "expected usize cast: {s}");
+        assert!(
+            s.contains("index out of range"),
+            "expected a runtime error: {s}"
+        );
     }
 
     #[test]
@@ -5994,7 +5999,10 @@ mod tests {
         let out = compile_with_this("optional.of(this).value() == 5", CelType::Int);
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        assert!(s.contains("expect"), "expected expect: {s}");
+        assert!(
+            s.contains("optional.none() dereference"),
+            "expected a runtime error: {s}"
+        );
     }
 
     #[test]
@@ -6487,6 +6495,7 @@ mod tests {
                 ty: CelType::Int,
                 kind: SchemaFieldKind::Scalar,
             }],
+            view: false,
         };
         let outer = MessageSchema {
             fields: vec![MessageFieldEntry {
@@ -6497,6 +6506,7 @@ mod tests {
                     proto_fqn: "Inner".to_string(),
                 },
             }],
+            view: false,
         };
         let mut index: BTreeMap<String, MessageSchema> = BTreeMap::new();
         index.insert("Inner".to_string(), inner);

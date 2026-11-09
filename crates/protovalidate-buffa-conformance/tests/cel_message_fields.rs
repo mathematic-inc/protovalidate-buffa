@@ -42,6 +42,13 @@ fn assert_rules(result: Result<(), ValidationError>, expected: &[&str]) {
     }
 }
 
+fn assert_runtime_error(result: Result<(), ValidationError>, rule: &str, reason: &str) {
+    assert_eq!(
+        result.unwrap_err().runtime_error,
+        Some(format!("cel runtime error in rule {rule:?}: {reason}"))
+    );
+}
+
 #[test]
 fn selected_oneof_defaults_have_presence() {
     use oneof::cel_oneof_presence::Choice;
@@ -379,10 +386,7 @@ fn message_cel_indexing_a_missing_map_key_is_a_runtime_error() {
     let bytes = missing.encode_to_vec();
     let borrowed = view::CelMessageMapIndexView::decode_view(&bytes).unwrap();
     for result in [missing.validate(), borrowed.validate()] {
-        assert_eq!(
-            result.unwrap_err().runtime_error.as_deref(),
-            Some("cel runtime error in rule \"map.index\": no such key")
-        );
+        assert_runtime_error(result, "map.index", "no such key");
     }
 }
 
@@ -412,10 +416,105 @@ fn field_cel_indexing_a_missing_key_of_a_message_map_is_a_runtime_error() {
     let bytes = missing.encode_to_vec();
     let borrowed = view::CelMessageMapFieldIndexView::decode_view(&bytes).unwrap();
     for result in [missing.validate(), borrowed.validate()] {
-        assert_eq!(
-            result.unwrap_err().runtime_error.as_deref(),
-            Some("cel runtime error in rule \"map.message_index\": no such key")
-        );
+        assert_runtime_error(result, "map.message_index", "no such key");
+    }
+}
+
+#[test]
+fn field_cel_indexing_a_list_out_of_range_is_a_runtime_error() {
+    use generated::buf::validate::conformance::cases::{
+        CelListIndex, CelListNegativeIndex, cel_list_index::Child,
+    };
+
+    let valid = CelListIndex {
+        items: vec!["x".to_owned()],
+        children: vec![Child {
+            id: "c".to_owned(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    for (message, expected) in [
+        (valid.clone(), Ok(&[][..])),
+        (
+            CelListIndex {
+                guarded: vec!["y".to_owned()],
+                ..valid.clone()
+            },
+            Ok(&["list.guarded"][..]),
+        ),
+        (
+            CelListIndex {
+                items: Vec::new(),
+                ..valid.clone()
+            },
+            Err("list.index"),
+        ),
+        (
+            CelListIndex {
+                children: Vec::new(),
+                ..valid
+            },
+            Err("list.message"),
+        ),
+    ] {
+        let bytes = message.encode_to_vec();
+        let borrowed = view::CelListIndexView::decode_view(&bytes).unwrap();
+        for result in [message.validate(), borrowed.validate()] {
+            match expected {
+                Ok(rules) => assert_rules(result, rules),
+                Err(rule) => assert_runtime_error(result, rule, "index out of range"),
+            }
+        }
+    }
+
+    for items in [Vec::new(), vec!["x".to_owned()]] {
+        let message = CelListNegativeIndex {
+            items,
+            ..Default::default()
+        };
+        let bytes = message.encode_to_vec();
+        let borrowed = view::CelListNegativeIndexView::decode_view(&bytes).unwrap();
+        for result in [message.validate(), borrowed.validate()] {
+            assert_runtime_error(result, "list.negative", "index out of range");
+        }
+    }
+}
+
+#[test]
+fn field_cel_value_of_a_missing_optional_is_a_runtime_error() {
+    use generated::buf::validate::conformance::cases::CelOptionalValue;
+
+    let valid = CelOptionalValue {
+        labels: std::iter::once(("k".to_owned(), "x".to_owned())).collect(),
+        items: vec!["x".to_owned()],
+        ..Default::default()
+    };
+    for (message, error) in [
+        (valid.clone(), None),
+        (
+            CelOptionalValue {
+                labels: std::collections::HashMap::default(),
+                ..valid.clone()
+            },
+            Some("map.value"),
+        ),
+        (
+            CelOptionalValue {
+                items: Vec::new(),
+                ..valid
+            },
+            Some("list.value"),
+        ),
+    ] {
+        let bytes = message.encode_to_vec();
+        let borrowed = view::CelOptionalValueView::decode_view(&bytes).unwrap();
+        for result in [message.validate(), borrowed.validate()] {
+            match error {
+                None => assert_rules(result, &[]),
+                Some(rule) => assert_runtime_error(result, rule, "optional.none() dereference"),
+            }
+        }
     }
 }
 

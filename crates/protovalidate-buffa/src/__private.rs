@@ -72,3 +72,14 @@ where
 pub fn variant_default<T: Default, R>(_variant: fn(T) -> R) -> T {
     T::default()
 }
+
+/// Borrows a value through any references to it. Method lookup on `&&T`
+/// stops at `T`, the first `Default` type, since references aren't.
+pub trait Referent: Default {
+    /// Borrow the value itself.
+    fn referent(&self) -> &Self {
+        self
+    }
+}
+
+impl<T: Default> Referent for T {}

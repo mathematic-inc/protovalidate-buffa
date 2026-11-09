@@ -282,13 +282,7 @@ pub(super) fn collection_binding(
         FieldKind::Map { .. } => shape.map_access(accessor, field.field_number),
         _ => return None,
     };
-    let mut ty = cel_type_for_with(&field.field_type, Some(schemas))?;
-    if shape == super::Shape::View
-        && let CelType::Map(map) = &mut ty
-        && map.value_rust == RustScalar::Message
-    {
-        map.value_rust = RustScalar::MessageView;
-    }
+    let ty = cel_type_for_with(&field.field_type, Some(schemas))?;
     Some((access, ty))
 }
 
@@ -313,6 +307,7 @@ pub fn build_schema_index(messages: &[MessageValidators]) -> SchemaIndex {
                 ty: CelType::List(Box::new(CelType::Str { owned: false })),
                 kind: SchemaFieldKind::Repeated,
             }],
+            view: false,
         });
     index
 }
@@ -324,11 +319,18 @@ pub(crate) fn schemas_for(
     package: &str,
     shape: crate::emit::Shape,
 ) -> SchemaIndex {
-    let from_view = matches!(shape, crate::emit::Shape::View);
     let mut index = schemas.clone();
     for schema in index.values_mut() {
+        schema.view = shape == crate::emit::Shape::View;
         for entry in &mut schema.fields {
-            entry.kind.set_reader(package, from_view);
+            if let SchemaFieldKind::Oneof {
+                package: declaring_package,
+                ..
+            } = &mut entry.kind
+                && declaring_package.as_deref() == Some(package)
+            {
+                *declaring_package = None;
+            }
         }
     }
     index
@@ -563,14 +565,16 @@ fn build_message_schema(msg: &MessageValidators) -> MessageSchema {
                     parent_msg_name: oneof.parent_msg_name.clone(),
                     enumeration: super::oneof::to_pascal_case(&oneof.name),
                     variant: super::oneof::to_pascal_case(&field.field_name),
-                    view: false,
                     alternative_kind: Box::new(entry.kind.clone()),
                 };
             }
             Some(entry)
         })
         .collect();
-    MessageSchema { fields }
+    MessageSchema {
+        fields,
+        view: false,
+    }
 }
 
 fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
@@ -611,10 +615,7 @@ fn field_to_schema_entry(f: &FieldValidator) -> Option<MessageFieldEntry> {
                 proto_fqn: full_name.clone(),
             },
         ),
-        FieldKind::Map { .. } => (
-            cel_type_for(&f.field_type)?,
-            SchemaFieldKind::Map { view: false },
-        ),
+        FieldKind::Map { .. } => (cel_type_for(&f.field_type)?, SchemaFieldKind::Map),
     };
     Some(MessageFieldEntry {
         proto_name,
@@ -736,6 +737,7 @@ mod tests {
                 ty: CelType::Str { owned: false },
                 kind: SchemaFieldKind::StringLike,
             }],
+            view: false,
         };
         let parent = MessageSchema {
             fields: vec![MessageFieldEntry {
@@ -744,6 +746,7 @@ mod tests {
                 ty,
                 kind: SchemaFieldKind::Repeated,
             }],
+            view: false,
         };
         let schemas = SchemaIndex::from([("test.Child".to_owned(), child)]);
         for expression in [

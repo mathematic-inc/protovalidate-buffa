@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package buf.validate.conformance.cases;
+
+import "buf/validate/validate.proto";
+
+// Indexing a list out of range is a runtime error.
+message CelListIndex {
+  message Child {
+    string id = 1;
+  }
+
+  repeated string items = 1 [(buf.validate.field).cel = {
+    id: "list.index"
+    expression: "this[0] == 'x'"
+  }];
+  // `||` discards the error when the other side is true.
+  repeated string guarded = 2 [(buf.validate.field).cel = {
+    id: "list.guarded"
+    expression: "this[0] == 'x' || size(this) == 0"
+  }];
+  // Reads the first message directly and through a projection, whose list
+  // holds references.
+  repeated Child children = 3 [(buf.validate.field).cel = {
+    id: "list.message"
+    expression: "this[0].id == this.map(c, c)[0].id"
+  }];
+}
+
+message CelListNegativeIndex {
+  repeated string items = 1 [(buf.validate.field).cel = {
+    id: "list.negative"
+    expression: "this[-1] == 'x'"
+  }];
+}
+
+// `optional.none().value()` is a runtime error.
+message CelOptionalValue {
+  map<string, string> labels = 1 [(buf.validate.field).cel = {
+    id: "map.value"
+    expression: "this[?'k'].value() == 'x'"
+  }];
+  repeated string items = 2 [(buf.validate.field).cel = {
+    id: "list.value"
+    expression: "this[?0].value() == 'x'"
+  }];
+}
