@@ -23,7 +23,8 @@ use crate::{
 /// Returns `(statics, calls)` — statics go outside the impl block, calls go
 /// inside the `validate` body after field/oneof blocks.
 ///
-/// `schemas` come from [`shaped`] for the message and the shape it validates.
+/// `schemas` come from [`schemas_for`] for the message and the shape it
+/// validates.
 #[must_use]
 pub(crate) fn emit_message_level(
     msg: &MessageValidators,
@@ -234,10 +235,8 @@ fn cel_type_for_with(kind: &FieldKind, schemas: Option<&SchemaIndex>) -> Option<
             let key_cel = cel_type_for_with(key, schemas)?;
             let value_cel = cel_type_for_with(value, schemas)?;
             let key_rust = rust_scalar_for_kind(key)?;
-            // Map values may be messages, in which case the rust kind
-            // lookup returns None. Use a sentinel so the index op can
-            // still emit access.
-            let value_rust = rust_scalar_for_kind(value).unwrap_or(RustScalar::Bool);
+            // Any other value is a message.
+            let value_rust = rust_scalar_for_kind(value).unwrap_or(RustScalar::Message);
             return Some(CelType::Map(Box::new(MapTy {
                 key_cel,
                 value_cel,
@@ -283,7 +282,13 @@ pub(super) fn collection_binding(
         FieldKind::Map { .. } => shape.map_access(accessor, field.field_number),
         _ => return None,
     };
-    let ty = cel_type_for_with(&field.field_type, Some(schemas))?;
+    let mut ty = cel_type_for_with(&field.field_type, Some(schemas))?;
+    if shape == super::Shape::View
+        && let CelType::Map(map) = &mut ty
+        && map.value_rust == RustScalar::Message
+    {
+        map.value_rust = RustScalar::MessageView;
+    }
     Some((access, ty))
 }
 
@@ -314,19 +319,19 @@ pub fn build_schema_index(messages: &[MessageValidators]) -> SchemaIndex {
 
 /// `schemas` as the validators of a message in `package` read them, from
 /// owned messages or views.
-pub(crate) fn shaped(
+pub(crate) fn schemas_for(
     schemas: &SchemaIndex,
     package: &str,
     shape: crate::emit::Shape,
 ) -> SchemaIndex {
     let from_view = matches!(shape, crate::emit::Shape::View);
-    let mut shaped = schemas.clone();
-    for schema in shaped.values_mut() {
+    let mut index = schemas.clone();
+    for schema in index.values_mut() {
         for entry in &mut schema.fields {
-            entry.kind.read_from(package, from_view);
+            entry.kind.set_reader(package, from_view);
         }
     }
-    shaped
+    index
 }
 
 /// Emit a `__cel_runtime_error__` violation marker.

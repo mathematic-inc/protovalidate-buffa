@@ -195,6 +195,10 @@ pub enum RustScalar {
     Bytes,
     /// A buffa enum: a bare `E` when closed, an `EnumValue<E>` when open.
     Enum,
+    /// An owned message.
+    Message,
+    /// A message view.
+    MessageView,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -251,15 +255,15 @@ pub enum SchemaFieldKind {
 impl SchemaFieldKind {
     /// Mark the field as read by validators in `package`, from a borrowed
     /// view or an owned message.
-    pub(crate) fn read_from(&mut self, package: &str, from_view: bool) {
+    pub(crate) fn set_reader(&mut self, package: &str, from_view: bool) {
         match self {
             Self::Oneof {
-                package: declared,
+                package: declaring_package,
                 view,
                 ..
             } => {
-                if declared.as_deref() == Some(package) {
-                    *declared = None;
+                if declaring_package.as_deref() == Some(package) {
+                    *declaring_package = None;
                 }
                 *view = from_view;
             }
@@ -2523,78 +2527,73 @@ impl<'a> Compiler<'a> {
                     quote! { &(#key_lookup_raw) }
                 };
                 let op_t = operand.tokens;
-                let found = quote! { (#op_t).get(#key_lookup) };
-                // String and bytes values are borrowed, scalars copied. A
-                // missing key is CEL's `no such key` error.
+                let lookup = quote! { (#op_t).get(#key_lookup) };
+                // String, bytes and message values are borrowed, scalars
+                // copied. A missing key is CEL's `no such key` error.
                 let (value, placeholder, ty) = match val_ty {
                     CelType::Str { .. } => (
-                        quote! { #found.map(::core::convert::AsRef::<str>::as_ref) },
+                        quote! { #lookup.map(::core::convert::AsRef::<str>::as_ref) },
                         quote! { "" },
                         CelType::Str { owned: false },
                     ),
                     CelType::Bytes { .. } => (
-                        quote! { #found.map(::core::convert::AsRef::<[u8]>::as_ref) },
+                        quote! { #lookup.map(::core::convert::AsRef::<[u8]>::as_ref) },
                         quote! { &[][..] },
                         CelType::Bytes { owned: false },
                     ),
                     CelType::Int if *value_rust == RustScalar::Enum => {
                         let value = enum_value(&quote! { __v });
                         (
-                            quote! { #found.map(|__v| #value) },
+                            quote! { #lookup.map(|__v| #value) },
                             quote! { 0i64 },
                             CelType::Int,
                         )
                     }
                     CelType::Int => (
                         quote! {
-                            #found.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_int(*__v))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_int(*__v))
                         },
                         quote! { 0i64 },
                         CelType::Int,
                     ),
                     CelType::UInt => (
                         quote! {
-                            #found.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_uint(*__v))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_uint(*__v))
                         },
                         quote! { 0u64 },
                         CelType::UInt,
                     ),
                     CelType::Double => (
                         quote! {
-                            #found.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_double(*__v))
+                            #lookup.map(|__v| ::protovalidate_buffa::cel::CelScalar::cel_double(*__v))
                         },
                         quote! { 0f64 },
                         CelType::Double,
                     ),
-                    CelType::Bool => (quote! { #found.copied() }, quote! { false }, CelType::Bool),
-                    CelType::Message(schema) => {
-                        // Return a `&Msg` reference. For typical
-                        // protovalidate usage (`this.all(k, this[k]...)`
-                        // over the map's own keys), the key is guaranteed
-                        // present; we use `.expect()` since a missing
-                        // value here would indicate a CEL program bug
-                        // rather than a validation failure.
-                        return Ok(Compiled {
-                            tokens: quote! { #found.expect("CEL map index miss") },
-                            ty: CelType::Message(schema.clone()),
-                            constant: None,
-                        });
-                    }
+                    CelType::Bool => (quote! { #lookup.copied() }, quote! { false }, CelType::Bool),
+                    CelType::Message(schema) => (
+                        quote! { #lookup },
+                        if *value_rust == RustScalar::MessageView {
+                            quote! { ::buffa::DefaultViewInstance::default_view_instance() }
+                        } else {
+                            quote! { ::buffa::DefaultInstance::default_instance() }
+                        },
+                        CelType::Message(schema.clone()),
+                    ),
                     _ => {
                         return Err(FallbackReason::new(format!("index on map<_, {val_ty:?}>")));
                     }
                 };
+                let value = self.raise_on_none(&value, "no such key", &placeholder);
                 Ok(Compiled {
-                    tokens: self.raise_on_none(&value, "no such key", &placeholder),
+                    tokens: quote! { (#value) },
                     ty,
                     constant: None,
                 })
             }
             CelType::List(elem_ty) => {
-                // CEL `xs[i]` is an int-indexed lookup. Out-of-range is a
-                // runtime error in CEL — we mirror that via `.expect()`,
-                // matching the protovalidate convention used for map
-                // indexing where the comprehension guarantees presence.
+                // CEL `xs[i]` is an int-indexed lookup. An index out of
+                // range panics here, where CEL raises a runtime error.
                 let key_t = coerce(&key, &CelType::Int)?;
                 let op_t = operand.tokens;
                 // List of `T` is emitted either as `&[T]` (from a literal
@@ -2662,7 +2661,7 @@ impl<'a> Compiler<'a> {
 
     /// Optional indexing: `m[?k]` on a map, `xs[?i]` on a list. Returns
     /// `Optional<V>` / `Optional<E>` — `Some(value)` if the key/index is
-    /// present, `None` otherwise. Unlike `_[_]`, never panics on a miss.
+    /// present, `None` otherwise. Unlike `_[_]`, a miss isn't an error.
     fn op_opt_index(&mut self, args: &[IdedExpr]) -> Result<Compiled, FallbackReason> {
         if args.len() != 2 {
             return Err(FallbackReason::new("opt_index arity"));
@@ -4228,7 +4227,7 @@ fn select_message_field(
             view,
             alternative_kind,
         } => {
-            let variant = oneof_variant(
+            let variant = super::oneof::variant_path(
                 package.as_deref(),
                 parent_msg_name,
                 enumeration,
@@ -4351,28 +4350,6 @@ fn select_message_field(
     })
 }
 
-fn oneof_variant(
-    package: Option<&str>,
-    parent_msg_name: &str,
-    enumeration: &str,
-    variant: &str,
-    view: bool,
-) -> TokenStream {
-    let package = package
-        .into_iter()
-        .flat_map(|package| package.split('.'))
-        .map(crate::emit::field_ident);
-    let module = super::oneof::module_path(parent_msg_name);
-    let enumeration = crate::emit::field_ident(enumeration);
-    let variant = crate::emit::field_ident(variant);
-    let oneof = if view {
-        quote! { view::oneof }
-    } else {
-        quote! { oneof }
-    };
-    quote! { #(#package::)* __buffa::#oneof::#module::#enumeration::#variant }
-}
-
 /// Emit `<operand>.<alternative>` for a oneof alternative: its value while
 /// selected, else its default, as CEL reads an unset field.
 fn select_oneof_alternative(
@@ -4406,7 +4383,10 @@ fn select_oneof_alternative(
             quote! { 0f64 },
         ),
         (SchemaFieldKind::Scalar, CelType::Bool) => (quote! { *__cel_value }, quote! { false }),
-        (SchemaFieldKind::Enum, _) => (enum_value(&quote! { __cel_value }), quote! { 0i64 }),
+        (SchemaFieldKind::Enum, _) => (
+            enum_value(&quote! { __cel_value }),
+            enum_value(&quote! { ::protovalidate_buffa::__private::variant_default(#variant) }),
+        ),
         (SchemaFieldKind::Message { .. }, _) => (
             quote! { &**__cel_value },
             if view {
@@ -4457,7 +4437,7 @@ fn has_message_field(
             ..
         } => {
             let accessor = crate::emit::field_ident(accessor);
-            let variant = oneof_variant(
+            let variant = super::oneof::variant_path(
                 package.as_deref(),
                 parent_msg_name,
                 enumeration,

@@ -387,22 +387,53 @@ fn message_cel_indexing_a_missing_map_key_is_a_runtime_error() {
 }
 
 #[test]
+fn field_cel_indexing_a_missing_key_of_a_message_map_is_a_runtime_error() {
+    use generated::buf::validate::conformance::cases::{
+        CelMessageMapFieldIndex, cel_message_map_field_index::Child,
+    };
+
+    let present = CelMessageMapFieldIndex {
+        children: std::iter::once((
+            "k".to_owned(),
+            Child {
+                id: "y".to_owned(),
+                ..Default::default()
+            },
+        ))
+        .collect(),
+        ..Default::default()
+    };
+    let bytes = present.encode_to_vec();
+    let borrowed = view::CelMessageMapFieldIndexView::decode_view(&bytes).unwrap();
+    assert_rules(present.validate(), &[]);
+    assert_rules(borrowed.validate(), &[]);
+
+    let missing = CelMessageMapFieldIndex::default();
+    let bytes = missing.encode_to_vec();
+    let borrowed = view::CelMessageMapFieldIndexView::decode_view(&bytes).unwrap();
+    for result in [missing.validate(), borrowed.validate()] {
+        assert_eq!(
+            result.unwrap_err().runtime_error.as_deref(),
+            Some("cel runtime error in rule \"map.message_index\": no such key")
+        );
+    }
+}
+
+#[test]
 fn message_cel_reads_closed_enums() {
-    use generated::buf::validate::conformance::cases::{CelClosedEnum, CelClosedShade};
+    use generated::buf::validate::conformance::cases::{
+        CelClosedEnum, CelClosedLevel, CelClosedShade,
+    };
     use oneof::cel_closed_enum::Choice;
 
-    let dark = CelClosedShade::CEL_CLOSED_SHADE_DARK;
-    let unspecified = CelClosedShade::CEL_CLOSED_SHADE_UNSPECIFIED;
+    let high = Some(Choice::Level(CelClosedLevel::CEL_CLOSED_LEVEL_HIGH));
+    let dark = Some(CelClosedShade::CEL_CLOSED_SHADE_DARK);
+    let unspecified = Some(CelClosedShade::CEL_CLOSED_SHADE_UNSPECIFIED);
     for (choice, shade, want, rules) in [
-        (None, None, 0, &[][..]),
-        (Some(Choice::Shade(dark)), Some(dark), 1, &[][..]),
-        (None, Some(dark), 1, &["closed_enum.oneof"][..]),
-        (
-            Some(Choice::Shade(dark)),
-            Some(unspecified),
-            1,
-            &["closed_enum.map"][..],
-        ),
+        (None, None, 1, &[][..]),
+        (high.clone(), None, 2, &[][..]),
+        (high, dark, 1, &["closed_enum.oneof"][..]),
+        (None, unspecified, 1, &["closed_enum.map"][..]),
     ] {
         let owned = CelClosedEnum {
             want: Some(want),

@@ -495,8 +495,8 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .iter()
         .flat_map(|o| o.fields.iter().map(String::as_str))
         .collect();
-    let owned_schemas = cel::shaped(schemas, &msg.package, Shape::Owned);
-    let view_schemas = cel::shaped(schemas, &msg.package, Shape::View);
+    let owned_schemas = cel::schemas_for(schemas, &msg.package, Shape::Owned);
+    let view_schemas = cel::schemas_for(schemas, &msg.package, Shape::View);
     let render_field_blocks = |shape| {
         msg.field_rules
             .iter()
@@ -660,19 +660,14 @@ fn emit_message_oneof(
                     .iter()
                     .find(|oneof| &oneof.name == oneof_name)?;
                 let accessor = field_ident(&oneof.rust_name);
-                let module = oneof::module_path(&oneof.parent_msg_name);
-                let enumeration = field_ident(&oneof::to_pascal_case(oneof_name));
-                let variant = field_ident(&oneof::to_pascal_case(&fv.field_name));
-                let oneof_root = match shape {
-                    Shape::Owned => quote! { __buffa::oneof },
-                    Shape::View => quote! { __buffa::view::oneof },
-                };
-                quote! {
-                    matches!(
-                        &self.#accessor,
-                        Some(#oneof_root::#module::#enumeration::#variant(_))
-                    )
-                }
+                let variant = oneof::variant_path(
+                    None,
+                    &oneof.parent_msg_name,
+                    &oneof::to_pascal_case(oneof_name),
+                    &oneof::to_pascal_case(&fv.field_name),
+                    shape == Shape::View,
+                );
+                quote! { matches!(&self.#accessor, Some(#variant(_))) }
             } else {
                 match &fv.field_type {
                     FieldKind::Message { .. } | FieldKind::Wrapper(_) => {

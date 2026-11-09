@@ -33,7 +33,7 @@ message CelMessageMap {
   string want_k = 3;
 }
 
-// Indexing a missing key is a runtime error.
+// Indexing a missing key is a runtime error, in message and field rules.
 message CelMessageMapIndex {
   option (buf.validate.message).cel = {
     id: "map.index"
@@ -41,4 +41,15 @@ message CelMessageMapIndex {
   };
 
   map<string, string> labels = 1;
+}
+
+message CelMessageMapFieldIndex {
+  message Child {
+    string id = 1;
+  }
+
+  map<string, Child> children = 1 [(buf.validate.field).cel = {
+    id: "map.message_index"
+    expression: "this['k'].id != 'x'"
+  }];
 }

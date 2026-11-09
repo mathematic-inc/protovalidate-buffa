@@ -65,3 +65,10 @@ where
         self.view.iter_unique()
     }
 }
+
+/// The default payload of a tuple variant, such as an unselected oneof
+/// alternative's value.
+#[must_use]
+pub fn variant_default<T: Default, R>(_variant: fn(T) -> R) -> T {
+    T::default()
+}
