@@ -692,6 +692,15 @@ fn unparsable_temporal_strings_are_runtime_errors() {
             },
             failed(&["zone"]),
         ),
+        // An empty zone is UTC.
+        (
+            CelTemporalParse {
+                zone: String::new(),
+                hours: 0,
+                ..valid.clone()
+            },
+            failed(&[]),
+        ),
         (
             CelTemporalParse {
                 duration: "bogus".to_owned(),

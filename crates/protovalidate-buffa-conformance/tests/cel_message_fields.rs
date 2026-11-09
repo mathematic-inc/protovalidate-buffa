@@ -482,37 +482,50 @@ fn field_cel_indexing_a_list_out_of_range_is_a_runtime_error() {
 }
 
 #[test]
-fn field_cel_value_of_a_missing_optional_is_a_runtime_error() {
-    use generated::buf::validate::conformance::cases::CelOptionalValue;
+fn cel_optional_value_is_its_value_or_a_runtime_error() {
+    use generated::buf::validate::conformance::cases::{
+        CelOptionalValue, cel_optional_value::Child,
+    };
 
     let valid = CelOptionalValue {
         labels: std::iter::once(("k".to_owned(), "x".to_owned())).collect(),
         items: vec!["x".to_owned()],
         ..Default::default()
     };
-    for (message, error) in [
-        (valid.clone(), None),
+    for (message, expected) in [
+        (valid.clone(), Ok(&[][..])),
+        (
+            CelOptionalValue {
+                child: Child {
+                    id: "x".to_owned(),
+                    ..Default::default()
+                }
+                .into(),
+                ..valid.clone()
+            },
+            Ok(&["message.value"][..]),
+        ),
         (
             CelOptionalValue {
                 labels: std::collections::HashMap::default(),
                 ..valid.clone()
             },
-            Some("map.value"),
+            Err("map.value"),
         ),
         (
             CelOptionalValue {
                 items: Vec::new(),
                 ..valid
             },
-            Some("list.value"),
+            Err("list.value"),
         ),
     ] {
         let bytes = message.encode_to_vec();
         let borrowed = view::CelOptionalValueView::decode_view(&bytes).unwrap();
         for result in [message.validate(), borrowed.validate()] {
-            match error {
-                None => assert_rules(result, &[]),
-                Some(rule) => assert_runtime_error(result, rule, "optional.none() dereference"),
+            match expected {
+                Ok(rules) => assert_rules(result, rules),
+                Err(rule) => assert_runtime_error(result, rule, "optional.none() dereference"),
             }
         }
     }

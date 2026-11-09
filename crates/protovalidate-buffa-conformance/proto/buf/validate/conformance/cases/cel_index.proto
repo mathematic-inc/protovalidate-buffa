@@ -34,8 +34,18 @@ message CelListNegativeIndex {
   }];
 }
 
-// `optional.none().value()` is a runtime error.
+// `.value()` reads an optional's value, and on `optional.none()` is a
+// runtime error.
 message CelOptionalValue {
+  option (buf.validate.message).cel = {
+    id: "message.value"
+    expression: "optional.of(this.child).value().id != 'x'"
+  };
+
+  message Child {
+    string id = 1;
+  }
+
   map<string, string> labels = 1 [(buf.validate.field).cel = {
     id: "map.value"
     expression: "this[?'k'].value() == 'x'"
@@ -44,4 +54,5 @@ message CelOptionalValue {
     id: "list.value"
     expression: "this[?0].value() == 'x'"
   }];
+  Child child = 3;
 }

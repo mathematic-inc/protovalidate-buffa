@@ -168,6 +168,9 @@ fn split_unit(rest: &str) -> Option<(&str, &'static str)> {
 /// / `h`. Returns `None` on any parse error so the caller can decide
 /// whether to map that to a CEL runtime error.
 ///
+/// cel-go parses with Go's `time.ParseDuration`, which also takes a
+/// sequence such as `1h30m` and a bare `0`; both are `None` here.
+///
 /// Used by codegen for `duration(this.field)` where `this.field` isn't
 /// a compile-time-known string literal; literal-arg paths fold the parse
 /// into `duration_from_secs_nanos(secs, nanos)` at codegen time and do
@@ -215,8 +218,8 @@ pub fn parse_timestamp(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>>
     chrono::DateTime::parse_from_rfc3339(s).ok()
 }
 
-/// `t` in the time zone `tz`, an IANA name or a `±HH:MM` offset, as CEL's
-/// timestamp accessors take it. `None` if `tz` is neither.
+/// `t` in the time zone `tz`, as CEL's timestamp accessors take it: an IANA
+/// name, a `±HH:MM` offset, or empty for UTC. `None` for anything else.
 #[cfg(feature = "tz")]
 #[must_use]
 pub fn in_time_zone(
@@ -224,7 +227,12 @@ pub fn in_time_zone(
     tz: &str,
 ) -> Option<chrono::DateTime<chrono::FixedOffset>> {
     let Some((hours, minutes)) = tz.split_once(':') else {
-        let zone: chrono_tz::Tz = tz.parse().ok()?;
+        // Go's `time.LoadLocation`, which cel-go calls, reads "" as UTC.
+        let zone = if tz.is_empty() {
+            chrono_tz::Tz::UTC
+        } else {
+            tz.parse().ok()?
+        };
         return Some(t.with_timezone(&zone).fixed_offset());
     };
     let hours: i32 = hours.parse().ok()?;

@@ -1743,9 +1743,17 @@ impl<'a> Compiler<'a> {
                 })
             }
             ("value", 0) => {
-                let placeholder = placeholder(&inner_ty).ok_or_else(|| {
-                    FallbackReason::new(format!("optional.value() of {inner_ty:?}"))
-                })?;
+                let resolved = match &inner_ty {
+                    CelType::MessageRef(fqn) => self
+                        .schemas
+                        .and_then(|s| s.get(fqn))
+                        .map(|schema| CelType::Message(Box::new(schema))),
+                    _ => None,
+                };
+                let placeholder =
+                    placeholder(resolved.as_ref().unwrap_or(&inner_ty)).ok_or_else(|| {
+                        FallbackReason::new(format!("optional.value() of {inner_ty:?}"))
+                    })?;
                 let value = self.raise_on_none(&t, "optional.none() dereference", &placeholder);
                 Ok(Compiled {
                     tokens: quote! { (#value) },
