@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package buf.validate.conformance.cases;
 
+import "buf/validate/conformance/cases/other_package/cel_oneof.proto";
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -89,6 +90,17 @@ message CelOneofValue {
 enum CelOneofColor {
   CEL_ONEOF_COLOR_UNSPECIFIED = 0;
   CEL_ONEOF_COLOR_RED = 1;
+}
+
+// Message-level CEL reads a oneof declared in another package.
+message CelOneofOtherPackage {
+  option (buf.validate.message).cel = {
+    id: "oneof.other_package"
+    expression: "this.other.text == this.want_text"
+  };
+
+  other_package.CelOneof other = 1;
+  string want_text = 2;
 }
 
 message CelOneofContainer {

@@ -21,7 +21,8 @@ mod generated {
 
 use generated::buf::validate::conformance::cases::{
     __buffa::{oneof, view},
-    CelMessageTree, CelOneofChild, CelOneofContainer, CelOneofPresence, MessageOneofPresence,
+    CelMessageMap, CelMessageMapIndex, CelMessageTree, CelOneofChild, CelOneofContainer,
+    CelOneofPresence, MessageOneofPresence,
     cel_oneof_outer::middle::Inner,
 };
 
@@ -79,7 +80,8 @@ fn message_cel_reads_the_selected_oneof_value_or_its_default() {
     };
     use oneof::cel_oneof_value::Choice;
 
-    /// An alternative, its rule, and what the rule must read for it.
+    /// A selected alternative, its rule ID, and a setter for the `want_*`
+    /// field it must equal.
     type Case = (Choice, &'static str, fn(&mut CelOneofValue));
 
     fn stamp() -> Timestamp {
@@ -114,29 +116,56 @@ fn message_cel_reads_the_selected_oneof_value_or_its_default() {
             m.want_stamp = stamp().into();
         }),
     ];
-    for (choice, rule, expect) in cases {
-        let mut want = CelOneofValue::default();
-        expect(&mut want);
-        let selected = CelOneofValue {
+    for (choice, rule, set_want) in cases {
+        let mut wants_only = CelOneofValue::default();
+        set_want(&mut wants_only);
+        let with_choice_and_wants = CelOneofValue {
             choice: Some(choice.clone()),
-            ..want.clone()
+            ..wants_only.clone()
         };
-        let expecting_the_default = CelOneofValue {
+        let with_choice_only = CelOneofValue {
             choice: Some(choice),
             ..Default::default()
         };
         for (message, rules) in [
-            (selected, &[][..]),
+            (with_choice_and_wants, &[][..]),
             // The selected value isn't the default.
-            (expecting_the_default, &[rule][..]),
-            // Nothing selected reads as the default, which isn't the value.
-            (want, &[rule][..]),
+            (with_choice_only, &[rule][..]),
+            (wants_only, &[rule][..]),
         ] {
             let bytes = message.encode_to_vec();
             let borrowed = view::CelOneofValueView::decode_view(&bytes).unwrap();
             assert_rules(message.validate(), rules);
             assert_rules(borrowed.validate(), rules);
         }
+    }
+}
+
+#[test]
+fn message_cel_reads_a_oneof_from_another_package() {
+    use generated::buf::validate::conformance::cases::{
+        CelOneofOtherPackage,
+        other_package::{__buffa::oneof::cel_oneof::Choice, CelOneof},
+    };
+
+    for (choice, want_text, rules) in [
+        (Some(Choice::Text("a".to_owned())), "a", &[][..]),
+        (Some(Choice::Number(1)), "a", &["oneof.other_package"][..]),
+        (None, "", &[][..]),
+    ] {
+        let owned = CelOneofOtherPackage {
+            other: CelOneof {
+                choice,
+                ..Default::default()
+            }
+            .into(),
+            want_text: want_text.to_owned(),
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let borrowed = view::CelOneofOtherPackageView::decode_view(&bytes).unwrap();
+        assert_rules(owned.validate(), rules);
+        assert_rules(borrowed.validate(), rules);
     }
 }
 
@@ -276,6 +305,116 @@ fn oneofs_in_nested_messages_resolve_their_module_path() {
     for (owned, rules) in cases {
         let bytes = owned.encode_to_vec();
         let borrowed = view::cel_oneof_outer::middle::InnerView::decode_view(&bytes).unwrap();
+        assert_rules(owned.validate(), rules);
+        assert_rules(borrowed.validate(), rules);
+    }
+}
+
+#[test]
+fn message_cel_reads_a_maps_size_presence_keys_and_values() {
+    /// The map's entries, `want_size`, `want_k`, and the rules that fail.
+    type Case = (
+        &'static [(&'static str, &'static str)],
+        i64,
+        &'static str,
+        &'static [&'static str],
+    );
+
+    let cases: [Case; 7] = [
+        (&[], 0, "", &[]),
+        (&[("k", "v")], 1, "v", &[]),
+        (&[("k", "v"), ("j", "w")], 2, "v", &[]),
+        (&[("k", "v")], 0, "v", &["map.size", "map.has"]),
+        (&[], 1, "", &["map.size", "map.has"]),
+        (&[("k", "v")], 1, "other", &["map.lookup"]),
+        (&[("", "")], 1, "", &["map.keys", "map.values"]),
+    ];
+    for (labels, want_size, want_k, rules) in cases {
+        let owned = CelMessageMap {
+            labels: labels
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                .collect(),
+            want_size,
+            want_k: want_k.to_owned(),
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let borrowed = view::CelMessageMapView::decode_view(&bytes).unwrap();
+        assert_rules(owned.validate(), rules);
+        assert_rules(borrowed.validate(), rules);
+    }
+}
+
+#[test]
+fn message_cel_counts_a_repeated_map_key_once() {
+    fn entry(value: u8) -> [u8; 8] {
+        [0x0a, 0x06, 0x0a, 0x01, b'k', 0x12, 0x01, value]
+    }
+
+    let mut bytes = entry(b'a').to_vec();
+    bytes.extend(entry(b'b'));
+    // `want_size` is 1, `want_k` is "b".
+    bytes.extend([0x10, 0x01, 0x1a, 0x01, b'b']);
+    let owned = CelMessageMap::decode_from_slice(&bytes).unwrap();
+    let borrowed = view::CelMessageMapView::decode_view(&bytes).unwrap();
+
+    assert_eq!(borrowed.labels.len(), 2);
+    assert_rules(owned.validate(), &[]);
+    assert_rules(borrowed.validate(), &[]);
+}
+
+#[test]
+fn message_cel_indexing_a_missing_map_key_is_a_runtime_error() {
+    let present = CelMessageMapIndex {
+        labels: std::iter::once(("k".to_owned(), "v".to_owned())).collect(),
+        ..Default::default()
+    };
+    let bytes = present.encode_to_vec();
+    let borrowed = view::CelMessageMapIndexView::decode_view(&bytes).unwrap();
+    assert_rules(present.validate(), &[]);
+    assert_rules(borrowed.validate(), &[]);
+
+    let missing = CelMessageMapIndex::default();
+    let bytes = missing.encode_to_vec();
+    let borrowed = view::CelMessageMapIndexView::decode_view(&bytes).unwrap();
+    for result in [missing.validate(), borrowed.validate()] {
+        assert_eq!(
+            result.unwrap_err().runtime_error.as_deref(),
+            Some("cel runtime error in rule \"map.index\": no such key")
+        );
+    }
+}
+
+#[test]
+fn message_cel_reads_closed_enums() {
+    use generated::buf::validate::conformance::cases::{CelClosedEnum, CelClosedShade};
+    use oneof::cel_closed_enum::Choice;
+
+    let dark = CelClosedShade::CEL_CLOSED_SHADE_DARK;
+    let unspecified = CelClosedShade::CEL_CLOSED_SHADE_UNSPECIFIED;
+    for (choice, shade, want, rules) in [
+        (None, None, 0, &[][..]),
+        (Some(Choice::Shade(dark)), Some(dark), 1, &[][..]),
+        (None, Some(dark), 1, &["closed_enum.oneof"][..]),
+        (
+            Some(Choice::Shade(dark)),
+            Some(unspecified),
+            1,
+            &["closed_enum.map"][..],
+        ),
+    ] {
+        let owned = CelClosedEnum {
+            want: Some(want),
+            shades: shade
+                .map(|shade| ("k".to_owned(), shade))
+                .into_iter()
+                .collect(),
+            choice,
+            ..Default::default()
+        };
+        let bytes = owned.encode_to_vec();
+        let borrowed = view::CelClosedEnumView::decode_view(&bytes).unwrap();
         assert_rules(owned.validate(), rules);
         assert_rules(borrowed.validate(), rules);
     }

@@ -495,18 +495,14 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .iter()
         .flat_map(|o| o.fields.iter().map(String::as_str))
         .collect();
-    let mut view_schemas = schemas.clone();
-    for schema in view_schemas.values_mut() {
-        for field in &mut schema.fields {
-            field.kind.set_view();
-        }
-    }
+    let owned_schemas = cel::shaped(schemas, &msg.package, Shape::Owned);
+    let view_schemas = cel::shaped(schemas, &msg.package, Shape::View);
     let render_field_blocks = |shape| {
         msg.field_rules
             .iter()
             .map(|f| {
                 let schema = match shape {
-                    Shape::Owned => schemas,
+                    Shape::Owned => &owned_schemas,
                     Shape::View => &view_schemas,
                 };
                 let inner = field::emit(f, schema, shape)?;
@@ -541,7 +537,7 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
     let oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
         .iter()
-        .map(|v| oneof::emit_with_schemas(v, Shape::Owned, schemas))
+        .map(|v| oneof::emit_with_schemas(v, Shape::Owned, &owned_schemas))
         .collect::<Result<_>>()?;
     let view_oneof_blocks: Vec<TokenStream> = msg
         .oneof_rules
@@ -561,8 +557,8 @@ fn render_message(msg: &MessageValidators, schemas: &cel::SchemaIndex) -> Result
         .map(|spec| emit_message_oneof(msg, spec, Shape::View))
         .collect();
 
-    let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, schemas, Shape::Owned);
-    let (_, view_cel_calls) = cel::emit_message_level(msg, schemas, Shape::View);
+    let (cel_statics, owned_cel_calls) = cel::emit_message_level(msg, &owned_schemas);
+    let (_, view_cel_calls) = cel::emit_message_level(msg, &view_schemas);
     let owned_map_bindings = canonical_map_bindings(msg, Shape::Owned);
     let view_map_bindings = canonical_map_bindings(msg, Shape::View);
 

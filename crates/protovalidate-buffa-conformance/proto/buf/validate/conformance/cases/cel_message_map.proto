@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package buf.validate.conformance.cases;
 
-import "buf/validate/conformance/cases/cel_oneof.proto";
 import "buf/validate/validate.proto";
 
-// Message-level CEL reads a map field, with canonical map semantics in views.
+// Message-level CEL reads a map field. A repeated key counts once, and its
+// last value wins.
 message CelMessageMap {
   option (buf.validate.message).cel = {
     id: "map.size"
@@ -19,22 +19,26 @@ message CelMessageMap {
     id: "map.lookup"
     expression: "!('k' in this.labels) || this.labels['k'] == this.want_k"
   };
+  option (buf.validate.message).cel = {
+    id: "map.keys"
+    expression: "this.labels.map(k, k).all(k, k != '')"
+  };
+  option (buf.validate.message).cel = {
+    id: "map.values"
+    expression: "this.labels.map(k, this.labels[k]).all(v, v != '')"
+  };
 
   map<string, string> labels = 1;
   int64 want_size = 2;
   string want_k = 3;
 }
 
-// A rule across a map and a oneof alternative's message fields.
-message CelMessageCrossField {
+// Indexing a missing key is a runtime error.
+message CelMessageMapIndex {
   option (buf.validate.message).cel = {
-    id: "cross_field"
-    expression: "size(this.labels) == 0 || !has(this.child) || this.child.id == ''"
+    id: "map.index"
+    expression: "this.labels['k'] == 'v'"
   };
 
   map<string, string> labels = 1;
-  oneof choice {
-    CelOneofChild child = 2;
-    string text = 3;
-  }
 }
