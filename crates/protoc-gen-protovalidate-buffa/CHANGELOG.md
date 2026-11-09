@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.9](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.8...protoc-gen-protovalidate-buffa-v0.10.9) (2026-11-09)
+
+
+### Bug Fixes
+
+* **cel:** Read map fields and oneof values in message rules ([#119](https://github.com/mathematic-inc/protovalidate-buffa/issues/119)) ([7934cac](https://github.com/mathematic-inc/protovalidate-buffa/commit/7934cac20f0e6fafc17e9c306b8876640adc3a35))
+
 ## [0.10.8](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.7...protoc-gen-protovalidate-buffa-v0.10.8) (2026-11-07)
 
 
