@@ -104,6 +104,21 @@ The buffa version here must stay in step with connectrpc's. Otherwise, two
 incompatible buffa versions get linked and the default `connect` feature breaks
 for downstream handlers.
 
+### Migrating from Chrono
+
+Upgrade the runtime and generator together, then regenerate your validators.
+Generated CEL code now uses `protovalidate_buffa::cel::{Duration, Timestamp}`;
+the runtime no longer re-exports `chrono` or `chrono_tz`. Replace direct uses
+of those re-exports with the CEL helper types, or depend on Chrono yourself.
+
+The runtime uses `time` for temporal values. Keep the `tz` feature enabled for
+CEL accessors with timezone arguments; it bundles IANA data through `tzdb`.
+UTC, numeric offsets, and case-sensitive IANA names remain supported.
+
+Timestamp strings with leap seconds (`:60`) now produce CEL runtime errors.
+Malformed protobuf timestamps fall back to the Unix epoch; leap-second nanos
+now follow this policy too. Duration parsing and saturation behavior are unchanged.
+
 ## Supported rules
 
 Every rule family in the upstream [standard-rules catalogue] plus [predefined

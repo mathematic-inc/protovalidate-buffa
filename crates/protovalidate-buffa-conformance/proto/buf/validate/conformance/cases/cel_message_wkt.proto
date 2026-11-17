@@ -174,6 +174,43 @@ message CelTemporalParse {
   int64 hours = 5;
 }
 
+message CelTemporalLiteralParse {
+  option (buf.validate.message).cel = {
+    id: "leap_second"
+    expression: "this.skip || timestamp('2016-12-31T23:59:60Z') == timestamp('2017-01-01T00:00:00Z')"
+  };
+  bool skip = 1;
+}
+
+message CelTemporalAccessors {
+  option (buf.validate.message).cel = {
+    id: "calendar"
+    expression: "this.at.getFullYear() == 2024 && this.at.getMonth() == 1 && this.at.getDate() == 28 && this.at.getDayOfMonth() == 28 && this.at.getDayOfYear() == 59 && this.at.getDayOfWeek() == 4"
+  };
+  option (buf.validate.message).cel = {
+    id: "clock"
+    expression: "this.at.getHours() == 12 && this.at.getMinutes() == 34 && this.at.getSeconds() == 56 && this.at.getMilliseconds() == 123"
+  };
+  option (buf.validate.message).cel = {
+    id: "offset"
+    expression: "timestamp('2024-02-29T18:04:56.123456789+05:30') == this.at && timestamp('2024-02-29T18:04:56.123456789+05:30').getHours() == 18 && this.at.getHours('America/New_York') == 7"
+  };
+  option (buf.validate.message).cel = {
+    id: "bounds"
+    expression: "timestamp('9999-12-31T23:59:59.999999999Z').getFullYear('+01:00') == 10000 && timestamp('0001-01-01T00:00:00Z').getFullYear('-01:00') == 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "duration"
+    expression: "this.length.getHours() == -1 && this.length.getMinutes() == -61 && this.length.getSeconds() == -3661 && this.length.getMilliseconds() == -3661123"
+  };
+  option (buf.validate.message).cel = {
+    id: "epoch"
+    expression: "int(timestamp('1969-12-31T23:59:59.999999999Z')) == -1"
+  };
+  google.protobuf.Timestamp at = 1;
+  google.protobuf.Duration length = 2;
+}
+
 // An operand that decides && or || on its own discards an error from the
 // other operand, as CEL specifies.
 message CelTemporalLogicalErrors {

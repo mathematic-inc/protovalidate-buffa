@@ -626,7 +626,7 @@ fn timestamp_and_duration_overflow_is_a_runtime_error() {
             runtime_error("shifted", "timestamp overflow"),
         ),
         ((0, 0), (0, 0), half_max, failed(&[])),
-        // A duration message past chrono's range saturates.
+        // A duration message past the construction range saturates.
         (
             (0, 0),
             (0, 0),
@@ -720,6 +720,13 @@ fn unparsable_temporal_strings_are_runtime_errors() {
         ),
         (
             CelTemporalParse {
+                timestamp: "2016-12-31T23:59:60Z".to_owned(),
+                ..valid.clone()
+            },
+            runtime_error("timestamp", "invalid RFC 3339 timestamp"),
+        ),
+        (
+            CelTemporalParse {
                 zone: "Mars/Olympus".to_owned(),
                 ..valid
             },
@@ -729,6 +736,50 @@ fn unparsable_temporal_strings_are_runtime_errors() {
         let actual = validate_both!(CelTemporalParseView, message.clone());
         assert_eq!(actual, expected, "{message:?}");
     }
+}
+
+#[test]
+fn invalid_timestamp_literals_report_cached_errors_without_panicking() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalLiteralParseView, CelTemporalLiteralParse,
+    };
+
+    for skip in [false, true, false] {
+        let expected = if skip {
+            failed(&[])
+        } else {
+            runtime_error("leap_second", "invalid RFC 3339 timestamp")
+        };
+        assert_eq!(
+            validate_both!(
+                CelTemporalLiteralParseView,
+                CelTemporalLiteralParse {
+                    skip,
+                    ..Default::default()
+                }
+            ),
+            expected,
+        );
+    }
+}
+
+#[test]
+fn temporal_accessors_preserve_calendar_indices_offsets_and_truncation() {
+    use generated::buf::validate::conformance::cases::{
+        __buffa::view::CelTemporalAccessorsView, CelTemporalAccessors,
+    };
+
+    assert_eq!(
+        validate_both!(
+            CelTemporalAccessorsView,
+            CelTemporalAccessors {
+                at: timestamp(1_709_210_096, 123_456_789).into(),
+                length: duration(-3_661, -123_456_789).into(),
+                ..Default::default()
+            }
+        ),
+        failed(&[]),
+    );
 }
 
 #[test]

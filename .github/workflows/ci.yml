@@ -38,7 +38,12 @@ jobs:
         with:
           cache-on-failure: true
       - name: Run tests
-        run: cargo test --workspace --all-targets
+        run: cargo test --locked --workspace --all-features --all-targets
+      - name: Test runtime feature configurations
+        run: |
+          cargo test --locked -p protovalidate-buffa --no-default-features
+          cargo test --locked -p protovalidate-buffa --no-default-features --features tz
+          cargo test --locked -p protovalidate-buffa --all-features --doc
       - name: Verify package contents
         run: cargo package --list --locked --workspace
 
@@ -64,7 +69,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Check minimum supported Rust version
-        run: rustup run 1.89.0 cargo check --locked --workspace
+        run: rustup run 1.89.0 cargo check --locked --workspace --all-features
 
   prebuilt:
     permissions:

@@ -18,6 +18,7 @@ allow = [
 ]
 
 [bans]
+deny = ["chrono", "chrono-tz"]
 multiple-versions = "warn"
 wildcards = "deny"
 allow-workspace = true
