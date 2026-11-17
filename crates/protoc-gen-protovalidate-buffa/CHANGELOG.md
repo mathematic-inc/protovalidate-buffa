@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased
+## [0.11.0](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.9...protoc-gen-protovalidate-buffa-v0.11.0) (2026-11-17)
 
-### Breaking changes
 
-- Generate CEL temporal operations against runtime-owned types. Upgrade the runtime and regenerate validators together. Invalid timestamp literals now report CEL runtime errors instead of panicking, including leap-second strings.
+### ⚠ BREAKING CHANGES
+
+- Generate CEL temporal operations against runtime-owned types. Upgrade the runtime and regenerate validators together. Invalid timestamp literals now report CEL runtime errors instead of panicking, including leap-second strings. ([#122](https://github.com/mathematic-inc/protovalidate-buffa/pull/122))
+
+### Features
+
+* **cel:** Replace Chrono with time ([#122](https://github.com/mathematic-inc/protovalidate-buffa/issues/122)) ([002d6b9](https://github.com/mathematic-inc/protovalidate-buffa/commit/002d6b9c29e7d002e67eb29134997892d5062bae))
 
 ## [0.10.9](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.8...protoc-gen-protovalidate-buffa-v0.10.9) (2026-11-09)
 
