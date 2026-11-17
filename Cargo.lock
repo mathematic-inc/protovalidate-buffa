@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "protoc-gen-protovalidate-buffa"
-version = "0.10.9"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "buffa",
@@ -882,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa"
-version = "0.7.4"
+version = "0.8.0"
 dependencies = [
  "base64 0.23.1",
  "buffa",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-conformance"
-version = "0.0.28"
+version = "0.0.29"
 dependencies = [
  "anyhow",
  "buffa",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "protovalidate-buffa-packaging-examples"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "anyhow",
  "buffa",
