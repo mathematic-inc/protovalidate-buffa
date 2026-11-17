@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Generate CEL temporal operations against runtime-owned types. Upgrade the runtime and regenerate validators together. Invalid timestamp literals now report CEL runtime errors instead of panicking, including leap-second strings.
+
 ## [0.10.9](https://github.com/mathematic-inc/protovalidate-buffa/compare/protoc-gen-protovalidate-buffa-v0.10.8...protoc-gen-protovalidate-buffa-v0.10.9) (2026-11-09)
 
 

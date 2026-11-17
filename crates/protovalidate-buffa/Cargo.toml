@@ -14,8 +14,6 @@ categories.workspace = true
 base64 = { version = "0.23.1", optional = true }
 buffa = "0.9.2"
 buffa-descriptor = { version = "0.9.2", optional = true }
-chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
-chrono-tz = { version = "0.10.4", optional = true }
 connectrpc = { version = "0.9.1", default-features = false, optional = true }
 fluent-uri = "0.4.1"
 http = "1.5.0"
@@ -24,6 +22,8 @@ percent-encoding = "2.3.2"
 protovalidate-buffa-macros = { path = "../protovalidate-buffa-macros", version = "0.4.2" }
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.2", optional = true }
 regex = "1.13.1"
+time = { version = "0.3.55", default-features = false, features = ["large-dates", "parsing", "std"] }
+tzdb = { version = "0.7.3", default-features = false, optional = true }
 ulid = "3.0.0"
 uuid = "1.29.1"
 
@@ -40,13 +40,8 @@ default = ["connect"]
 connect = ["dep:base64", "dep:connectrpc", "protos"]
 json = ["protos", "protovalidate-buffa-protos/json"]
 protos = ["dep:buffa-descriptor", "dep:protovalidate-buffa-protos"]
-# Enables `chrono-tz` for the timezone argument on CEL timestamp
-# accessors (`t.getHours("America/New_York")`). chrono-tz ships the
-# full IANA database (~4 MiB), so it's opt-in — rules that only use
-# the no-arg accessor forms have no reason to pay the cost. When the
-# feature is off, generated code that uses the tz arg fails to compile
-# because `cel::in_time_zone` is missing.
-tz = ["dep:chrono-tz"]
+# Bundle IANA timezone data for CEL timestamp accessors with a timezone argument.
+tz = ["dep:tzdb"]
 
 [lints]
 workspace = true

@@ -131,9 +131,9 @@ pub enum CelType {
         owned: bool,
     },
     Null,
-    /// CEL `duration` — Rust `chrono::Duration`.
+    /// CEL `duration` — Rust `protovalidate_buffa::cel::Duration`.
     Duration,
-    /// CEL `timestamp` — Rust `chrono::DateTime<chrono::FixedOffset>`.
+    /// CEL `timestamp` — Rust `protovalidate_buffa::cel::Timestamp`.
     Timestamp,
     /// Homogeneous list with a known element type.
     List(Box<Self>),
@@ -317,7 +317,7 @@ enum HasInfo {
 #[derive(Default)]
 pub struct Compiler<'a> {
     bindings: BTreeMap<String, Binding>,
-    /// Whether to inject a `let now = chrono::Utc::now().fixed_offset();` at
+    /// Whether to inject a `let now = protovalidate_buffa::cel::now_local();` at
     /// the top of the generated body. Set to true the first time `now` is
     /// referenced.
     needs_now: bool,
@@ -809,33 +809,25 @@ impl<'a> Compiler<'a> {
     }
 
     fn timestamp_ctor(&mut self, arg: &Compiled) -> Result<Compiled, FallbackReason> {
-        if let Some(ConstValue::Str(s)) = &arg.constant {
-            // Literal: cache the parse in a `OnceLock` so it runs once.
-            let s_lit = s.clone();
-            return Ok(Compiled {
-                tokens: quote! {
-                    ({
-                        static __TS: ::std::sync::OnceLock<::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset>> =
-                            ::std::sync::OnceLock::new();
-                        *__TS.get_or_init(|| {
-                            ::protovalidate_buffa::chrono::DateTime::parse_from_rfc3339(#s_lit)
-                                .expect("CEL timestamp() literal parse")
-                        })
-                    })
-                },
-                ty: CelType::Timestamp,
-                constant: None,
-            });
-        }
         if !matches!(arg.ty, CelType::Str { .. }) {
             return Err(FallbackReason::new(format!(
                 "timestamp() arg type {:?} not string",
                 arg.ty
             )));
         }
-        let s_tok = string_as_str(arg);
+        let parsed = if let Some(ConstValue::Str(s)) = &arg.constant {
+            // Cache successes and errors; invalid literals must not panic.
+            quote! {{
+                static __TS: ::std::sync::OnceLock<::core::option::Option<::protovalidate_buffa::cel::Timestamp>> =
+                    ::std::sync::OnceLock::new();
+                *__TS.get_or_init(|| ::protovalidate_buffa::cel::parse_timestamp(#s))
+            }}
+        } else {
+            let s_tok = string_as_str(arg);
+            quote! { ::protovalidate_buffa::cel::parse_timestamp(#s_tok) }
+        };
         let timestamp = self.raise_on_none(
-            &quote! { ::protovalidate_buffa::cel::parse_timestamp(#s_tok) },
+            &parsed,
             "invalid RFC 3339 timestamp",
             &placeholder(&CelType::Timestamp).expect("timestamps have a placeholder"),
         );
@@ -2165,9 +2157,7 @@ impl<'a> Compiler<'a> {
                 arg.ty
             )));
         }
-        // `ts_expr` is the DateTime the accessor reads from, in the tz
-        // arg's zone if there is one. `ts_ty_path` is its Rust type, the
-        // receiver type in UFCS so no traits need to be in scope.
+        // Access the timestamp in the requested zone, if any.
         let ts_expr = args.first().map_or_else(
             || t.clone(),
             |tz_arg| {
@@ -2180,9 +2170,6 @@ impl<'a> Compiler<'a> {
                 quote! { (#zoned) }
             },
         );
-        let ts_ty_path = quote! {
-            ::protovalidate_buffa::chrono::DateTime<::protovalidate_buffa::chrono::FixedOffset>
-        };
         let body = match (name, &target.ty) {
             // --- Duration (no tz arg path) ---
             ("getSeconds", CelType::Duration) => quote! { (#t).num_seconds() },
@@ -2192,37 +2179,37 @@ impl<'a> Compiler<'a> {
             // --- Timestamp ---
             // Date components.
             ("getFullYear", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::year(&(#ts_expr))))
+                (i64::from((#ts_expr).year()))
             },
             ("getMonth", CelType::Timestamp) => quote! {
-                // CEL `getMonth` is 0-based; chrono's `month()` is 1-based.
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::month(&(#ts_expr))) - 1)
+                // CEL `getMonth` is 0-based; `month()` is 1-based.
+                (i64::from((#ts_expr).month()) - 1)
             },
             ("getDate" | "getDayOfMonth", CelType::Timestamp) => quote! {
-                // CEL is 0-based per cel-go; chrono's `day()` is 1-based.
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::day(&(#ts_expr))) - 1)
+                // CEL is 0-based per cel-go; `day()` is 1-based.
+                (i64::from((#ts_expr).day()) - 1)
             },
             ("getDayOfWeek", CelType::Timestamp) => quote! {
                 // CEL: Sunday = 0.
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::weekday(&(#ts_expr)).num_days_from_sunday()))
+                (i64::from((#ts_expr).weekday_from_sunday()))
             },
             ("getDayOfYear", CelType::Timestamp) => quote! {
-                // CEL is 0-based; chrono's `ordinal()` is 1-based.
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Datelike>::ordinal(&(#ts_expr))) - 1)
+                // CEL is 0-based; `ordinal()` is 1-based.
+                (i64::from((#ts_expr).ordinal()) - 1)
             },
             // Time components.
             ("getHours", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::hour(&(#ts_expr))))
+                (i64::from((#ts_expr).hour()))
             },
             ("getMinutes", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::minute(&(#ts_expr))))
+                (i64::from((#ts_expr).minute()))
             },
             ("getSeconds", CelType::Timestamp) => quote! {
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::second(&(#ts_expr))))
+                (i64::from((#ts_expr).second()))
             },
             ("getMilliseconds", CelType::Timestamp) => quote! {
-                // chrono `nanosecond()` is sub-second nanos; convert to ms.
-                (i64::from(<#ts_ty_path as ::protovalidate_buffa::chrono::Timelike>::nanosecond(&(#ts_expr)) / 1_000_000))
+                // `nanosecond()` is sub-second nanos; convert to ms.
+                (i64::from((#ts_expr).nanosecond() / 1_000_000))
             },
             _ => return Err(FallbackReason::new(format!("{name} on {:?}", target.ty))),
         };
@@ -2425,7 +2412,7 @@ impl<'a> Compiler<'a> {
     fn temporal_arith(&mut self, name: &str, lhs: &Compiled, rhs: &Compiled) -> Option<Compiled> {
         use CelType::{Duration, Timestamp};
         let (value, ty) = match (name, &lhs.ty, &rhs.ty) {
-            // chrono's own ranges are wider than CEL's, so only the range
+            // The runtime's ranges are wider than CEL's, so only the range
             // check below can fail for a difference of two timestamps.
             (op::SUBSTRACT, Timestamp, Timestamp) => (
                 quote! {
@@ -2446,10 +2433,10 @@ impl<'a> Compiler<'a> {
                 Timestamp,
             ),
             (op::ADD, Duration, Duration) => {
-                (quote! { __cel_lhs.checked_add(&__cel_rhs) }, Duration)
+                (quote! { __cel_lhs.checked_add(__cel_rhs) }, Duration)
             }
             (op::SUBSTRACT, Duration, Duration) => {
-                (quote! { __cel_lhs.checked_sub(&__cel_rhs) }, Duration)
+                (quote! { __cel_lhs.checked_sub(__cel_rhs) }, Duration)
             }
             _ => return None,
         };
@@ -4244,7 +4231,7 @@ fn placeholder(ty: &CelType) -> Option<TokenStream> {
         CelType::Str { owned: true } => quote! { ::std::string::String::new() },
         CelType::Bytes { owned: false } => quote! { &[][..] },
         CelType::Bytes { owned: true } => quote! { ::std::vec::Vec::new() },
-        CelType::Duration => quote! { ::protovalidate_buffa::chrono::Duration::zero() },
+        CelType::Duration => quote! { ::protovalidate_buffa::cel::Duration::ZERO },
         CelType::Timestamp => {
             quote! { ::protovalidate_buffa::cel::timestamp_from_secs_nanos(0, 0) }
         }
@@ -4775,7 +4762,7 @@ mod tests {
         let s = rendered(&out.tokens);
         assert!(
             s.contains("timestamp"),
-            "expected timestamp() call on chrono type: {s}"
+            "expected timestamp() call on runtime type: {s}"
         );
     }
 
@@ -6145,7 +6132,7 @@ mod tests {
         let out = compile_with_this("this.getMonth() == 0", CelType::Timestamp);
         assert_eq!(out.ty, CelType::Bool);
         let s = rendered(&out.tokens);
-        // We subtract 1 from chrono's 1-based month.
+        // We subtract 1 from the 1-based month.
         assert!(s.contains("- 1"), "expected - 1 adjustment: {s}");
     }
 

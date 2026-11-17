@@ -31,6 +31,8 @@
 //! covering proto2, proto3, and editions 2023) passes against code
 //! emitted by the paired plugin.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[doc(hidden)]
 pub mod __private;
 pub mod cel;
@@ -47,13 +49,6 @@ mod connect;
 // `::buffa::` path directly; downstream crates already depend on buffa for
 // their message types.
 pub use buffa;
-/// Date/time types and traits used by generated CEL timestamp expressions.
-pub use chrono;
-/// IANA timezone database behind the timezone argument of CEL timestamp
-/// accessors (`t.getHours("America/New_York")`). Only exported when the
-/// `tz` feature is enabled — rules without tz args don't need this dep.
-#[cfg(feature = "tz")]
-pub use chrono_tz;
 #[cfg(feature = "connect")]
 pub use connect::{DecodeViolationsError, decode_violations};
 pub use error::{FieldPath, FieldPathElement, FieldType, Subscript, ValidationError, Violation};

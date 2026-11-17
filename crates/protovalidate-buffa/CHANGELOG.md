@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Replace Chrono with `time` and optional `tzdb`. Remove the `chrono` and `chrono_tz` re-exports; CEL helpers now use runtime-owned `Duration` and `Timestamp` types. Upgrade the generator and regenerate validators. Reject leap-second strings as CEL runtime errors; leap-second nanos fall back to the Unix epoch.
+
 ## [0.7.4](https://github.com/mathematic-inc/protovalidate-buffa/compare/v0.7.3...v0.7.4) (2026-11-09)
 
 

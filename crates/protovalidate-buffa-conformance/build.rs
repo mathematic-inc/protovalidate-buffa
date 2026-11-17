@@ -1467,7 +1467,7 @@ fn rust_emit_param_type(ty: &CelType) -> &'static str {
             CelType::Bool => "&::std::vec::Vec<bool>",
             CelType::Str { .. } => "&::std::vec::Vec<::std::string::String>",
             CelType::Bytes { .. } => "&::std::vec::Vec<::std::vec::Vec<u8>>",
-            CelType::Duration => "&::std::vec::Vec<::chrono::Duration>",
+            CelType::Duration => "&::std::vec::Vec<::protovalidate_buffa::cel::Duration>",
             // Default: List<Int> — also covers `_` for any unmodeled
             // element type, treated as i64-bearing for the fixture.
             _ => "&::std::vec::Vec<i64>",
@@ -1483,8 +1483,8 @@ fn rust_emit_param_type(ty: &CelType) -> &'static str {
             // Default: Map<Str, Int>.
             _ => "&::std::collections::HashMap<::std::string::String, i64>",
         },
-        CelType::Duration => "::chrono::Duration",
-        CelType::Timestamp => "::chrono::DateTime<::chrono::FixedOffset>",
+        CelType::Duration => "::protovalidate_buffa::cel::Duration",
+        CelType::Timestamp => "::protovalidate_buffa::cel::Timestamp",
         // Default for Int and anything not modeled above.
         _ => "i64",
     }

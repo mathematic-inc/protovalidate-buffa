@@ -24,10 +24,6 @@ protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.7.4", defa
 protovalidate-buffa-protos = { path = "../protovalidate-buffa-protos", version = "0.7.2" }
 
 [dev-dependencies]
-# Referenced by the emit-compile fixture (`tests/emit_compiles.rs`) for
-# Duration / Timestamp typing in transpiler outputs. Runtime crate
-# already depends on chrono via protovalidate-buffa.
-chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 # Exercise Connect handlers against the generated request views.
 connectrpc = { version = "0.9.1", default-features = false }
 protovalidate-buffa = { path = "../protovalidate-buffa", version = "0.7.4", default-features = false, features = ["connect"] }
