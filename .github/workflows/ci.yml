@@ -113,11 +113,10 @@ jobs:
     permissions: {}
     steps:
       - name: Check that every other job passed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
-          if ! jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<< "$NEEDS" > /dev/null; then
-            echo "::error::A job failed or was cancelled."
-            exit 1
-          fi
+          echo "::error::A job failed or was cancelled."
+          exit 1

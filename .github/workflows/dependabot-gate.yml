@@ -44,8 +44,12 @@ jobs:
 
             checks=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")
             if jq -e '
-              .check_runs as $runs
-              | ([
+              .total_count as $total
+              | (.check_runs
+                | group_by([.name, .app.id])
+                | map(max_by([.started_at, .id]))) as $runs
+              | $total <= 100
+                and ([
                   ["required", 15368],
                   ["CodeQL", 57789],
                   ["Analyze (actions)", 15368],
@@ -54,12 +58,12 @@ jobs:
                   ($runs | map(select(.name == $required[0] and .app.id == $required[1]))) as $found
                   | ($found | length > 0 and all(.[]; .status == "completed" and .conclusion == "success"))
                 ))
-              and ($runs | all(.[];
-                .name == "Dependabot gate" or
-                ((.name | startswith("Verify prebuilt distribution / Install without compiling")) and
-                  .status == "completed" and .conclusion == "skipped") or
-                (.status == "completed" and .conclusion == "success")
-              ))
+                and ($runs | all(.[];
+                  .name == "Dependabot gate" or
+                  ((.name | startswith("Verify prebuilt distribution / Install without compiling")) and
+                    .status == "completed" and .conclusion == "skipped") or
+                  (.status == "completed" and .conclusion == "success")
+                ))
             ' <<< "$checks" > /dev/null; then
               echo "All exact-head checks passed on $PR_HEAD_SHA."
               exit 0
