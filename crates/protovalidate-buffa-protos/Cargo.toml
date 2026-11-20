@@ -10,6 +10,11 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = ["views"]
+json = ["dep:serde", "dep:serde_json", "buffa-descriptor/json", "buffa-types/json", "buffa/json"]
+views = []
+
 [dependencies]
 buffa = "0.9.2"
 buffa-descriptor = "0.9.2"
@@ -19,11 +24,6 @@ serde_json = { version = "1.0.154", optional = true }
 
 [dev-dependencies]
 buffa-build = "=0.9.2"
-
-[features]
-default = ["views"]
-json = ["buffa-descriptor/json", "buffa-types/json", "buffa/json", "dep:serde", "dep:serde_json"]
-views = []
 
 [lints]
 workspace = true

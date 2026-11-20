@@ -1,3 +1,5 @@
+//! Display of validation errors and field paths.
+
 use std::borrow::Cow;
 
 use protovalidate_buffa::{FieldPath, FieldPathElement, Subscript, ValidationError, Violation};

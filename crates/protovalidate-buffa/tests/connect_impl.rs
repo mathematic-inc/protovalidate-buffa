@@ -3,7 +3,6 @@
 //! conversion, so an expansion that materializes an owned message fails to
 //! compile.
 
-#![warn(rust_2018_idioms)]
 #![cfg(feature = "connect")]
 // `clippy::result_large_err` fires on the fake trait because
 // `connectrpc::ConnectError` is a hefty type; the test doesn't care.

@@ -2,7 +2,7 @@ use protovalidate_buffa::{
     FieldPath, FieldPathElement, FieldType, Subscript, ValidationError, Violation,
 };
 
-pub fn single_violation() -> ValidationError {
+pub(crate) fn single_violation() -> ValidationError {
     ValidationError {
         violations: vec![Violation {
             field: FieldPath {

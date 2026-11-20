@@ -2,7 +2,7 @@ use buffa_descriptor::generated::descriptor::field_descriptor_proto::Type;
 
 use crate::{FieldPath, FieldType, Subscript, ValidationError, Violation, proto};
 
-pub enum Exposure {
+pub(crate) enum Exposure {
     Diagnostic,
     #[cfg(feature = "connect")]
     Public,
@@ -39,7 +39,7 @@ impl ValidationError {
     }
 }
 
-pub fn convert_violation(v: &Violation, exposure: &Exposure) -> proto::Violation {
+pub(crate) fn convert_violation(v: &Violation, exposure: &Exposure) -> proto::Violation {
     proto::Violation {
         field: convert_path(&v.field, exposure).into(),
         rule: convert_path(&v.rule, exposure).into(),

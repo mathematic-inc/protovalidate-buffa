@@ -1,3 +1,5 @@
+//! Connect errors that are built from validation errors.
+
 #![cfg(feature = "connect")]
 
 mod support;

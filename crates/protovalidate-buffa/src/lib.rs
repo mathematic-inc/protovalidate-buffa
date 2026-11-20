@@ -72,6 +72,7 @@ pub use protovalidate_buffa_macros::connect_impl;
 pub use protovalidate_buffa_protos::buf::validate as proto;
 pub use regex;
 
+/// A message type that has protovalidate rules.
 pub trait Validate {
     /// Runs every rule attached to this message (and any nested messages),
     /// collecting violations rather than short-circuiting on the first.
@@ -86,6 +87,9 @@ pub trait Validate {
     fn validate(&self) -> Result<(), ValidationError>;
 }
 
+/// Builds a [`FieldPath`] from field names.
+///
+/// Generated validators use this to report the path of a field or a rule.
 #[macro_export]
 macro_rules! field_path {
     ( $( $part:expr ),* $(,)? ) => {{

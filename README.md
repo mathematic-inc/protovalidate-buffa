@@ -86,7 +86,7 @@ Compared to reflection-based implementations, the codegen approach has two chara
 | [`protoc-gen-protovalidate-buffa`](crates/protoc-gen-protovalidate-buffa/) | Codegen plugin. Reads `(buf.validate.*)` extensions off descriptors via buffa's `ExtensionSet`, emits `impl Validate for Foo` blocks. Wire into `buf.gen.yaml`. |
 | [`protovalidate-buffa-protos`](crates/protovalidate-buffa-protos/) | Checked-in Buffa types for `buf/validate/validate.proto`, shared by the codegen plugin and structured runtime errors. |
 
-`protovalidate-buffa-conformance` also lives in this workspace but is private
+This workspace also holds `protovalidate-buffa-conformance`, which is private
 (`publish = false`). See [its README] for the conformance test-run flow.
 
 ## Compatibility

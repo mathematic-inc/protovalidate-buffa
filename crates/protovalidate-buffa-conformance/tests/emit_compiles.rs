@@ -18,6 +18,8 @@
     clippy::pedantic,
     clippy::nursery,
     dead_code,
+    missing_docs,
+    unreachable_pub,
     unused_variables,
     unused_imports,
     unused_parens,

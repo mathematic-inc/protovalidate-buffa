@@ -1,7 +1,6 @@
 //! Include a package's types and validators in one handwritten module.
 //!
 //! Run: `cargo run -p protovalidate-buffa-packaging-examples --bin same_module`
-#![warn(rust_2018_idioms)]
 
 use buffa::{Message as _, MessageView as _};
 use protovalidate_buffa::Validate as _;
@@ -10,6 +9,7 @@ use protovalidate_buffa::Validate as _;
     clippy::all,
     clippy::pedantic,
     clippy::nursery,
+    unreachable_pub,
     unused_imports,
     reason = "Buffa and validator generated code"
 )]

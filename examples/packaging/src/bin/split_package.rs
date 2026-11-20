@@ -1,7 +1,6 @@
 //! Two source files share one validator include; a sibling package supplies an enum.
 //!
 //! Run: `cargo run -p protovalidate-buffa-packaging-examples --bin split_package`
-#![warn(rust_2018_idioms)]
 
 use buffa::{Message as _, MessageView as _};
 use protovalidate_buffa::Validate as _;
@@ -11,18 +10,19 @@ use protovalidate_buffa::Validate as _;
     clippy::pedantic,
     clippy::nursery,
     elided_lifetimes_in_paths,
+    unreachable_pub,
     unused_imports,
     reason = "Buffa and validator generated code"
 )]
 mod example {
-    pub mod money {
-        pub mod v1 {
+    pub(crate) mod money {
+        pub(crate) mod v1 {
             // This package has only an enum, so it needs no validator file.
             include!(concat!(env!("OUT_DIR"), "/example.money.v1.rs"));
         }
     }
-    pub mod orders {
-        pub mod v1 {
+    pub(crate) mod orders {
+        pub(crate) mod v1 {
             // Enum validation uses protobuf paths beginning at `example`.
             use crate::example;
 

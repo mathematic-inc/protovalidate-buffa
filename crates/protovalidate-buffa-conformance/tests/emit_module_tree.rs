@@ -5,14 +5,16 @@
 //! Mount both generated roots directly, with no handwritten package wrappers,
 //! and exercise the same fixtures under default and custom proto_module paths.
 
-#![warn(rust_2018_idioms)]
 #![allow(
     clippy::all,
     clippy::pedantic,
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     unused_imports,
     reason = "generated Buffa and validator modules — compile and behavior fixtures, not style targets"
 )]

@@ -1,8 +1,6 @@
 //! Explicit-presence enums enforce the same rules in owned messages and views.
 //! Regression: <https://github.com/mathematic-inc/protovalidate-buffa/discussions/103>
 
-#![warn(rust_2018_idioms)]
-
 use buffa::{HasMessageView, encoding::encode_varint};
 use protovalidate_buffa::{FieldType, Validate};
 
@@ -12,7 +10,10 @@ use protovalidate_buffa::{FieldType, Validate};
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     unused_imports,
     rustdoc::broken_intra_doc_links,
     rustdoc::invalid_html_tags,
