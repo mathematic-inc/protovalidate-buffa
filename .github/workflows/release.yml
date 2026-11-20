@@ -24,11 +24,9 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
       crate_name: ${{ steps.meta.outputs.crate_name }}
-      crate_path: ${{ steps.meta.outputs.crate_path }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,9 +75,7 @@ jobs:
 
           {
             echo "tag=$TAG"
-            echo "version=$VERSION"
             echo "crate_name=$CRATE_NAME"
-            echo "crate_path=$CRATE_PATH"
             echo "is_prerelease=$IS_PRERELEASE"
           } >> "$GITHUB_OUTPUT"
 
@@ -153,15 +149,36 @@ jobs:
           subject-path: dist/*
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
-        with:
-          tag_name: ${{ needs.meta.outputs.tag }}
-          name: ${{ needs.meta.outputs.tag }}
-          generate_release_notes: true
-          files: ${{ needs.meta.outputs.crate_name == 'protoc-gen-protovalidate-buffa' && 'dist/*' || '' }}
-          fail_on_unmatched_files: true
-          prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
-          make_latest: ${{ needs.meta.outputs.crate_name == 'protovalidate-buffa' && needs.meta.outputs.is_prerelease == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          CRATE_NAME: ${{ needs.meta.outputs.crate_name }}
+          IS_PRERELEASE: ${{ needs.meta.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest=false
+          if [[ "$CRATE_NAME" == 'protovalidate-buffa' && "$IS_PRERELEASE" == 'false' ]]; then
+            latest=true
+          fi
+
+          assets=()
+          if [[ "$CRATE_NAME" == 'protoc-gen-protovalidate-buffa' ]]; then
+            assets=(dist/*)
+          fi
+
+          # release-please may have created the release already.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" \
+              --prerelease="$IS_PRERELEASE" --latest="$latest"
+            if [[ ${#assets[@]} -gt 0 ]]; then
+              gh release upload "$TAG" "${assets[@]}" --clobber
+            fi
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes \
+              --verify-tag --prerelease="$IS_PRERELEASE" --latest="$latest"
+          fi
 
       - name: Trigger release notes workflow
         env:
