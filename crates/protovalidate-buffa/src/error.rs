@@ -80,15 +80,15 @@ pub enum FieldType {
     Bool,
     /// `string`.
     String,
-    /// A group.
+    /// `group`.
     Group,
-    /// A message.
+    /// `message`.
     Message,
     /// `bytes`.
     Bytes,
     /// `uint32`.
     Uint32,
-    /// An enum.
+    /// `enum`.
     Enum,
     /// `sfixed32`.
     Sfixed32,

@@ -168,7 +168,7 @@ pub struct PredefinedCel {
 /// references into Rust literals.
 #[derive(Debug, Clone)]
 pub enum RuleConst {
-    /// A `bool` value.
+    /// `bool`.
     Bool(bool),
     /// A signed integer or an enum number.
     Int(i64),
@@ -176,9 +176,9 @@ pub enum RuleConst {
     UInt(u64),
     /// A `float` or `double`, widened to `f64`.
     Double(f64),
-    /// A `string` value.
+    /// `string`.
     Str(String),
-    /// A `bytes` value.
+    /// `bytes`.
     Bytes(Vec<u8>),
     /// A repeated value.
     List(Vec<Self>),
@@ -198,49 +198,49 @@ pub enum Ignore {
 /// Protobuf field type classification (post map/repeated detection).
 #[derive(Debug)]
 pub enum FieldKind {
-    /// A `string` field.
+    /// `string`.
     String,
-    /// A `bytes` field.
+    /// `bytes`.
     Bytes,
-    /// An `int32` field.
+    /// `int32`.
     Int32,
-    /// An `int64` field.
+    /// `int64`.
     Int64,
-    /// A `uint32` field.
+    /// `uint32`.
     Uint32,
-    /// A `uint64` field.
+    /// `uint64`.
     Uint64,
-    /// A `sint32` field.
+    /// `sint32`.
     Sint32,
-    /// A `sint64` field.
+    /// `sint64`.
     Sint64,
-    /// A `fixed32` field.
+    /// `fixed32`.
     Fixed32,
-    /// A `fixed64` field.
+    /// `fixed64`.
     Fixed64,
-    /// An `sfixed32` field.
+    /// `sfixed32`.
     Sfixed32,
-    /// An `sfixed64` field.
+    /// `sfixed64`.
     Sfixed64,
-    /// A `float` field.
+    /// `float`.
     Float,
-    /// A `double` field.
+    /// `double`.
     Double,
-    /// A `bool` field.
+    /// `bool`.
     Bool,
-    /// An enum field.
+    /// `enum`.
     Enum {
         /// Fully-qualified name, with no leading dot.
         full_name: std::string::String,
     },
-    /// A message field.
+    /// `message`.
     Message {
         /// Fully-qualified name, with no leading dot.
         full_name: std::string::String,
     },
-    /// A repeated field. The box holds the kind of the items.
+    /// The box holds the kind of the items.
     Repeated(Box<Self>),
-    /// A map field.
+    /// `map`.
     Map {
         /// Kind of the keys.
         key: Box<Self>,

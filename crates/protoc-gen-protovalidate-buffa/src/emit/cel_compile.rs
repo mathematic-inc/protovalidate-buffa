@@ -202,19 +202,19 @@ pub struct MapTy {
 /// Identifies a concrete Rust scalar / wrapper type that backs a CEL value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RustScalar {
-    /// An `i32`.
+    /// `i32`.
     I32,
-    /// An `i64`.
+    /// `i64`.
     I64,
-    /// A `u32`.
+    /// `u32`.
     U32,
-    /// A `u64`.
+    /// `u64`.
     U64,
-    /// An `f32`.
+    /// `f32`.
     F32,
-    /// An `f64`.
+    /// `f64`.
     F64,
-    /// A `bool`.
+    /// `bool`.
     Bool,
     /// A string.
     Str,
@@ -303,21 +303,21 @@ impl CelType {
 /// downstream literal folding in list/comparison ops.
 #[derive(Debug, Clone)]
 pub enum ConstValue {
-    /// A `bool`.
+    /// `bool`.
     Bool(bool),
-    /// An `int`.
+    /// `int`.
     Int(i64),
-    /// A `uint`.
+    /// `uint`.
     UInt(u64),
-    /// A `double`.
+    /// `double`.
     Double(f64),
-    /// A `string`.
+    /// `string`.
     Str(String),
-    /// A `bytes` value.
+    /// `bytes`.
     Bytes(Vec<u8>),
     /// `null`.
     Null,
-    /// A list.
+    /// `list`.
     List(Vec<Self>),
 }
 

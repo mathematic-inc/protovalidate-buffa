@@ -47,7 +47,6 @@ sections {
     }
     `cargo-deny` {
       bans { deny = List("chrono", "chrono-tz") }
-      // These dependencies use licenses outside the organization's list.
       licenses {
         exceptions {
           new { crate = "antlr4rust"; allow = List("BSD-3-Clause") }
