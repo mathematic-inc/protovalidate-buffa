@@ -104,7 +104,9 @@ jobs:
           toolchain: stable
 
       - name: Build and test
-        run: cargo test --locked -p "${{ needs.meta.outputs.crate_name }}"
+        env:
+          CRATE_NAME: ${{ needs.meta.outputs.crate_name }}
+        run: cargo test --locked -p "$CRATE_NAME"
 
   prebuilt:
     permissions:
@@ -183,9 +185,10 @@ jobs:
       - name: Trigger release notes workflow
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
           gh workflow run release-notes.yml \
-            --field tag="${{ needs.meta.outputs.tag }}"
+            --field tag="$TAG"
 
   publish-crate:
     name: Publish to crates.io
@@ -224,12 +227,13 @@ jobs:
         shell: bash
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+          CRATE_NAME: ${{ needs.meta.outputs.crate_name }}
         run: |
           set -euo pipefail
-          if output=$(cargo publish --locked -p "${{ needs.meta.outputs.crate_name }}" 2>&1); then
+          if output=$(cargo publish --locked -p "$CRATE_NAME" 2>&1); then
             echo "$output"
           elif grep -q "already exists on crates.io index" <<< "$output"; then
-            echo "${{ needs.meta.outputs.crate_name }} already published, skipping."
+            echo "$CRATE_NAME already published, skipping."
           else
             echo "$output" >&2
             exit 1
