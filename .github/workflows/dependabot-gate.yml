@@ -1,4 +1,4 @@
-name: Dependabot strict gate
+name: Dependabot gate
 
 on:
   pull_request:
@@ -6,16 +6,15 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions: {}
+
 jobs:
-  strict-gate:
-    name: Strict Dependabot gate
+  dependabot-gate:
+    name: Dependabot gate
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -28,7 +27,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Require successful checks on the exact Dependabot head
+      - name: Require successful checks on exact Dependabot head
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" != pull_request || "$PR_AUTHOR" != 'dependabot[bot]' ]]; then
@@ -47,9 +46,7 @@ jobs:
             if jq -e '
               .check_runs as $runs
               | ([
-                  ["Test", 15368],
-                  ["Rust 1.89.0", 15368],
-                  ["Check", 15368],
+                  ["required", 15368],
                   ["CodeQL", 57789],
                   ["Analyze (actions)", 15368],
                   ["Analyze (rust)", 15368]
@@ -58,7 +55,7 @@ jobs:
                   | ($found | length > 0 and all(.[]; .status == "completed" and .conclusion == "success"))
                 ))
               and ($runs | all(.[];
-                .name == "Strict Dependabot gate" or
+                .name == "Dependabot gate" or
                 ((.name | startswith("Verify prebuilt distribution / Install without compiling")) and
                   .status == "completed" and .conclusion == "skipped") or
                 (.status == "completed" and .conclusion == "success")

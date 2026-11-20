@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-pr-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   release-please:
+    name: Release Please
     environment: release
     permissions:
       contents: write

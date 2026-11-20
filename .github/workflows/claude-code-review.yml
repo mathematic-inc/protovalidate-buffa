@@ -1,4 +1,4 @@
-name: Claude Code Review
+name: Claude Code review
 
 on:
   pull_request:
@@ -11,11 +11,14 @@ on:
     #   - "src/**/*.jsx"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
 
 jobs:
-  claude-review:
+  review-pull-request:
+    name: Review pull request
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
@@ -31,13 +34,13 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Run Claude Code Review
+      - name: Run Claude Code review
         id: claude-review
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1
         with:
