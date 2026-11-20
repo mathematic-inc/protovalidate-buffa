@@ -276,7 +276,7 @@ pub struct StandardRules {
     pub float: Option<FloatStandard>,
     /// Rules for a `double` field.
     pub double: Option<DoubleStandard>,
-    /// Rules for a enum field.
+    /// Rules for an enum field.
     pub enum_rules: Option<EnumStandard>,
     /// Rules for a repeated field.
     pub repeated: Option<RepeatedStandard>,
@@ -398,7 +398,7 @@ impl StandardRules {
     pub const fn as_double(&self) -> Option<&DoubleStandard> {
         self.double.as_ref()
     }
-    /// Returns the rules for a enum field, if any.
+    /// Returns the rules for an enum field, if any.
     #[must_use]
     pub const fn as_enum(&self) -> Option<&EnumStandard> {
         self.enum_rules.as_ref()
@@ -655,7 +655,7 @@ pub struct BoolStandard {
     pub r#const: Option<bool>,
 }
 
-/// Standard rules for a enum field.
+/// Standard rules for an enum field.
 #[derive(Debug)]
 pub struct EnumStandard {
     /// `const`: the value must equal this enum number.

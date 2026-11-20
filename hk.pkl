@@ -6,8 +6,4 @@ steps {
     check = "cargo metadata --locked --format-version 1 --all-features > /dev/null"
     profiles = List("slow")
   }
-
-  // The step of the organization sets `workspace_indicator = null`, so the `{{workspace}}` in the
-  // builtin `dir` has no value.
-  ["cargo-deny"] { dir = "{{root}}" }
 }
