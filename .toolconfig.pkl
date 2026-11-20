@@ -1,0 +1,59 @@
+amends
+  "package://github.com/mathematic-inc/toolconfig/releases/download/v2026.11.6/toolconfig@2026.11.6#/ToolConfig.pkl"
+
+root = true
+
+toolconfig {
+  `extends` =
+    List(new Repository {
+      git = "https://github.com/mathematic-inc/toolconfig-config.git"
+      rev = "fc76ddad46c14a7b7fe03bf117a92ede11ea0dfb"
+      path = "profiles/org/.toolconfig.pkl"
+    })
+  // Each proto module keeps its own `buf.yaml`. A root `buf.yaml` makes `buf lint .` read the
+  // whole repository as one module, and the modules do not compile together.
+  tools =
+    List(
+      "actionlint",
+      "cargo-deny",
+      "gitleaks",
+      "hadolint",
+      "knip",
+      "lychee",
+      "oxfmt",
+      "oxlint",
+      "ruff",
+      "rumdl",
+      "rustfmt",
+      "ryl",
+      "shellcheck",
+      "tombi",
+      "ty",
+      "typos",
+    )
+}
+
+sections {
+  ["*"] {
+    typos {
+      ["default"] {
+        ["extend-words"] {
+          ["SUBSTRACT"] = "SUBSTRACT"
+          ["ba"] = "ba"
+          ["lits"] = "lits"
+          ["unparseable"] = "unparseable"
+        }
+      }
+    }
+    `cargo-deny` {
+      bans { deny = List("chrono", "chrono-tz") }
+      // These dependencies use licenses outside the organization's list.
+      licenses {
+        exceptions {
+          new { crate = "antlr4rust"; allow = List("BSD-3-Clause") }
+          new { crate = "borrow-or-share"; allow = List("MIT-0") }
+        }
+      }
+    }
+  }
+}
