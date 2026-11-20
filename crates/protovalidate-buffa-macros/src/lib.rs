@@ -16,6 +16,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, quote_spanned};
 use syn::{Error, FnArg, ImplItem, ItemImpl, PatType, Type, TypePath, parse_macro_input};
 
+/// Validates the request view at the top of every Connect handler in an `impl` block.
 #[proc_macro_attribute]
 pub fn connect_impl(attr: TokenStream, input: TokenStream) -> TokenStream {
     if !attr.is_empty() {

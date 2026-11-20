@@ -1,4 +1,4 @@
-#![warn(rust_2018_idioms)]
+//! CEL rules that read message fields, including oneofs.
 
 use buffa::{Message as _, MessageView as _};
 use protovalidate_buffa::{Validate as _, ValidationError};
@@ -9,7 +9,10 @@ use protovalidate_buffa::{Validate as _, ValidationError};
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     unused_imports,
     rustdoc::broken_intra_doc_links,
     rustdoc::invalid_html_tags,

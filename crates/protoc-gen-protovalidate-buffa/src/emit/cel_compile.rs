@@ -77,10 +77,13 @@ use quote::{format_ident, quote};
 /// the runtime interpreter isn't needed for such rules either.
 #[derive(Debug, Clone)]
 pub struct FallbackReason {
+    /// Human-readable reason.
     pub message: String,
+    /// Category of the failure.
     pub kind: FallbackKind,
 }
 
+/// Category of a [`FallbackReason`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FallbackKind {
     /// The transpiler doesn't (yet) handle this construct. With no
@@ -116,20 +119,27 @@ impl FallbackReason {
 /// can pick the right Rust operator/coercion at every node.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CelType {
+    /// CEL `int`.
     Int,
+    /// CEL `uint`.
     UInt,
+    /// CEL `double`.
     Double,
+    /// CEL `bool`.
     Bool,
     /// CEL `string`. We always represent the value as `&str` (borrowed) when
     /// possible; the `owned` field distinguishes a freshly-built `String`
     /// from a borrowed view.
     Str {
+        /// True for a freshly-built `String`, false for a borrowed `&str`.
         owned: bool,
     },
     /// CEL `bytes`. Same borrowed/owned distinction as `Str`.
     Bytes {
+        /// True for freshly-built bytes, false for borrowed bytes.
         owned: bool,
     },
+    /// CEL `null`.
     Null,
     /// CEL `duration` — Rust `protovalidate_buffa::cel::Duration`.
     Duration,
@@ -167,6 +177,7 @@ pub enum CelType {
 /// `CelType`, and the `FieldKind` for presence/coercion decisions).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageSchema {
+    /// Fields of the message, in declaration order.
     pub fields: Vec<MessageFieldEntry>,
     /// Whether validators read the message from a borrowed view, not an
     /// owned message.
@@ -178,23 +189,36 @@ pub struct MessageSchema {
 /// `HashMap`'s actual key type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapTy {
+    /// CEL type of the keys.
     pub key_cel: CelType,
+    /// CEL type of the values.
     pub value_cel: CelType,
+    /// Rust type of the keys.
     pub key_rust: RustScalar,
+    /// Rust type of the values.
     pub value_rust: RustScalar,
 }
 
 /// Identifies a concrete Rust scalar / wrapper type that backs a CEL value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RustScalar {
+    /// An `i32`.
     I32,
+    /// An `i64`.
     I64,
+    /// A `u32`.
     U32,
+    /// A `u64`.
     U64,
+    /// An `f32`.
     F32,
+    /// An `f64`.
     F64,
+    /// A `bool`.
     Bool,
+    /// A string.
     Str,
+    /// A byte string.
     Bytes,
     /// A buffa enum: a bare `E` when closed, an `EnumValue<E>` when open.
     Enum,
@@ -202,6 +226,7 @@ pub enum RustScalar {
     Message,
 }
 
+/// One field of a [`MessageSchema`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageFieldEntry {
     /// Proto field name (e.g. `"first_name"`).
@@ -220,14 +245,18 @@ pub struct MessageFieldEntry {
 pub enum SchemaFieldKind {
     /// A real oneof alternative has presence even when its value is default.
     Oneof {
+        /// Rust field that holds the oneof.
         accessor: String,
         /// Package of the message declaring the oneof, if it is named and
         /// not the validators' own.
         package: Option<String>,
         /// Package-relative name of the message declaring the oneof.
         parent_msg_name: String,
+        /// Name of the Rust enum of the oneof.
         enumeration: String,
+        /// Variant of that enum for this field.
         variant: String,
+        /// Kind of the field value inside the variant.
         alternative_kind: Box<Self>,
     },
     /// Singular scalar / bool — `has()` returns true iff non-default.
@@ -238,7 +267,10 @@ pub enum SchemaFieldKind {
     StringLike,
     /// Singular sub-message — `has()` returns true iff present. The
     /// `proto_fqn` enables nested field access via the schema index.
-    Message { proto_fqn: String },
+    Message {
+        /// Fully-qualified name of the message type.
+        proto_fqn: String,
+    },
     /// `Option<T>` (proto2 / editions explicit) — `has()` returns true iff
     /// `Some`.
     Optional,
@@ -271,13 +303,21 @@ impl CelType {
 /// downstream literal folding in list/comparison ops.
 #[derive(Debug, Clone)]
 pub enum ConstValue {
+    /// A `bool`.
     Bool(bool),
+    /// An `int`.
     Int(i64),
+    /// A `uint`.
     UInt(u64),
+    /// A `double`.
     Double(f64),
+    /// A `string`.
     Str(String),
+    /// A `bytes` value.
     Bytes(Vec<u8>),
+    /// `null`.
     Null,
+    /// A list.
     List(Vec<Self>),
 }
 
@@ -287,6 +327,7 @@ pub struct Binding {
     /// Rust expression that yields the binding's value (used unless `constant`
     /// is set, in which case the constant inlines).
     pub rust_expr: TokenStream,
+    /// CEL type of the value.
     pub ty: CelType,
     /// When set, the binding's value is known at compile time and field
     /// accesses on it fold to constants.
@@ -329,9 +370,20 @@ pub struct Compiler<'a> {
     runtime_error_sites: usize,
 }
 
+impl std::fmt::Debug for Compiler<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Compiler")
+            .field("bindings", &self.bindings)
+            .field("needs_now", &self.needs_now)
+            .field("runtime_error_sites", &self.runtime_error_sites)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Trait-object-style lookup for sub-message schemas. Implemented by the
 /// caller (typically a `BTreeMap<String, MessageSchema>`).
 pub trait SchemaLookup {
+    /// Returns the schema of the message with this fully-qualified name, if known.
     fn get(&self, proto_fqn: &str) -> Option<MessageSchema>;
 }
 
@@ -342,17 +394,20 @@ impl SchemaLookup for BTreeMap<String, MessageSchema> {
 }
 
 impl<'a> Compiler<'a> {
+    /// Creates a compiler with no bindings and no schema lookup.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the lookup that resolves [`CelType::MessageRef`] types.
     #[must_use]
     pub fn with_schemas(mut self, schemas: &'a dyn SchemaLookup) -> Self {
         self.schemas = Some(schemas);
         self
     }
 
+    /// Binds `name` to `binding`, replacing an earlier binding of that name.
     pub fn bind(&mut self, name: &str, binding: Binding) {
         self.bindings.insert(name.to_string(), binding);
     }
@@ -3572,8 +3627,11 @@ impl<'a> Compiler<'a> {
 /// What the caller needs from a successful compile.
 #[derive(Debug)]
 pub struct CompileOutput {
+    /// Rust expression tokens.
     pub tokens: TokenStream,
+    /// Static CEL type of the expression.
     pub ty: CelType,
+    /// True if the expression reads `now`, so the caller must bind it.
     pub needs_now: bool,
 }
 

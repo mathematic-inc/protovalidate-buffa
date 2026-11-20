@@ -1,14 +1,16 @@
 //! Discussion #53: compile actual buffa types with matching validators in both
 //! naming modes. Decode identical protobuf bytes to check validation behavior
 //! and the original protobuf field spelling in errors, for owned and view types.
-#![warn(rust_2018_idioms)]
 #![allow(
     clippy::all,
     clippy::pedantic,
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     non_snake_case,
     unused_imports,
     reason = "generated Buffa and validator modules are compile and behavior fixtures"

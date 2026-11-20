@@ -14,7 +14,11 @@ pub mod generated {
         clippy::pedantic,
         clippy::nursery,
         dead_code,
+        elided_lifetimes_in_paths,
+        missing_debug_implementations,
+        missing_docs,
         non_camel_case_types,
+        unreachable_pub,
         unused_imports,
         rustdoc::broken_intra_doc_links,
         rustdoc::invalid_html_tags,
@@ -74,6 +78,7 @@ fn run_case(any: &pb_google::Any) -> TestResult {
     }
 }
 
+/// Converts a validation error to the `Violations` message of the conformance harness.
 pub fn to_harness_violations(err: protovalidate_buffa::ValidationError) -> pb_validate::Violations {
     pb_validate::Violations {
         violations: err.violations.into_iter().map(convert_violation).collect(),

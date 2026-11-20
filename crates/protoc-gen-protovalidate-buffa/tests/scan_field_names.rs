@@ -1,6 +1,5 @@
 //! Discussion #53: naming matches buffa across the full request, including
 //! descriptors that are not selected for generation.
-#![warn(rust_2018_idioms)]
 
 use std::{
     io::Write as _,

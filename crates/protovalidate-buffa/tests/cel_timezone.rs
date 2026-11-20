@@ -1,4 +1,5 @@
-#![warn(rust_2018_idioms)]
+//! CEL time zone helpers.
+
 #![cfg(feature = "tz")]
 
 use protovalidate_buffa::cel::{in_time_zone, parse_timestamp, timestamp_from_secs_nanos};

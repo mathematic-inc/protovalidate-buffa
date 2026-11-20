@@ -2,8 +2,6 @@
 //! presence fields, and wrappers as they do to singular fields, in owned
 //! messages and views.
 
-#![warn(rust_2018_idioms)]
-
 use buffa::{HasMessageView, Message, encoding::encode_varint};
 use buffa_descriptor::generated::descriptor::{
     DescriptorProto, FieldDescriptorProto, FileDescriptorSet, field_descriptor_proto::Type,
@@ -16,7 +14,10 @@ use protovalidate_buffa::{FieldPathElement, FieldType, Subscript, Validate, Viol
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     unused_imports,
     rustdoc::broken_intra_doc_links,
     rustdoc::invalid_html_tags,

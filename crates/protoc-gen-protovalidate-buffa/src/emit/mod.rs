@@ -204,7 +204,7 @@ pub fn render_with_options(messages: &[MessageValidators], opts: &Options) -> Re
             format!("{stem}.validate.rs")
         };
         let body_str = body.to_string();
-        let parsed = syn::parse2(body.clone()).map_err(|e| {
+        let parsed = syn::parse2(body).map_err(|e| {
             anyhow::anyhow!("syn parse failed for {key}: {e}\n--- BEGIN TOKENS ---\n{body_str}\n--- END TOKENS ---")
         })?;
         // The package is everything before the trailing file stem in the

@@ -7,8 +7,6 @@
 //! ```
 //! Only maintainers regenerating sources need protoc and its WKT includes.
 
-#![warn(rust_2018_idioms)]
-
 use std::{error::Error, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn Error>> {

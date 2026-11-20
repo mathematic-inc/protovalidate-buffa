@@ -1,4 +1,4 @@
-#![warn(rust_2018_idioms)]
+//! Standard, CEL and predefined rules on generated messages and their views.
 
 use buffa::{HasMessageView, Message};
 use protovalidate_buffa::{Validate, ValidationError};
@@ -9,7 +9,10 @@ use protovalidate_buffa::{Validate, ValidationError};
     clippy::nursery,
     dead_code,
     elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
     non_camel_case_types,
+    unreachable_pub,
     unused_imports,
     rustdoc::broken_intra_doc_links,
     rustdoc::invalid_html_tags,

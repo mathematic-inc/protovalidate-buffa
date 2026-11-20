@@ -1,3 +1,5 @@
+//! Conversion of validation errors to `buf.validate` messages.
+
 #![cfg(feature = "protos")]
 
 mod support;

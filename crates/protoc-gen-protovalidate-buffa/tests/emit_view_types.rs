@@ -1,4 +1,4 @@
-#![warn(rust_2018_idioms)]
+//! The plugin emits owned and view validators for a nested message.
 
 use protoc_gen_protovalidate_buffa::{emit::render, scan::MessageValidators};
 

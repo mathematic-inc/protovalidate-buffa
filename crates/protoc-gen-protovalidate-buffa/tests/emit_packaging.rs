@@ -1,5 +1,4 @@
 //! Discussion #58: opt out of packaging without overwriting a consumer's modules.
-#![warn(rust_2018_idioms)]
 
 use std::{
     io::Write as _,

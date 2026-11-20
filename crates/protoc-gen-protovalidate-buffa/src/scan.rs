@@ -55,10 +55,13 @@ pub struct MessageValidators {
 /// Validator for a single field.
 #[derive(Debug)]
 pub struct FieldValidator {
+    /// Field number in the message.
     pub field_number: i32,
+    /// Field name as written in the `.proto` file.
     pub field_name: String,
     /// Rust accessor name before keyword escaping; protobuf paths use `field_name`.
     pub rust_name: String,
+    /// Kind of the field.
     pub field_type: FieldKind,
     /// `(buf.validate.field).required`
     pub required: bool,
@@ -92,9 +95,11 @@ pub struct FieldValidator {
 /// schema does not expose `.cel` on `OneofRules` (unlike FieldRules/MessageRules).
 #[derive(Debug)]
 pub struct OneofValidator {
+    /// Oneof name as written in the `.proto` file.
     pub name: String,
     /// Rust struct field name; the enum type still derives from `name`.
     pub rust_name: String,
+    /// `(buf.validate.oneof).required`: one field of the oneof must be set.
     pub required: bool,
     /// The parent message name relative to its package (e.g.
     /// `"CreateGradingRequest"`, or `"Outer.Inner"` when nested), used to derive
@@ -105,17 +110,23 @@ pub struct OneofValidator {
     pub fields: Vec<FieldValidator>,
 }
 
+/// A `(buf.validate.message).oneof` rule.
 #[derive(Debug, Clone)]
 pub struct MessageOneofSpec {
+    /// Names of the fields in the group.
     pub fields: Vec<std::string::String>,
+    /// True if one field of the group must be set.
     pub required: bool,
 }
 
 /// A single CEL constraint.
 #[derive(Debug, Clone)]
 pub struct CelRule {
+    /// Rule ID.
     pub id: String,
+    /// Violation message.
     pub message: String,
+    /// CEL expression of the rule.
     pub expression: String,
     /// If true, this rule came from the `cel_expression` field (rule_id is
     /// the expression itself, emitted with a different rule-path).
@@ -125,8 +136,11 @@ pub struct CelRule {
 /// A predefined-rule CEL expression with `rule` bound to an extension value.
 #[derive(Debug, Clone)]
 pub struct PredefinedCel {
+    /// Rule ID.
     pub id: String,
+    /// Violation message.
     pub message: String,
+    /// CEL expression of the rule.
     pub expression: String,
     /// The extension value decoded into a typed Rust enum so the
     /// compile-time CEL transpiler can fold `rule` references to
@@ -154,50 +168,83 @@ pub struct PredefinedCel {
 /// references into Rust literals.
 #[derive(Debug, Clone)]
 pub enum RuleConst {
+    /// A `bool` value.
     Bool(bool),
+    /// A signed integer or an enum number.
     Int(i64),
+    /// An unsigned integer.
     UInt(u64),
+    /// A `float` or `double`, widened to `f64`.
     Double(f64),
+    /// A `string` value.
     Str(String),
+    /// A `bytes` value.
     Bytes(Vec<u8>),
+    /// A repeated value.
     List(Vec<Self>),
 }
 
 /// Ignore semantics, mirroring `buf.validate.Ignore`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ignore {
+    /// `IGNORE_UNSPECIFIED`: rules run, except for an unset message field.
     Unspecified,
+    /// `IGNORE_IF_ZERO_VALUE`: rules do not run when the field has its zero value.
     IfZeroValue,
+    /// `IGNORE_ALWAYS`: rules never run.
     Always,
 }
 
 /// Protobuf field type classification (post map/repeated detection).
 #[derive(Debug)]
 pub enum FieldKind {
+    /// A `string` field.
     String,
+    /// A `bytes` field.
     Bytes,
+    /// An `int32` field.
     Int32,
+    /// An `int64` field.
     Int64,
+    /// A `uint32` field.
     Uint32,
+    /// A `uint64` field.
     Uint64,
+    /// A `sint32` field.
     Sint32,
+    /// A `sint64` field.
     Sint64,
+    /// A `fixed32` field.
     Fixed32,
+    /// A `fixed64` field.
     Fixed64,
+    /// An `sfixed32` field.
     Sfixed32,
+    /// An `sfixed64` field.
     Sfixed64,
+    /// A `float` field.
     Float,
+    /// A `double` field.
     Double,
+    /// A `bool` field.
     Bool,
+    /// An enum field.
     Enum {
+        /// Fully-qualified name, with no leading dot.
         full_name: std::string::String,
     },
+    /// A message field.
     Message {
+        /// Fully-qualified name, with no leading dot.
         full_name: std::string::String,
     },
+    /// A repeated field. The box holds the kind of the items.
     Repeated(Box<Self>),
+    /// A map field.
     Map {
+        /// Kind of the keys.
         key: Box<Self>,
+        /// Kind of the values.
         value: Box<Self>,
     },
     /// A scalar with EXPLICIT field presence (`features.field_presence = EXPLICIT`
@@ -213,27 +260,44 @@ pub enum FieldKind {
 /// All supported standard rule families — at most one is `Some` for any field.
 #[derive(Debug, Default)]
 pub struct StandardRules {
+    /// Rules for a `string` field.
     pub string: Option<StringStandard>,
+    /// Rules for a `bytes` field.
     pub bytes: Option<BytesStandard>,
+    /// Rules for a `int32`, `sint32` or `sfixed32` field.
     pub int32: Option<Int32Standard>,
+    /// Rules for a `int64`, `sint64` or `sfixed64` field.
     pub int64: Option<Int64Standard>,
+    /// Rules for a `uint32` or `fixed32` field.
     pub uint32: Option<Uint32Standard>,
+    /// Rules for a `uint64` or `fixed64` field.
     pub uint64: Option<Uint64Standard>,
+    /// Rules for a `float` field.
     pub float: Option<FloatStandard>,
+    /// Rules for a `double` field.
     pub double: Option<DoubleStandard>,
+    /// Rules for a enum field.
     pub enum_rules: Option<EnumStandard>,
+    /// Rules for a repeated field.
     pub repeated: Option<RepeatedStandard>,
+    /// Rules for a map field.
     pub map: Option<MapStandard>,
+    /// Rules for a `bool` field.
     pub bool_rules: Option<BoolStandard>,
+    /// Rules for a `google.protobuf.Any` field.
     pub any_rules: Option<AnyStandard>,
+    /// Rules for a `google.protobuf.Duration` field.
     pub duration: Option<DurationStandard>,
+    /// Rules for a `google.protobuf.Timestamp` field.
     pub timestamp: Option<TimestampStandard>,
+    /// Rules for a `google.protobuf.FieldMask` field.
     pub field_mask: Option<FieldMaskStandard>,
     /// Predefined (extension-defined) CEL rules discovered on this field's
     /// inner rule message via unknown_fields.
     pub predefined: Vec<PredefinedCel>,
 }
 
+/// Standard rules for a `google.protobuf.FieldMask` field.
 #[derive(Debug, Default, Clone)]
 pub struct FieldMaskStandard {
     /// `const`: value.paths must exactly equal this set.
@@ -244,238 +308,389 @@ pub struct FieldMaskStandard {
     pub not_in: Vec<String>,
 }
 
+/// Standard rules for a `google.protobuf.Any` field.
 #[derive(Debug, Default)]
 pub struct AnyStandard {
+    /// `in`: the type URL must be one of these.
     pub in_set: Vec<std::string::String>,
+    /// `not_in`: the type URL must not be one of these.
     pub not_in: Vec<std::string::String>,
 }
 
+/// Standard rules for a `google.protobuf.Duration` field.
 #[derive(Debug, Default, Clone)]
 pub struct DurationStandard {
+    /// `const`: the value must equal this `(seconds, nanos)` pair.
     pub r#const: Option<(i64, i32)>,
+    /// `lt`: the value must be less than this `(seconds, nanos)` pair.
     pub lt: Option<(i64, i32)>,
+    /// `lte`: the value must be less than or equal to this `(seconds, nanos)` pair.
     pub lte: Option<(i64, i32)>,
+    /// `gt`: the value must be greater than this `(seconds, nanos)` pair.
     pub gt: Option<(i64, i32)>,
+    /// `gte`: the value must be greater than or equal to this `(seconds, nanos)` pair.
     pub gte: Option<(i64, i32)>,
+    /// `in`: the value must be one of these `(seconds, nanos)` pairs.
     pub in_set: Vec<(i64, i32)>,
+    /// `not_in`: the value must not be one of these `(seconds, nanos)` pairs.
     pub not_in: Vec<(i64, i32)>,
 }
 
+/// Standard rules for a `google.protobuf.Timestamp` field.
 #[derive(Debug, Default, Clone)]
 pub struct TimestampStandard {
+    /// `const`: the value must equal this `(seconds, nanos)` pair.
     pub r#const: Option<(i64, i32)>,
+    /// `lt`: the value must be less than this `(seconds, nanos)` pair.
     pub lt: Option<(i64, i32)>,
+    /// `lte`: the value must be less than or equal to this `(seconds, nanos)` pair.
     pub lte: Option<(i64, i32)>,
+    /// `gt`: the value must be greater than this `(seconds, nanos)` pair.
     pub gt: Option<(i64, i32)>,
+    /// `gte`: the value must be greater than or equal to this `(seconds, nanos)` pair.
     pub gte: Option<(i64, i32)>,
+    /// `lt_now`: the value must be before the current time.
     pub lt_now: bool,
+    /// `gt_now`: the value must be after the current time.
     pub gt_now: bool,
+    /// `within`: the value must be within this `(seconds, nanos)` span of the current time.
     pub within: Option<(i64, i32)>,
 }
 
 impl StandardRules {
+    /// Returns the rules for a `string` field, if any.
     #[must_use]
     pub const fn as_string(&self) -> Option<&StringStandard> {
         self.string.as_ref()
     }
+    /// Returns the rules for a `bytes` field, if any.
     #[must_use]
     pub const fn as_bytes(&self) -> Option<&BytesStandard> {
         self.bytes.as_ref()
     }
+    /// Returns the rules for a `int32`, `sint32` or `sfixed32` field, if any.
     #[must_use]
     pub const fn as_int32(&self) -> Option<&Int32Standard> {
         self.int32.as_ref()
     }
+    /// Returns the rules for a `int64`, `sint64` or `sfixed64` field, if any.
     #[must_use]
     pub const fn as_int64(&self) -> Option<&Int64Standard> {
         self.int64.as_ref()
     }
+    /// Returns the rules for a `uint32` or `fixed32` field, if any.
     #[must_use]
     pub const fn as_uint32(&self) -> Option<&Uint32Standard> {
         self.uint32.as_ref()
     }
+    /// Returns the rules for a `uint64` or `fixed64` field, if any.
     #[must_use]
     pub const fn as_uint64(&self) -> Option<&Uint64Standard> {
         self.uint64.as_ref()
     }
+    /// Returns the rules for a `float` field, if any.
     #[must_use]
     pub const fn as_float(&self) -> Option<&FloatStandard> {
         self.float.as_ref()
     }
+    /// Returns the rules for a `double` field, if any.
     #[must_use]
     pub const fn as_double(&self) -> Option<&DoubleStandard> {
         self.double.as_ref()
     }
+    /// Returns the rules for a enum field, if any.
     #[must_use]
     pub const fn as_enum(&self) -> Option<&EnumStandard> {
         self.enum_rules.as_ref()
     }
+    /// Returns the rules for a repeated field, if any.
     #[must_use]
     pub const fn as_repeated(&self) -> Option<&RepeatedStandard> {
         self.repeated.as_ref()
     }
+    /// Returns the rules for a map field, if any.
     #[must_use]
     pub const fn as_map(&self) -> Option<&MapStandard> {
         self.map.as_ref()
     }
+    /// Returns the rules for a `bool` field, if any.
     #[must_use]
     pub const fn as_bool(&self) -> Option<&BoolStandard> {
         self.bool_rules.as_ref()
     }
 }
 
+/// Standard rules for a `string` field.
 #[derive(Debug, Default)]
 pub struct StringStandard {
+    /// `min_len`: minimum length in characters.
     pub min_len: Option<u64>,
+    /// `max_len`: maximum length in characters.
     pub max_len: Option<u64>,
+    /// `len`: exact length in characters.
     pub len: Option<u64>,
+    /// `min_bytes`: minimum length in bytes.
     pub min_bytes: Option<u64>,
+    /// `max_bytes`: maximum length in bytes.
     pub max_bytes: Option<u64>,
+    /// `len_bytes`: exact length in bytes.
     pub len_bytes: Option<u64>,
+    /// `pattern`: the value must match this RE2 regular expression.
     pub pattern: Option<std::string::String>,
+    /// `uuid`: the value must be a UUID.
     pub uuid: Option<bool>,
+    /// `tuuid`: the value must be a UUID without dashes.
     pub tuuid: Option<bool>,
+    /// `ulid`: the value must be a ULID.
     pub ulid: Option<bool>,
+    /// `ip`: the value must be an IPv4 or IPv6 address.
     pub ip: Option<bool>,
+    /// `ipv4`: the value must be an IPv4 address.
     pub ipv4: Option<bool>,
+    /// `ipv6`: the value must be an IPv6 address.
     pub ipv6: Option<bool>,
+    /// `ip_with_prefixlen`: the value must be an IP address with a prefix length.
     pub ip_with_prefixlen: Option<bool>,
+    /// `ipv4_with_prefixlen`: the value must be an IPv4 address with a prefix length.
     pub ipv4_with_prefixlen: Option<bool>,
+    /// `ipv6_with_prefixlen`: the value must be an IPv6 address with a prefix length.
     pub ipv6_with_prefixlen: Option<bool>,
+    /// `ip_prefix`: the value must be an IP prefix, with no bits set after the prefix length.
     pub ip_prefix: Option<bool>,
+    /// `ipv4_prefix`: the value must be an IPv4 prefix, with no bits set after the prefix length.
     pub ipv4_prefix: Option<bool>,
+    /// `ipv6_prefix`: the value must be an IPv6 prefix, with no bits set after the prefix length.
     pub ipv6_prefix: Option<bool>,
+    /// `hostname`: the value must be a valid host name.
     pub hostname: Option<bool>,
+    /// `host_and_port`: the value must be a host name or IP address and a port.
     pub host_and_port: Option<bool>,
+    /// `email`: the value must be an email address.
     pub email: Option<bool>,
+    /// `uri`: the value must be an absolute URI.
     pub uri: Option<bool>,
+    /// `uri_ref`: the value must be a URI or a relative reference.
     pub uri_ref: Option<bool>,
+    /// `address`: the value must be a host name or an IP address.
     pub address: Option<bool>,
+    /// `protobuf_fqn`: the value must be a fully-qualified protobuf name.
     pub protobuf_fqn: Option<bool>,
+    /// `protobuf_dot_fqn`: the value must be a fully-qualified protobuf name with a leading dot.
     pub protobuf_dot_fqn: Option<bool>,
+    /// `well_known_regex`: number of the `KnownRegex` value that the value must match.
     pub well_known_regex: Option<i32>,
+    /// `strict`: with `well_known_regex`, apply the strict pattern.
     pub strict_regex: Option<bool>,
+    /// `in`: the value must be one of these.
     pub in_set: Vec<std::string::String>,
+    /// `not_in`: the value must not be one of these.
     pub not_in_set: Vec<std::string::String>,
+    /// `prefix`: the value must start with this.
     pub prefix: Option<std::string::String>,
+    /// `suffix`: the value must end with this.
     pub suffix: Option<std::string::String>,
+    /// `contains`: the value must contain this.
     pub contains: Option<std::string::String>,
+    /// `not_contains`: the value must not contain this.
     pub not_contains: Option<std::string::String>,
+    /// `const`: the value must equal this.
     pub r#const: Option<std::string::String>,
 }
 
+/// Standard rules for a `bytes` field.
 #[derive(Debug)]
 pub struct BytesStandard {
+    /// `min_len`: minimum length in bytes.
     pub min_len: Option<u64>,
+    /// `max_len`: maximum length in bytes.
     pub max_len: Option<u64>,
+    /// `len`: exact length in bytes.
     pub len: Option<u64>,
+    /// `ip`: the value must be a 4-byte or 16-byte IP address.
     pub ip: Option<bool>,
+    /// `ipv4`: the value must be a 4-byte IPv4 address.
     pub ipv4: Option<bool>,
+    /// `ipv6`: the value must be a 16-byte IPv6 address.
     pub ipv6: Option<bool>,
+    /// `uuid`: the value must be a 16-byte UUID.
     pub uuid: Option<bool>,
+    /// `pattern`: the value must match this RE2 regular expression.
     pub pattern: Option<std::string::String>,
+    /// `in`: the value must be one of these.
     pub in_set: Vec<Vec<u8>>,
+    /// `not_in`: the value must not be one of these.
     pub not_in_set: Vec<Vec<u8>>,
+    /// `prefix`: the value must start with this.
     pub prefix: Option<Vec<u8>>,
+    /// `suffix`: the value must end with this.
     pub suffix: Option<Vec<u8>>,
+    /// `contains`: the value must contain this.
     pub contains: Option<Vec<u8>>,
+    /// `const`: the value must equal this.
     pub r#const: Option<Vec<u8>>,
 }
 
+/// Standard rules for a `int32`, `sint32` or `sfixed32` field.
 #[derive(Debug)]
 pub struct Int32Standard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<i32>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<i32>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<i32>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<i32>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<i32>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<i32>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<i32>,
 }
 
+/// Standard rules for a `int64`, `sint64` or `sfixed64` field.
 #[derive(Debug)]
 pub struct Int64Standard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<i64>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<i64>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<i64>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<i64>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<i64>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<i64>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<i64>,
 }
 
+/// Standard rules for a `uint32` or `fixed32` field.
 #[derive(Debug)]
 pub struct Uint32Standard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<u32>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<u32>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<u32>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<u32>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<u32>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<u32>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<u32>,
 }
 
+/// Standard rules for a `uint64` or `fixed64` field.
 #[derive(Debug)]
 pub struct Uint64Standard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<u64>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<u64>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<u64>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<u64>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<u64>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<u64>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<u64>,
 }
 
+/// Standard rules for a `float` field.
 #[derive(Debug)]
 pub struct FloatStandard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<f32>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<f32>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<f32>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<f32>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<f32>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<f32>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<f32>,
+    /// `finite`: the value must be neither infinite nor NaN.
     pub finite: bool,
 }
 
+/// Standard rules for a `double` field.
 #[derive(Debug)]
 pub struct DoubleStandard {
+    /// `const`: the value must equal this number.
     pub r#const: Option<f64>,
+    /// `lt`: the value must be less than this number.
     pub lt: Option<f64>,
+    /// `lte`: the value must be less than or equal to this number.
     pub lte: Option<f64>,
+    /// `gt`: the value must be greater than this number.
     pub gt: Option<f64>,
+    /// `gte`: the value must be greater than or equal to this number.
     pub gte: Option<f64>,
+    /// `in`: the value must be one of these numbers.
     pub in_set: Vec<f64>,
+    /// `not_in`: the value must not be one of these numbers.
     pub not_in: Vec<f64>,
+    /// `finite`: the value must be neither infinite nor NaN.
     pub finite: bool,
 }
 
+/// Standard rules for a `bool` field.
 #[derive(Debug)]
 pub struct BoolStandard {
+    /// `const`: the value must equal this `bool`.
     pub r#const: Option<bool>,
 }
 
+/// Standard rules for a enum field.
 #[derive(Debug)]
 pub struct EnumStandard {
+    /// `const`: the value must equal this enum number.
     pub r#const: Option<i32>,
+    /// `defined_only`: the value must be a defined enum number.
     pub defined_only: Option<bool>,
+    /// `in`: the value must be one of these enum numbers.
     pub in_set: Vec<i32>,
+    /// `not_in`: the value must not be one of these enum numbers.
     pub not_in: Vec<i32>,
 }
 
+/// Standard rules for a repeated field.
 #[derive(Debug)]
 pub struct RepeatedStandard {
+    /// `min_items`: minimum number of items.
     pub min_items: Option<u64>,
+    /// `max_items`: maximum number of items.
     pub max_items: Option<u64>,
+    /// `unique`: the items must be distinct.
     pub unique: Option<bool>,
+    /// Validator of each item.
     pub items: Option<Box<FieldValidator>>,
 }
 
+/// Standard rules for a map field.
 #[derive(Debug)]
 pub struct MapStandard {
+    /// `min_pairs`: minimum number of pairs.
     pub min_pairs: Option<u64>,
+    /// `max_pairs`: maximum number of pairs.
     pub max_pairs: Option<u64>,
+    /// Validator of each key.
     pub keys: Option<Box<FieldValidator>>,
+    /// Validator of each value.
     pub values: Option<Box<FieldValidator>>,
 }
 
@@ -487,7 +702,9 @@ pub struct MapStandard {
 /// declarations across all proto files in the `CodeGeneratorRequest`.
 #[derive(Debug, Clone)]
 pub struct PredefinedExt {
+    /// Fully-qualified name of the extended rule message, with no leading dot.
     pub extendee: String,
+    /// Field number of the extension.
     pub number: u32,
     /// Fully qualified name, including the declaring package and enclosing messages.
     pub name: String,

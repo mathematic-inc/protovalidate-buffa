@@ -1,3 +1,5 @@
+//! Canonical JSON of the `buf.validate` error details.
+
 #![cfg(feature = "json")]
 
 mod support;

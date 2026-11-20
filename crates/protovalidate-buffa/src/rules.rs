@@ -1,3 +1,6 @@
+//! Helpers that generated validators call to check rules.
+
+/// Checks for `string` and `bytes` rules.
 pub mod string {
     /// Canonical hyphenated UUID per RFC 4122 §3 — 36-char `8-4-4-4-12` hex form.
     #[expect(
@@ -490,11 +493,14 @@ pub mod string {
     }
 }
 
+/// Checks for `float` and `double` rules.
 pub mod float {
+    /// Returns true if `f` is neither infinite nor NaN.
     #[must_use]
     pub const fn is_finite_f32(f: f32) -> bool {
         f.is_finite()
     }
+    /// Returns true if `f` is neither infinite nor NaN.
     #[must_use]
     pub const fn is_finite_f64(f: f64) -> bool {
         f.is_finite()

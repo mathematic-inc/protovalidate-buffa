@@ -1,4 +1,4 @@
-#![warn(rust_2018_idioms)]
+//! CEL timestamp and duration helpers.
 
 use protovalidate_buffa::cel::{
     Duration, duration_from_secs_nanos, now_local, parse_duration, parse_timestamp,
